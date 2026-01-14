@@ -91,7 +91,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
         status: 'pending',
       };
 
-      await addDoc(collection(db, 'c&p product orders'), orderData);
+      await addDoc(collection(db, 'c&pProductOrders'), orderData);
       
       setOrderItems([]);
     } catch (error) {

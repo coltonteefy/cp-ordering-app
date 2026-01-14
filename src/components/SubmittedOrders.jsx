@@ -10,7 +10,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
-      collection(db, 'c&p product orders'),
+      collection(db, 'c&pProductOrders'),
       (snapshot) => {
         const ordersData = [];
         snapshot.forEach((doc) => {
@@ -51,7 +51,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   const updateOrderItems = async (orderId, items) => {
     try {
       const total = items.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
-      await updateDoc(doc(db, 'c&p product orders', orderId), {
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), {
         items: items,
         total: total
       });
@@ -91,7 +91,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       delete pastOrderData.id;
       
       await addDoc(collection(db, 'pastInventoryOrders'), pastOrderData);
-      await deleteDoc(doc(db, 'c&p product orders', orderId));
+      await deleteDoc(doc(db, 'c&pProductOrders', orderId));
       
       // Remove from editing set
       const newEditing = new Set(editingOrders);
@@ -105,7 +105,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
 
   const updateCarrier = async (orderId, carrier) => {
     try {
-      await updateDoc(doc(db, 'c&p product orders', orderId), { carrier });
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { carrier });
     } catch (error) {
       console.error('Error updating carrier:', error);
     }
@@ -113,7 +113,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
 
   const updateTrackingNumber = async (orderId, trackingNumber) => {
     try {
-      await updateDoc(doc(db, 'c&p product orders', orderId), { trackingNumber });
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { trackingNumber });
     } catch (error) {
       console.error('Error updating tracking number:', error);
     }
@@ -121,7 +121,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
 
   const updateDiscount = async (orderId, discountPercent) => {
     try {
-      await updateDoc(doc(db, 'c&p product orders', orderId), { discountPercent });
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { discountPercent });
     } catch (error) {
       console.error('Error updating discount:', error);
     }
