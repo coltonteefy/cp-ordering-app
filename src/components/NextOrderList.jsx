@@ -12,6 +12,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
   const [orderItems, setOrderItems] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [products, setProducts] = useState(productsData);
+  const [activeWarehouse, setActiveWarehouse] = useState('US');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -20,16 +21,23 @@ const NextOrderList = ({ onSuccess, onError }) => {
         if (!snapshot.empty) {
           const firestoreProducts = [];
           snapshot.forEach((doc) => {
+            const data = doc.data();
             firestoreProducts.push({
               id: doc.id,
-              ...doc.data()
+              ...data,
+              warehouseCosts: data.warehouseCosts || { US: 0, HK: 0 }
             });
           });
           setProducts(firestoreProducts);
+        } else {
+          // If no Firestore data, use local products.json with warehouse field
+          setProducts(productsData);
         }
       },
       (error) => {
         console.error('Error loading products:', error);
+        // Fallback to local data on error
+        setProducts(productsData);
       }
     );
 
@@ -45,10 +53,14 @@ const NextOrderList = ({ onSuccess, onError }) => {
       return;
     }
 
+    // Use the appropriate cost based on the active warehouse
+    const pricePerKit = product.warehouseCosts?.[activeWarehouse] || 0;
+
     const newItem = {
       itemName: itemName,
       quantity: 1,
-      pricePerKit: product.costPerKit || 0,
+      pricePerKit: pricePerKit,
+      warehouse: activeWarehouse,
     };
 
     setOrderItems([...orderItems, newItem]);
@@ -84,14 +96,35 @@ const NextOrderList = ({ onSuccess, onError }) => {
     setIsSubmitting(true);
 
     try {
-      const orderData = {
-        items: orderItems,
-        total: calculateTotal(),
-        submittedAt: new Date().toISOString(),
-        status: 'pending',
-      };
+      // Separate items by warehouse
+      const usItems = orderItems.filter(item => item.warehouse === 'US');
+      const hkItems = orderItems.filter(item => item.warehouse === 'HK');
 
-      await addDoc(collection(db, 'c&pProductOrders'), orderData);
+      const timestamp = new Date().toISOString();
+
+      // Submit US warehouse order if there are items
+      if (usItems.length > 0) {
+        const usTotal = usItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+        await addDoc(collection(db, 'c&pProductOrders'), {
+          warehouse: 'US',
+          items: usItems,
+          total: usTotal,
+          submittedAt: timestamp,
+          status: 'pending',
+        });
+      }
+
+      // Submit HK warehouse order if there are items
+      if (hkItems.length > 0) {
+        const hkTotal = hkItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+        await addDoc(collection(db, 'c&pProductOrders'), {
+          warehouse: 'HK',
+          items: hkItems,
+          total: hkTotal,
+          submittedAt: timestamp,
+          status: 'pending',
+        });
+      }
       
       setOrderItems([]);
     } catch (error) {
@@ -108,11 +141,32 @@ const NextOrderList = ({ onSuccess, onError }) => {
         <h2 className="text-glow-fuchsia">Next Order List</h2>
       </div>
 
+      {/* Warehouse Tabs */}
+      <div className="warehouse-tabs">
+        <button 
+          className={`warehouse-tab ${activeWarehouse === 'US' ? 'active' : ''}`}
+          onClick={() => setActiveWarehouse('US')}
+        >
+          US Warehouse
+        </button>
+        <button 
+          className={`warehouse-tab ${activeWarehouse === 'HK' ? 'active' : ''}`}
+          onClick={() => setActiveWarehouse('HK')}
+        >
+          HK Warehouse
+        </button>
+      </div>
+
       {/* Add Item Form */}
       <div className="add-item-form">
-        <h3>Select Products</h3>
+        <h3>Select Products - {activeWarehouse} Warehouse</h3>
         <div className="product-pills">
-          {products.map((product, index) => {
+          {products
+            .filter(product => {
+              const cost = product.warehouseCosts?.[activeWarehouse];
+              return cost !== undefined && cost > 0;
+            })
+            .map((product, index) => {
             const itemName = `${product.product} ${product.strength}`;
             const isInOrder = orderItems.find(item => item.itemName === itemName);
             return (
@@ -135,6 +189,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
           <thead>
             <tr>
               <th>Item Name</th>
+              <th>Warehouse</th>
               <th>Quantity</th>
               <th>Price per Kit</th>
               <th>Total Cost</th>
@@ -144,14 +199,15 @@ const NextOrderList = ({ onSuccess, onError }) => {
           <tbody>
             {orderItems.length === 0 ? (
               <tr>
-                <td colSpan="5" className="empty-row">
+                <td colSpan="6" className="empty-row">
                   No items in order list. Use the form above to add items.
                 </td>
               </tr>
             ) : (
-              orderItems.map(item => (
+              orderItems.map((item) => (
                 <tr key={item.itemName}>
                   <td className="item-name">{item.itemName}</td>
+                  <td className="warehouse-badge">{item.warehouse}</td>
                   <td>
                     <input
                       type="number"

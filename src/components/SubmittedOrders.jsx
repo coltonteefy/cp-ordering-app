@@ -5,10 +5,13 @@ import './SubmittedOrders.css';
 
 const SubmittedOrders = ({ onSuccess, onError }) => {
   const [orders, setOrders] = useState([]);
+  const [deliveredOrders, setDeliveredOrders] = useState([]);
   const [editingOrders, setEditingOrders] = useState(new Set());
   const [hasShownError, setHasShownError] = useState(false);
+  const [collapsedDates, setCollapsedDates] = useState(new Set());
 
   useEffect(() => {
+    // Listen to pending orders
     const unsubscribe = onSnapshot(
       collection(db, 'c&pProductOrders'),
       (snapshot) => {
@@ -23,11 +26,10 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         // Sort by submission date (newest first)
         ordersData.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
         setOrders(ordersData);
-        setHasShownError(false); // Reset error flag on success
+        setHasShownError(false);
       },
       (error) => {
         console.error('Error listening to orders:', error);
-        // Only show error once to avoid blocking the UI
         if (!hasShownError) {
           onError('Error loading orders: ' + error.message);
           setHasShownError(true);
@@ -36,7 +38,42 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     );
 
     return () => unsubscribe();
-  }, []); // Remove onError from dependencies to prevent re-triggering
+  }, []);
+
+  useEffect(() => {
+    // Collapse all pending order date groups by default
+    const groupedOrders = groupOrdersByDate(orders);
+    const newCollapsed = new Set();
+    Object.keys(groupedOrders).forEach(dateKey => {
+      newCollapsed.add(dateKey);
+    });
+    setCollapsedDates(newCollapsed);
+  }, [orders.length]);
+
+  useEffect(() => {
+    // Listen to delivered orders
+    const unsubscribe = onSnapshot(
+      collection(db, 'c&pPastInventoryOrders'),
+      (snapshot) => {
+        const ordersData = [];
+        snapshot.forEach((doc) => {
+          ordersData.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        
+        // Sort by delivery date (newest first)
+        ordersData.sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
+        setDeliveredOrders(ordersData);
+      },
+      (error) => {
+        console.error('Error listening to delivered orders:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const toggleEdit = (orderId) => {
     const newEditing = new Set(editingOrders);
@@ -44,8 +81,23 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       newEditing.delete(orderId);
     } else {
       newEditing.add(orderId);
+      // Set default carrier to UPS if not already set
+      const order = orders.find(o => o.id === orderId);
+      if (order && !order.carrier) {
+        updateCarrier(orderId, 'UPS');
+      }
     }
     setEditingOrders(newEditing);
+  };
+
+  const toggleDateCollapse = (dateKey) => {
+    const newCollapsed = new Set(collapsedDates);
+    if (newCollapsed.has(dateKey)) {
+      newCollapsed.delete(dateKey);
+    } else {
+      newCollapsed.add(dateKey);
+    }
+    setCollapsedDates(newCollapsed);
   };
 
   const updateOrderItems = async (orderId, items) => {
@@ -83,14 +135,14 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         return;
       }
 
-      const pastOrderData = {
+      const deliveredOrderData = {
         ...order,
         deliveredAt: new Date().toISOString(),
         originalOrderId: orderId
       };
-      delete pastOrderData.id;
+      delete deliveredOrderData.id;
       
-      await addDoc(collection(db, 'pastInventoryOrders'), pastOrderData);
+      await addDoc(collection(db, 'c&pPastInventoryOrders'), deliveredOrderData);
       await deleteDoc(doc(db, 'c&pProductOrders', orderId));
       
       // Remove from editing set
@@ -170,42 +222,54 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     }
   };
 
-  if (orders.length === 0) {
+  const groupOrdersByDate = (ordersList) => {
+    const grouped = {};
+    ordersList.forEach(order => {
+      const date = new Date(order.submittedAt || order.deliveredAt);
+      const dateKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(order);
+    });
+    return grouped;
+  };
+
+  const calculateTotalCost = (ordersList) => {
+    return ordersList.reduce((sum, order) => {
+      const rawTotal = order.total || 0;
+      const discount = order.discountPercent || 0;
+      const finalTotal = rawTotal - (rawTotal * (discount / 100));
+      return sum + finalTotal;
+    }, 0);
+  };
+
+  const renderOrder = (order) => {
+    const isEditing = editingOrders.has(order.id);
+    const rawTotal = order.total;
+    const discount = order.discountPercent || 0;
+    const finalTotal = rawTotal - (rawTotal * (discount / 100));
+
     return (
-      <div className="submitted-orders-section">
-        <h2 className="text-glow-fuchsia">Submitted Orders</h2>
-        <div className="empty-orders">
-          No submitted orders yet.
-        </div>
-      </div>
-    );
-  }
+      <div key={order.id} className="order-card">
+        {/* Header */}
+        <div className="order-header">
+          <div className="order-info">
+            <div className="order-title-row">
+              <h3>Order #{order.id.slice(-6)}</h3>
+              {order.warehouse && (
+                <span className="warehouse-label">{order.warehouse} Warehouse</span>
+              )}
+            </div>
+            <p className="order-date">
+              {new Date(order.submittedAt).toLocaleString()}
+            </p>
 
-  return (
-    <div className="submitted-orders-section">
-      <h2 className="text-glow-fuchsia">Submitted Orders</h2>
-      <div className="orders-container">
-        {orders.map(order => {
-          const isEditing = editingOrders.has(order.id);
-          const rawTotal = order.total;
-          const discount = order.discountPercent || 0;
-          const finalTotal = rawTotal - (rawTotal * (discount / 100));
-
-          return (
-            <div key={order.id} className="order-card">
-              {/* Header */}
-              <div className="order-header">
-                <div className="order-info">
-                  <h3>Order #{order.id.slice(-6)}</h3>
-                  <p className="order-date">
-                    {new Date(order.submittedAt).toLocaleString()}
-                  </p>
-
-                  {/* Tracking Info */}
-                  {isEditing ? (
-                    <div className="tracking-inputs">
+            {/* Tracking Info */}
+            {isEditing ? (
+              <div className="tracking-inputs">
                       <select
-                        value={order.carrier || ''}
+                        value={order.carrier || 'UPS'}
                         onChange={(e) => updateCarrier(order.id, e.target.value)}
                         className="carrier-select"
                       >
@@ -219,13 +283,15 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                         type="text"
                         placeholder="Tracking Number"
                         value={order.trackingNumber || ''}
-                        onBlur={(e) => updateTrackingNumber(order.id, e.target.value)}
                         onChange={(e) => {
+                          const newValue = e.target.value;
                           // Update local state for immediate feedback
                           const updatedOrders = orders.map(o => 
-                            o.id === order.id ? { ...o, trackingNumber: e.target.value } : o
+                            o.id === order.id ? { ...o, trackingNumber: newValue } : o
                           );
                           setOrders(updatedOrders);
+                          // Save to database
+                          updateTrackingNumber(order.id, newValue);
                         }}
                         className="tracking-input"
                       />
@@ -235,14 +301,21 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                       href={getTrackingUrl(order.carrier, order.trackingNumber)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="tracking-link"
+                      className="tracking-display"
                     >
-                      📦 {order.carrier}: {order.trackingNumber}
+                      <span className="carrier-text">{order.carrier}</span>
+                      <span className="tracking-text">{order.trackingNumber}</span>
+                      <span className="tracking-link-icon">📦</span>
                     </a>
-                  ) : null}
-                </div>
+                  ) : (
+                    <div className="tracking-display tracking-empty">
+                      <span className="carrier-text">{order.carrier || 'UPS'}</span>
+                      <span className="tracking-text">No tracking number</span>
+                    </div>
+                  )}
+          </div>
 
-                <div className="order-actions">
+          <div className="order-actions">
                   <button
                     onClick={() => toggleEdit(order.id)}
                     className={isEditing ? 'btn-neon-cyan' : 'btn-edit'}
@@ -333,10 +406,54 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                   )}
                 </div>
               </div>
+          </div>
+        );
+  };
+
+  const renderGroupedOrders = (ordersList) => {
+    const groupedOrders = groupOrdersByDate(ordersList);
+    return Object.keys(groupedOrders).map(dateKey => {
+      const isCollapsed = collapsedDates.has(dateKey);
+      const groupTotal = calculateTotalCost(groupedOrders[dateKey]);
+      return (
+        <div key={dateKey} className="date-group">
+          <div 
+            className="date-header" 
+            onClick={() => toggleDateCollapse(dateKey)}
+          >
+            <span className="collapse-indicator">{isCollapsed ? '\u25b6' : '\u25bc'}</span>
+            <h3>{dateKey}</h3>
+            <span className="date-total">Total Cost: ${groupTotal.toFixed(2)}</span>
+          </div>
+          {!isCollapsed && (
+            <div className="orders-container">
+              {groupedOrders[dateKey].map(order => renderOrder(order))}
             </div>
-          );
-        })}
+          )}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="submitted-orders-section">
+      {/* Pending Orders */}
+      <div className="orders-group">
+        <h2 className="text-glow-fuchsia">Pending Orders</h2>
+        {orders.length === 0 ? (
+          <div className="empty-orders">No pending orders.</div>
+        ) : (
+          renderGroupedOrders(orders)
+        )}
       </div>
+
+      {/* Delivered Orders */}
+      {deliveredOrders.length > 0 && (
+        <div className="orders-group delivered-section">
+          <h2 className="text-glow-fuchsia">Delivered Orders</h2>
+          {renderGroupedOrders(deliveredOrders)}
+        </div>
+      )}
     </div>
   );
 };
