@@ -109,9 +109,10 @@ body {
 /* Hero Section */
 .hero {
   background: linear-gradient(135deg, #f5f5f0 0%, #e8e8e0 100%);
-  min-height: 600px;
+  min-height: 100vh;
   display: flex;
   align-items: center;
+  justify-content: center;
   position: relative;
   overflow: hidden;
 }
@@ -122,10 +123,11 @@ body {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 50%;
+  width: 100%;
   background: url('/assets/design.png');
-  background-size: cover;
+  background-size: contain;
   background-position: center;
+  background-repeat: no-repeat;
   opacity: 0.15;
   z-index: 0;
 }

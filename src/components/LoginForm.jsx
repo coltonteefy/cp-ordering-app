@@ -8,7 +8,6 @@ const LoginForm = ({ onSuccess, onError }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,21 +26,8 @@ const LoginForm = ({ onSuccess, onError }) => {
     }
   };
 
-  if (!showLogin) {
-    return (
-      <button 
-        className="admin-login-trigger"
-        onClick={() => setShowLogin(true)}
-      >
-        Admin Login
-      </button>
-    );
-  }
-
   return (
-    <div className="login-form-overlay" onClick={() => setShowLogin(false)}>
-      <div className="login-form-container" onClick={(e) => e.stopPropagation()}>
-        <button className="close-login" onClick={() => setShowLogin(false)}>×</button>
+    <div className="login-form-container-inline">
       <h2 className="text-glow-fuchsia">{isSignUp ? 'CREATE ADMIN ACCOUNT' : 'ADMIN ACCESS'}</h2>
       <form onSubmit={handleSubmit} className="auth-form">
         <div className="form-group">
@@ -83,7 +69,7 @@ const LoginForm = ({ onSuccess, onError }) => {
           {isSignUp ? 'Already have an account? Sign In' : 'Create New Admin Account'}
         </button>
       </div>
-      </div>    </div>
+    </div>
   );
 };
 
