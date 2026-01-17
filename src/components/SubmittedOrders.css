@@ -72,11 +72,13 @@
 .orders-wrapper.collapsed .orders-container {
   transform: translateY(-10px);
   opacity: 0;
+  padding: 0 1rem;
 }
 
 .orders-wrapper.expanded .orders-container {
   transform: translateY(0);
   opacity: 1;
+  padding: 1rem;
 }
 
 .date-group {
@@ -107,10 +109,13 @@
   border-bottom: 1px solid #F0E4D0;
 }
 
+.orders-wrapper.collapsed ~ .date-header,
+.date-header:has(+ .orders-wrapper.collapsed) {
+  border-bottom: none;
+}
+
 .date-header:hover {
   background: #FEF4E8;
-  border-bottom-color: #E6A94A;
-  box-shadow: none;
 }
 
 .date-header h3 {
