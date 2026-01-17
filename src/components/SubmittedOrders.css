@@ -42,11 +42,41 @@
   font-style: italic;
 }
 
+.orders-wrapper {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.orders-wrapper.collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.orders-wrapper.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
 .orders-container {
   display: flex;
   flex-direction: column;
   gap: 0;
   padding: 1rem;
+  min-height: 0;
+  overflow: hidden;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.orders-wrapper.collapsed .orders-container {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+
+.orders-wrapper.expanded .orders-container {
+  transform: translateY(0);
+  opacity: 1;
 }
 
 .date-group {
@@ -69,7 +99,7 @@
   gap: 0.75rem;
   cursor: pointer;
   user-select: none;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   background: #FEFAF5;
   border: none;
   border-radius: 0;
@@ -92,7 +122,16 @@
 .date-header .collapse-indicator {
   font-size: 0.75rem;
   color: #8B6F47;
-  transition: transform 0.2s, color 0.2s;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s;
+  display: inline-block;
+}
+
+.date-header .collapse-indicator.collapsed {
+  transform: rotate(0deg);
+}
+
+.date-header .collapse-indicator.expanded {
+  transform: rotate(90deg);
 }
 
 .date-header:hover .collapse-indicator {

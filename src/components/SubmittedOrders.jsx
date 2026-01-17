@@ -421,15 +421,15 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
             className="date-header" 
             onClick={() => toggleDateCollapse(dateKey)}
           >
-            <span className="collapse-indicator">{isCollapsed ? '\u25b6' : '\u25bc'}</span>
+            <span className={`collapse-indicator ${isCollapsed ? 'collapsed' : 'expanded'}`}>{isCollapsed ? '\u25b6' : '\u25bc'}</span>
             <h3>{dateKey}</h3>
             <span className="date-total">Total Cost: ${groupTotal.toFixed(2)}</span>
           </div>
-          {!isCollapsed && (
+          <div className={`orders-wrapper ${isCollapsed ? 'collapsed' : 'expanded'}`}>
             <div className="orders-container">
               {groupedOrders[dateKey].map(order => renderOrder(order))}
             </div>
-          )}
+          </div>
         </div>
       );
     });
