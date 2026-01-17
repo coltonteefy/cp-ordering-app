@@ -8,7 +8,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   const [deliveredOrders, setDeliveredOrders] = useState([]);
   const [editingOrders, setEditingOrders] = useState(new Set());
   const [hasShownError, setHasShownError] = useState(false);
-  const [collapsedDates, setCollapsedDates] = useState(new Set());
+  const [collapsedPendingDates, setCollapsedPendingDates] = useState(new Set());
+  const [collapsedDeliveredDates, setCollapsedDeliveredDates] = useState(new Set());
 
   useEffect(() => {
     // Listen to pending orders
@@ -41,13 +42,39 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   }, []);
 
   useEffect(() => {
-    // Collapse all pending order date groups by default
-    const groupedOrders = groupOrdersByDate(orders);
-    const newCollapsed = new Set();
-    Object.keys(groupedOrders).forEach(dateKey => {
-      newCollapsed.add(dateKey);
+    if (orders.length === 0) {
+      setCollapsedPendingDates(new Set());
+      return;
+    }
+    
+    // Collapse all NEW pending order date groups by default (only add new dates, don't reset existing state)
+    const grouped = {};
+    orders.forEach(order => {
+      const date = new Date(order.submittedAt);
+      const dateKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(order);
     });
-    setCollapsedDates(newCollapsed);
+    
+    const dateKeys = Object.keys(grouped);
+    
+    setCollapsedPendingDates(prevCollapsed => {
+      const newCollapsed = new Set(prevCollapsed);
+      let changed = false;
+      
+      dateKeys.forEach(dateKey => {
+        // Only add if it doesn't exist yet (new date)
+        if (!prevCollapsed.has(dateKey)) {
+          newCollapsed.add(dateKey);
+          changed = true;
+        }
+      });
+      
+      // Only return new set if something actually changed
+      return changed ? newCollapsed : prevCollapsed;
+    });
   }, [orders.length]);
 
   useEffect(() => {
@@ -91,13 +118,27 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   };
 
   const toggleDateCollapse = (dateKey) => {
-    const newCollapsed = new Set(collapsedDates);
-    if (newCollapsed.has(dateKey)) {
-      newCollapsed.delete(dateKey);
-    } else {
-      newCollapsed.add(dateKey);
-    }
-    setCollapsedDates(newCollapsed);
+    setCollapsedPendingDates(prevCollapsed => {
+      const newCollapsed = new Set(prevCollapsed);
+      if (newCollapsed.has(dateKey)) {
+        newCollapsed.delete(dateKey);
+      } else {
+        newCollapsed.add(dateKey);
+      }
+      return newCollapsed;
+    });
+  };
+
+  const toggleDeliveredDateCollapse = (dateKey) => {
+    setCollapsedDeliveredDates(prevCollapsed => {
+      const newCollapsed = new Set(prevCollapsed);
+      if (newCollapsed.has(dateKey)) {
+        newCollapsed.delete(dateKey);
+      } else {
+        newCollapsed.add(dateKey);
+      }
+      return newCollapsed;
+    });
   };
 
   const updateOrderItems = async (orderId, items) => {
@@ -410,16 +451,16 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         );
   };
 
-  const renderGroupedOrders = (ordersList) => {
+  const renderGroupedOrders = (ordersList, collapsedSet, toggleFunc) => {
     const groupedOrders = groupOrdersByDate(ordersList);
     return Object.keys(groupedOrders).map(dateKey => {
-      const isCollapsed = collapsedDates.has(dateKey);
+      const isCollapsed = collapsedSet.has(dateKey);
       const groupTotal = calculateTotalCost(groupedOrders[dateKey]);
       return (
         <div key={dateKey} className="date-group">
           <div 
             className="date-header" 
-            onClick={() => toggleDateCollapse(dateKey)}
+            onClick={() => toggleFunc(dateKey)}
           >
             <span className={`collapse-indicator ${isCollapsed ? 'collapsed' : 'expanded'}`}>{isCollapsed ? '\u25b6' : '\u25bc'}</span>
             <h3>{dateKey}</h3>
@@ -443,7 +484,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         {orders.length === 0 ? (
           <div className="empty-orders">No pending orders.</div>
         ) : (
-          renderGroupedOrders(orders)
+          renderGroupedOrders(orders, collapsedPendingDates, toggleDateCollapse)
         )}
       </div>
 
@@ -451,7 +492,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       {deliveredOrders.length > 0 && (
         <div className="orders-group delivered-section">
           <h2 className="text-glow-fuchsia">Delivered Orders</h2>
-          {renderGroupedOrders(deliveredOrders)}
+          {renderGroupedOrders(deliveredOrders, collapsedDeliveredDates, toggleDeliveredDateCollapse)}
         </div>
       )}
     </div>
