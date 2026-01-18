@@ -9,10 +9,23 @@ const formatPrice = (price) => {
 };
 
 const NextOrderList = ({ onSuccess, onError }) => {
-  const [orderItems, setOrderItems] = useState([]);
+  const [orderItems, setOrderItems] = useState(() => {
+    // Initialize from localStorage if available
+    const savedOrder = localStorage.getItem('pendingOrder');
+    return savedOrder ? JSON.parse(savedOrder) : [];
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [products, setProducts] = useState(productsData);
   const [activeWarehouse, setActiveWarehouse] = useState('US');
+
+  // Save orderItems to localStorage whenever they change
+  useEffect(() => {
+    if (orderItems.length > 0) {
+      localStorage.setItem('pendingOrder', JSON.stringify(orderItems));
+    } else {
+      localStorage.removeItem('pendingOrder');
+    }
+  }, [orderItems]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -87,6 +100,58 @@ const NextOrderList = ({ onSuccess, onError }) => {
     return orderItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
   };
 
+  // Group products by category
+  const groupProductsByCategory = (productsToGroup) => {
+    const groups = {
+      'GLP Peptides': [],
+      'Recovery & Healing': [],
+      'Growth & Anti-Aging': [],
+      'Cognitive Enhancement': [],
+      'Melanotans': [],
+      'Other Peptides': [],
+      'Supplies': []
+    };
+
+    productsToGroup.forEach(product => {
+      const name = product.product.toLowerCase();
+      
+      if (name.includes('glp') || name.includes('cagrilintide')) {
+        groups['GLP Peptides'].push(product);
+      } else if (name.includes('bpc') || name.includes('tb-500') || name.includes('kpv')) {
+        groups['Recovery & Healing'].push(product);
+      } else if (name.includes('ghk-cu') || name.includes('thymosin') || name.includes('ipamorelin') || 
+                 name.includes('tesa') || name.includes('glow') || name.includes('nad') || name.includes('ss-31')) {
+        groups['Growth & Anti-Aging'].push(product);
+      } else if (name.includes('semax') || name.includes('selank') || name.includes('dsip')) {
+        groups['Cognitive Enhancement'].push(product);
+      } else if (name.includes('mt-2') || name.includes('pt-141')) {
+        groups['Melanotans'].push(product);
+      } else if (name.includes('bac water') || name.includes('hospira')) {
+        groups['Supplies'].push(product);
+      } else {
+        groups['Other Peptides'].push(product);
+      }
+    });
+
+    // Remove empty groups
+    return Object.entries(groups).filter(([_, products]) => products.length > 0);
+  };
+
+  // Group products by base name (without strength)
+  const groupProductsByName = (productsArray) => {
+    const grouped = {};
+    
+    productsArray.forEach(product => {
+      const baseName = product.product;
+      if (!grouped[baseName]) {
+        grouped[baseName] = [];
+      }
+      grouped[baseName].push(product);
+    });
+    
+    return grouped;
+  };
+
   const submitOrder = async () => {
     if (orderItems.length === 0) {
       onError('No items in order list to submit.');
@@ -135,6 +200,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
       }
       
       setOrderItems([]);
+      localStorage.removeItem('pendingOrder');
     } catch (error) {
       console.error('Error submitting order:', error);
       onError('Failed to submit order: ' + error.message, 'Error');
@@ -168,24 +234,76 @@ const NextOrderList = ({ onSuccess, onError }) => {
       {/* Add Item Form */}
       <div className="add-item-form">
         <h3>Select Products - {activeWarehouse} Warehouse</h3>
-        <div className="product-pills">
-          {products
-            .filter(product => {
+        <div className="categories-grid">
+          {groupProductsByCategory(
+            products.filter(product => {
               const cost = product.warehouseCosts?.[activeWarehouse];
               return cost !== undefined && cost > 0;
             })
-            .map((product, index) => {
-            const itemName = `${product.product} ${product.strength}`;
-            const isInOrder = orderItems.find(item => item.itemName === itemName);
+          ).map(([categoryName, categoryProducts]) => {
+            const groupedByName = groupProductsByName(categoryProducts);
+            
+            // Separate into multi-variant and single-variant products
+            const multiVariant = [];
+            const singleVariant = [];
+            
+            Object.entries(groupedByName).forEach(([productName, variants]) => {
+              if (variants.length > 1) {
+                multiVariant.push([productName, variants]);
+              } else {
+                singleVariant.push([productName, variants]);
+              }
+            });
+            
             return (
-              <button
-                key={product.id || index}
-                onClick={() => handleProductClick(product)}
-                className={`product-pill ${isInOrder ? 'in-order' : ''}`}
-                disabled={isInOrder}
-              >
-                {product.product} - {product.strength}
-              </button>
+              <div key={categoryName} className="product-category">
+                <h4 className="category-title">{categoryName}</h4>
+                <div className="product-groups">
+                  {/* Render multi-variant products first */}
+                  {multiVariant.map(([productName, variants]) => (
+                    <div key={productName} className="product-group">
+                      <div className="product-base-name">{productName}</div>
+                      <div className="product-pills">
+                        {variants.map((product, index) => {
+                          const itemName = `${product.product} ${product.strength}`;
+                          const isInOrder = orderItems.find(item => item.itemName === itemName);
+                          return (
+                            <button
+                              key={product.id || index}
+                              onClick={() => handleProductClick(product)}
+                              className={`product-pill ${isInOrder ? 'in-order' : ''}`}
+                              disabled={isInOrder}
+                            >
+                              {product.strength}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Render single-variant products at the bottom */}
+                  {singleVariant.length > 0 && (
+                    <div className="product-pills">
+                      {singleVariant.map(([productName, variants]) => {
+                        const product = variants[0];
+                        const itemName = `${product.product} ${product.strength}`;
+                        const isInOrder = orderItems.find(item => item.itemName === itemName);
+                        return (
+                          <button
+                            key={productName}
+                            onClick={() => handleProductClick(product)}
+                            className={`product-pill ${isInOrder ? 'in-order' : ''}`}
+                            disabled={isInOrder}
+                          >
+                            {product.product} - {product.strength}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
@@ -215,7 +333,9 @@ const NextOrderList = ({ onSuccess, onError }) => {
               orderItems.map((item) => (
                 <tr key={item.itemName}>
                   <td className="item-name">{item.itemName}</td>
-                  <td className="warehouse-badge">{item.warehouse}</td>
+                  <td>
+                    <span className="warehouse-badge">{item.warehouse}</span>
+                  </td>
                   <td>
                     <input
                       type="number"

@@ -229,6 +229,14 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     }
   };
 
+  const updateOrderDate = (orderId, newDate) => {
+    setOrders(orders.map(order => 
+      order.id === orderId 
+        ? { ...order, submittedAt: new Date(newDate).toISOString() }
+        : order
+    ));
+  };
+
   const removeItemFromOrder = async (orderId, itemId) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
@@ -336,7 +344,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     try {
       await updateDoc(doc(db, 'c&pProductOrders', orderId), {
         items: order.items,
-        total: order.total
+        total: order.total,
+        submittedAt: order.submittedAt
       });
     } catch (error) {
       console.error('Error saving order changes:', error);
@@ -422,9 +431,18 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
             <div className="order-title-row">
               <h3>Order #{order.id.slice(-6)}</h3>
             </div>
-            <p className="order-date">
-              {new Date(order.submittedAt).toLocaleString()}
-            </p>
+            {isEditing ? (
+              <input
+                type="datetime-local"
+                value={new Date(order.submittedAt).toISOString().slice(0, 16)}
+                onChange={(e) => updateOrderDate(order.id, e.target.value)}
+                className="date-input"
+              />
+            ) : (
+              <p className="order-date">
+                {new Date(order.submittedAt).toLocaleString()}
+              </p>
+            )}
 
             {/* Tracking Info */}
             {isEditing ? (
