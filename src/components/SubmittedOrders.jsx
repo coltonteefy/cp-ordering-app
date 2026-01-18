@@ -534,9 +534,16 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
               </div>
 
               {/* Items List */}
-              <div className="order-items">
+              <div className="order-items-grid">
+                <div className="order-items-header">
+                  <div>Product</div>
+                  <div>Qty</div>
+                  <div>Unit</div>
+                  <div>Total</div>
+                  {isEditing && <div></div>}
+                </div>
                 {order.items.map((item) => (
-                  <div key={item.itemId} className="order-item">
+                  <div key={item.itemId} className="order-item-grid-row">
                     {isEditing ? (
                       <>
                         <div className="item-name-edit">{item.itemName}</div>
@@ -546,9 +553,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                           value={item.quantity}
                           onChange={(e) => updateItemQuantity(order.id, item.itemId, e.target.value)}
                           onFocus={(e) => e.target.select()}
-                          className="item-qty-input"
+                          className="item-qty-input order-grid-input"
                         />
-                        <span>×</span>
                         <input
                           type="number"
                           min="0"
@@ -556,12 +562,12 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                           value={item.pricePerKit}
                           onChange={(e) => updateItemPrice(order.id, item.itemId, e.target.value)}
                           onFocus={(e) => e.target.select()}
-                          className="item-price-input"
+                          className="item-price-input order-grid-input"
                         />
-                        <div className="item-total">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="item-total order-grid-total">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <button
                           onClick={() => removeItemFromOrder(order.id, item.itemId)}
-                          className="item-remove-btn"
+                          className="item-remove-btn order-grid-remove"
                           title="Remove item"
                         >
                           ×
@@ -569,11 +575,10 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                       </>
                     ) : (
                       <>
-                        <div className="item-details">
-                          <span className="item-name">{item.itemName}</span>
-                          <span> × {item.quantity} @ ${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="item-total">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="item-name-view">{item.itemName}</div>
+                        <div className="item-qty-view">{item.quantity}</div>
+                        <div className="item-unit-view">${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="item-total-view">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                       </>
                     )}
                   </div>
