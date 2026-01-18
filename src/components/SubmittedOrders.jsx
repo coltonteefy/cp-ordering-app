@@ -546,6 +546,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
               <div className="order-items-grid">
                 <div className="order-items-header">
                   <div>Product</div>
+                  <div>Strength</div>
                   <div>Qty</div>
                   <div>Unit</div>
                   <div>Total</div>
@@ -553,11 +554,20 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                 </div>
                 {[...order.items]
                   .slice()
-                  .sort((a, b) => formatProductName(a.itemName).localeCompare(formatProductName(b.itemName)))
+                  .sort((a, b) => {
+                    // Sort by productName, then by productStrength
+                    const nameA = a.productName || '';
+                    const nameB = b.productName || '';
+                    if (nameA === nameB) {
+                      return (a.productStrength || '').localeCompare(b.productStrength || '');
+                    }
+                    return nameA.localeCompare(nameB);
+                  })
                   .map((item) => (
                     isEditing ? (
                       <div key={item.itemId} className="order-item-grid-row">
-                        <div className="item-name-edit">{formatProductName(item.itemName)}</div>
+                        <div className="item-product-edit">{item.productName}</div>
+                        <div className="item-strength-edit">{item.productStrength}</div>
                         <input
                           type="number"
                           min="1"
@@ -586,7 +596,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                       </div>
                     ) : (
                       <div key={item.itemId} className="order-item-grid-row">
-                        <div className="item-name-view">{formatProductName(item.itemName)}</div>
+                        <div className="item-product-view">{item.productName}</div>
+                        <div className="item-strength-view">{item.productStrength}</div>
                         <div className="item-qty-view">{item.quantity}</div>
                         <div className="item-unit-view">${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <div className="item-total-view">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>

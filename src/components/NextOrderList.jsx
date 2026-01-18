@@ -58,34 +58,29 @@ const NextOrderList = ({ onSuccess, onError }) => {
   }, []);
 
   const handleProductClick = (product) => {
-    const itemName = `${product.product} ${product.strength}`;
-    const alreadyInOrder = orderItems.find(item => item.itemName === itemName);
-    
+    const alreadyInOrder = orderItems.find(item => item.productName === product.product && item.productStrength === product.strength && item.warehouse === activeWarehouse);
     if (alreadyInOrder) {
       onError('This item is already in the order list.', 'Notice');
       return;
     }
-
-    // Use the appropriate cost based on the active warehouse
     const pricePerKit = product.warehouseCosts?.[activeWarehouse] || 0;
-
     const newItem = {
-      itemName: itemName,
+      productName: product.product,
+      productStrength: product.strength,
       quantity: 1,
       pricePerKit: pricePerKit,
       warehouse: activeWarehouse,
     };
-
     setOrderItems([...orderItems, newItem]);
   };
 
   const removeItem = (itemName) => {
-    setOrderItems(orderItems.filter(item => item.itemName !== itemName));
+    setOrderItems(orderItems.filter(item => `${item.productName} ${item.productStrength}` !== itemName));
   };
 
   const updateItem = (itemName, field, value) => {
     setOrderItems(orderItems.map(item => {
-      if (item.itemName === itemName) {
+      if (`${item.productName} ${item.productStrength}` === itemName) {
         if (field === 'quantity') {
           return { ...item, quantity: Math.max(1, parseInt(value) || 1) };
         } else if (field === 'pricePerKit') {
