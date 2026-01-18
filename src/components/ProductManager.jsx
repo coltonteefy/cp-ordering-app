@@ -16,7 +16,7 @@ const ProductManager = ({ onSuccess, onError }) => {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
-      collection(db, 'cpCostPerKit'),
+      collection(db, 'c&pCostPerKit'),
       (snapshot) => {
         if (snapshot.empty && !hasInitialized) {
           // Auto-populate collection on first load
@@ -62,7 +62,7 @@ const ProductManager = ({ onSuccess, onError }) => {
     try {
       for (const product of products) {
         const docId = `${product.product.replace(/[^a-zA-Z0-9]/g, '_')}_${product.strength.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        await setDoc(doc(db, 'cpCostPerKit', docId), {
+        await setDoc(doc(db, 'c&pCostPerKit', docId), {
           product: product.product,
           strength: product.strength,
           warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 }
@@ -90,7 +90,7 @@ const ProductManager = ({ onSuccess, onError }) => {
   const saveProduct = async (product) => {
     try {
       const docId = `${product.product.replace(/[^a-zA-Z0-9]/g, '_')}_${product.strength.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      await setDoc(doc(db, 'cpCostPerKit', docId), {
+      await setDoc(doc(db, 'c&pCostPerKit', docId), {
         product: product.product,
         strength: product.strength,
         warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 }
@@ -112,7 +112,7 @@ const ProductManager = ({ onSuccess, onError }) => {
 
     try {
       const docId = `${newProduct.product.replace(/[^a-zA-Z0-9]/g, '_')}_${newProduct.strength.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      await setDoc(doc(db, 'cpCostPerKit', docId), {
+      await setDoc(doc(db, 'c&pCostPerKit', docId), {
         product: newProduct.product,
         strength: newProduct.strength,
         warehouseCosts: newProduct.warehouseCosts || { US: 0, HK: 0 }
@@ -131,17 +131,15 @@ const ProductManager = ({ onSuccess, onError }) => {
     }
 
     try {
-      const snapshot = await getDocs(collection(db, 'cpCostPerKit'));
+      const snapshot = await getDocs(collection(db, 'c&pCostPerKit'));
       let migratedCount = 0;
 
       for (const docSnap of snapshot.docs) {
         const data = docSnap.data();
-        
         // Check if already in new format
         if (data.warehouseCosts) {
           continue;
         }
-
         // Migrate old structure to new
         // Priority: costPerKit > usCostPerKit/hkCostPerKit > 0
         const existingCost = data.costPerKit || 0;
@@ -149,13 +147,11 @@ const ProductManager = ({ onSuccess, onError }) => {
           US: data.usCostPerKit !== undefined ? data.usCostPerKit : existingCost,
           HK: data.hkCostPerKit !== undefined ? data.hkCostPerKit : existingCost
         };
-
-        await setDoc(doc(db, 'cpCostPerKit', docSnap.id), {
+        await setDoc(doc(db, 'c&pCostPerKit', docSnap.id), {
           product: data.product,
           strength: data.strength,
           warehouseCosts: warehouseCosts
         });
-
         migratedCount++;
       }
 
@@ -168,6 +164,11 @@ const ProductManager = ({ onSuccess, onError }) => {
 
   return (
     <div className="product-manager">
+      <div style={{ marginBottom: '1rem' }}>
+        <button onClick={saveAllToFirestore} className="btn-neon-lime">
+          Initialize Firestore Products
+        </button>
+      </div>
       <div className="manager-header">
         <h2 className="text-glow-fuchsia">Product Cost Manager</h2>
         <div className="header-actions">

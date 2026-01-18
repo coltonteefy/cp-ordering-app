@@ -135,7 +135,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   useEffect(() => {
     // Listen to available products
     const unsubscribe = onSnapshot(
-      collection(db, 'cpCostPerKit'),
+      collection(db, 'c&pCostPerKit'),
       (snapshot) => {
         const productsData = [];
         snapshot.forEach((doc) => {
@@ -323,37 +323,43 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   };
 
   const updateItemQuantity = (orderId, itemId, newQuantity) => {
-    setOrders(prevOrders => 
-      prevOrders.map(order => {
+    setOrders(prevOrders => {
+      const updated = prevOrders.map(order => {
         if (order.id === orderId) {
-          const updatedItems = order.items.map(item => 
-            item.itemId === itemId 
+          const updatedItems = order.items.map(item =>
+            item.itemId === itemId
               ? { ...item, quantity: Math.max(1, parseInt(newQuantity) || 1) }
               : item
           );
           const newTotal = updatedItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+          // Persist to Firestore
+          updateOrderItems(orderId, updatedItems);
           return { ...order, items: updatedItems, total: newTotal };
         }
         return order;
-      })
-    );
+      });
+      return updated;
+    });
   };
 
   const updateItemPrice = (orderId, itemId, newPrice) => {
-    setOrders(prevOrders => 
-      prevOrders.map(order => {
+    setOrders(prevOrders => {
+      const updated = prevOrders.map(order => {
         if (order.id === orderId) {
-          const updatedItems = order.items.map(item => 
-            item.itemId === itemId 
+          const updatedItems = order.items.map(item =>
+            item.itemId === itemId
               ? { ...item, pricePerKit: Math.max(0, parseFloat(newPrice) || 0) }
               : item
           );
           const newTotal = updatedItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+          // Persist to Firestore
+          updateOrderItems(orderId, updatedItems);
           return { ...order, items: updatedItems, total: newTotal };
         }
         return order;
-      })
-    );
+      });
+      return updated;
+    });
   };
 
   const saveOrderChanges = async (orderId) => {
@@ -377,12 +383,23 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     const product = availableProducts.find(p => p.id === productId);
     if (!order || !product) return;
 
+    // Prevent duplicate products (same productName and productStrength)
+    const exists = order.items.some(
+      item => item.productName === product.product && item.productStrength === product.strength
+    );
+    if (exists) {
+      onError && onError('This product is already in the order.');
+      setAddingItemToOrder(null);
+      return;
+    }
+
     const warehouse = order.warehouse || 'US';
     const price = product.warehouseCosts?.[warehouse] || 0;
 
     const newItem = {
       itemId: Date.now().toString(),
-      itemName: `${product.product} ${product.strength}`,
+      productName: product.product,
+      productStrength: product.strength,
       quantity: 1,
       pricePerKit: price
     };
@@ -390,7 +407,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     const updatedItems = [...order.items, newItem];
     await updateOrderItems(orderId, updatedItems);
     setAddingItemToOrder(null);
-    onSuccess('Product added to order');
+    onSuccess && onSuccess('Product added to order');
   };
 
   const getTrackingUrl = (carrier, trackingNumber) => {
@@ -633,10 +650,22 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                   <div className="add-product-section">
                     {addingItemToOrder === order.id ? (
                       <div className="add-product-form">
-                        <select 
+                        <select
                           onChange={(e) => {
                             if (e.target.value) {
-                              addItemToOrder(order.id, e.target.value);
+                              // Prevent adding duplicate product/strength
+                              const productId = e.target.value;
+                              const product = availableProducts.find(p => p.id === productId);
+                              if (!product) return;
+                              const exists = order.items.some(
+                                item => item.productName === product.product && item.productStrength === product.strength
+                              );
+                              if (exists) {
+                                onError && onError('This product is already in the order.');
+                                setAddingItemToOrder(null);
+                                return;
+                              }
+                              addItemToOrder(order.id, productId);
                             }
                           }}
                           className="product-select"

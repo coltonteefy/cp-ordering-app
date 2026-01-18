@@ -29,7 +29,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
-      collection(db, 'cpCostPerKit'),
+      collection(db, 'c&pCostPerKit'),
       (snapshot) => {
         if (!snapshot.empty) {
           const firestoreProducts = [];
@@ -309,7 +309,8 @@ const NextOrderList = ({ onSuccess, onError }) => {
         <table className="order-table">
           <thead>
             <tr>
-              <th>Item Name</th>
+              <th>Product</th>
+              <th>Strength</th>
               <th>Warehouse</th>
               <th>Quantity</th>
               <th>Price per Kit</th>
@@ -320,14 +321,15 @@ const NextOrderList = ({ onSuccess, onError }) => {
           <tbody>
             {orderItems.length === 0 ? (
               <tr>
-                <td colSpan="6" className="empty-row">
+                <td colSpan="7" className="empty-row">
                   No items in order list. Use the form above to add items.
                 </td>
               </tr>
             ) : (
               orderItems.map((item) => (
-                <tr key={item.itemName}>
-                  <td className="item-name">{item.itemName}</td>
+                <tr key={`${item.productName}-${item.productStrength}-${item.warehouse}`}>
+                  <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
+                  <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
                   <td>
                     <span className="warehouse-badge">{item.warehouse}</span>
                   </td>
