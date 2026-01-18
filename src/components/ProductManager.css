@@ -144,6 +144,65 @@
   background: #FEF7ED;
 }
 
+@media (max-width: 768px) {
+  .product-manager {
+    margin-top: 1rem;
+  }
+
+  .manager-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .manager-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions button {
+    flex: 1;
+  }
+
+  .add-product-form {
+    padding: 1rem;
+  }
+
+  .add-product-form h3 {
+    font-size: 1rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .products-table-container {
+    margin: 0 -0.5rem;
+  }
+
+  .products-table th,
+  .products-table td {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .products-table th {
+    font-size: 0.625rem;
+  }
+
+  .product-name {
+    word-break: break-word;
+  }
+
+  .cost-input {
+    width: 60px;
+    padding: 0.25rem;
+    font-size: 0.75rem;
+  }
+}
+
 .products-table tbody tr.clickable {
   cursor: pointer;
 }

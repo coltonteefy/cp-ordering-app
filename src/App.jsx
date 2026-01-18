@@ -15,6 +15,7 @@ function App() {
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
   const [activePage, setActivePage] = useState('orders');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -65,10 +66,19 @@ function App() {
             <div className="nav-brand">
               <img src="/assets/logo.png" alt="Coffee and Peppers Logo" className="nav-logo" />
             </div>
-            <div className="nav-menu">
-              <button onClick={() => setActivePage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
-              <button onClick={() => setActivePage('products')} className={`nav-link ${activePage === 'products' ? 'active' : ''}`}>Products</button>
-              <button onClick={() => setActivePage('promo')} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
+            <button 
+              className="mobile-menu-toggle" 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
+            >
+              <span className="hamburger"></span>
+              <span className="hamburger"></span>
+              <span className="hamburger"></span>
+            </button>
+            <div className={`nav-menu ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+              <button onClick={() => { setActivePage('orders'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
+              <button onClick={() => { setActivePage('products'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'products' ? 'active' : ''}`}>Products</button>
+              <button onClick={() => { setActivePage('promo'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
             </div>
             <div className="nav-actions">
               <button onClick={handleSignOut} className="btn-secondary">
