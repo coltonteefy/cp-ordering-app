@@ -18,11 +18,28 @@ function formatProductName(name) {
   return name;
 }
 import { useState, useEffect } from 'react';
+
+// Utility to copy text to clipboard
+function copyToClipboard(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text);
+  } else {
+    // fallback for older browsers
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  }
+}
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './SubmittedOrders.css';
 
 const SubmittedOrders = ({ onSuccess, onError }) => {
+  // Track which order's copy button is animating
+  const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [orders, setOrders] = useState([]);
   const [deliveredOrders, setDeliveredOrders] = useState([]);
   const [editingOrders, setEditingOrders] = useState(new Set());
@@ -453,6 +470,24 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     const discount = order.discountPercent || 0;
     const finalTotal = rawTotal - (rawTotal * (discount / 100));
 
+    // CSV copy handler
+    const copied = copiedOrderId === order.id;
+    const handleCopyOrderItems = () => {
+      const warehouse = order.warehouse ? `${order.warehouse} WAREHOUSE` : '';
+      const lines = [
+        warehouse,
+        ...order.items.map(item => {
+          const product = item.productName || item.product || '';
+          const strength = item.productStrength || item.strength || '';
+          const qty = item.quantity;
+          return `${product} ${strength} x ${qty}`;
+        })
+      ];
+      copyToClipboard(lines.join('\n'));
+      setCopiedOrderId(order.id);
+      setTimeout(() => setCopiedOrderId(null), 900);
+    };
+
     return (
       <div key={order.id} className="order-card">
         {/* Warehouse Label */}
@@ -467,8 +502,31 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
             <div className="order-title-row">
               <h3>Order #{order.id.slice(-6)}</h3>
               <button
+                className={`btn-copy-order${copied ? ' copied' : ''}`}
+                style={{
+                  marginLeft: 'auto',
+                  background: copied ? '#E6A94A' : '#f7e7c6',
+                  color: copied ? '#fff' : '#8B6F47',
+                  border: '1px solid #E6A94A',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  marginRight: 8,
+                  transition: 'background 0.3s, color 0.3s',
+                  boxShadow: copied ? '0 0 8px #E6A94A' : 'none',
+                  outline: copied ? '2px solid #E6A94A' : 'none',
+                  outlineOffset: copied ? '2px' : '0',
+                  opacity: copied ? 0.85 : 1
+                }}
+                title="Copy order items as text"
+                onClick={handleCopyOrderItems}
+              >
+                {copied ? 'Copied!' : 'Copy Items'}
+              </button>
+              <button
                 className="btn-delete-order"
-                style={{ marginLeft: 'auto', background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
+                style={{ background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
                 title="Delete this order"
                 onClick={() => {
                   if (window.confirm('Are you sure you want to permanently delete this order?')) {
