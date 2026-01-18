@@ -171,9 +171,6 @@ const ProductManager = ({ onSuccess, onError }) => {
       <div className="manager-header">
         <h2 className="text-glow-fuchsia">Product Cost Manager</h2>
         <div className="header-actions">
-          <button onClick={migrateExistingProducts} className="btn-neon-lime">
-            Migrate Firebase Data
-          </button>
           <button onClick={() => setShowAddForm(!showAddForm)} className="btn-neon-cyan">
             {showAddForm ? 'Cancel' : 'Add Product'}
           </button>
@@ -273,7 +270,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                       className="cost-input-edit"
                     />
                   ) : (
-                    <span className="cost-display">${(product.warehouseCosts?.US || 0).toFixed(2)}</span>
+                    <span className="cost-display">${(product.warehouseCosts?.US || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   )}
                 </td>
                 <td onClick={(e) => e.stopPropagation()}>
@@ -286,7 +283,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                       className="cost-input-edit"
                     />
                   ) : (
-                    <span className="cost-display">${(product.warehouseCosts?.HK || 0).toFixed(2)}</span>
+                    <span className="cost-display">${(product.warehouseCosts?.HK || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   )}
                 </td>
                 {editingProduct && (

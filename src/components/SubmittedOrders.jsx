@@ -7,9 +7,12 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   const [orders, setOrders] = useState([]);
   const [deliveredOrders, setDeliveredOrders] = useState([]);
   const [editingOrders, setEditingOrders] = useState(new Set());
+  const [originalOrders, setOriginalOrders] = useState({});
   const [hasShownError, setHasShownError] = useState(false);
   const [collapsedPendingDates, setCollapsedPendingDates] = useState(new Set());
   const [collapsedDeliveredDates, setCollapsedDeliveredDates] = useState(new Set());
+  const [availableProducts, setAvailableProducts] = useState([]);
+  const [addingItemToOrder, setAddingItemToOrder] = useState(null);
 
   useEffect(() => {
     // Listen to pending orders
@@ -18,9 +21,17 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       (snapshot) => {
         const ordersData = [];
         snapshot.forEach((doc) => {
+          const data = doc.data();
+          // Ensure all items have unique itemIds
+          const itemsWithIds = data.items?.map(item => ({
+            ...item,
+            itemId: item.itemId || `${doc.id}-${item.itemName}-${Math.random().toString(36).substr(2, 9)}`
+          })) || [];
+          
           ordersData.push({
             id: doc.id,
-            ...doc.data()
+            ...data,
+            items: itemsWithIds
           });
         });
         
@@ -102,19 +113,83 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     return () => unsubscribe();
   }, []);
 
-  const toggleEdit = (orderId) => {
+  useEffect(() => {
+    // Listen to available products
+    const unsubscribe = onSnapshot(
+      collection(db, 'cpCostPerKit'),
+      (snapshot) => {
+        const productsData = [];
+        snapshot.forEach((doc) => {
+          productsData.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        productsData.sort((a, b) => a.product.localeCompare(b.product));
+        setAvailableProducts(productsData);
+      },
+      (error) => {
+        console.error('Error listening to products:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const toggleEdit = async (orderId) => {
     const newEditing = new Set(editingOrders);
     if (newEditing.has(orderId)) {
+      // Save changes before exiting edit mode
+      await saveOrderChanges(orderId);
       newEditing.delete(orderId);
+      // Clear original order state when done editing
+      setOriginalOrders(prev => {
+        const updated = { ...prev };
+        delete updated[orderId];
+        return updated;
+      });
     } else {
       newEditing.add(orderId);
-      // Set default carrier to UPS if not already set
+      // Save original order state before editing
       const order = orders.find(o => o.id === orderId);
+      if (order) {
+        setOriginalOrders(prev => ({
+          ...prev,
+          [orderId]: JSON.parse(JSON.stringify(order))
+        }));
+      }
+      // Set default carrier to UPS if not already set
       if (order && !order.carrier) {
         updateCarrier(orderId, 'UPS');
       }
     }
     setEditingOrders(newEditing);
+  };
+
+  const cancelEdit = (orderId) => {
+    const original = originalOrders[orderId];
+    if (original) {
+      // Restore original order state locally
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === orderId ? { ...original } : order
+        )
+      );
+    }
+    // Exit edit mode
+    const newEditing = new Set(editingOrders);
+    newEditing.delete(orderId);
+    setEditingOrders(newEditing);
+    // Clear original order state
+    setOriginalOrders(prev => {
+      const updated = { ...prev };
+      delete updated[orderId];
+      return updated;
+    });
+    // Clear adding item state if active
+    if (addingItemToOrder === orderId) {
+      setAddingItemToOrder(null);
+    }
   };
 
   const toggleDateCollapse = (dateKey) => {
@@ -220,32 +295,74 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     }
   };
 
-  const updateItemQuantity = async (orderId, itemId, newQuantity) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-
-    const updatedItems = order.items.map(item => {
-      if (item.itemId === itemId) {
-        return { ...item, quantity: Math.max(1, parseInt(newQuantity) || 1) };
-      }
-      return item;
-    });
-
-    await updateOrderItems(orderId, updatedItems);
+  const updateItemQuantity = (orderId, itemId, newQuantity) => {
+    setOrders(prevOrders => 
+      prevOrders.map(order => {
+        if (order.id === orderId) {
+          const updatedItems = order.items.map(item => 
+            item.itemId === itemId 
+              ? { ...item, quantity: Math.max(1, parseInt(newQuantity) || 1) }
+              : item
+          );
+          const newTotal = updatedItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+          return { ...order, items: updatedItems, total: newTotal };
+        }
+        return order;
+      })
+    );
   };
 
-  const updateItemPrice = async (orderId, itemId, newPrice) => {
+  const updateItemPrice = (orderId, itemId, newPrice) => {
+    setOrders(prevOrders => 
+      prevOrders.map(order => {
+        if (order.id === orderId) {
+          const updatedItems = order.items.map(item => 
+            item.itemId === itemId 
+              ? { ...item, pricePerKit: Math.max(0, parseFloat(newPrice) || 0) }
+              : item
+          );
+          const newTotal = updatedItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+          return { ...order, items: updatedItems, total: newTotal };
+        }
+        return order;
+      })
+    );
+  };
+
+  const saveOrderChanges = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
 
-    const updatedItems = order.items.map(item => {
-      if (item.itemId === itemId) {
-        return { ...item, pricePerKit: Math.max(0, parseFloat(newPrice) || 0) };
-      }
-      return item;
-    });
+    try {
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), {
+        items: order.items,
+        total: order.total
+      });
+    } catch (error) {
+      console.error('Error saving order changes:', error);
+      onError('Failed to save changes: ' + error.message);
+    }
+  };
 
+  const addItemToOrder = async (orderId, productId) => {
+    const order = orders.find(o => o.id === orderId);
+    const product = availableProducts.find(p => p.id === productId);
+    if (!order || !product) return;
+
+    const warehouse = order.warehouse || 'US';
+    const price = product.warehouseCosts?.[warehouse] || 0;
+
+    const newItem = {
+      itemId: Date.now().toString(),
+      itemName: `${product.product} ${product.strength}`,
+      quantity: 1,
+      pricePerKit: price
+    };
+
+    const updatedItems = [...order.items, newItem];
     await updateOrderItems(orderId, updatedItems);
+    setAddingItemToOrder(null);
+    onSuccess('Product added to order');
   };
 
   const getTrackingUrl = (carrier, trackingNumber) => {
@@ -293,14 +410,17 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
 
     return (
       <div key={order.id} className="order-card">
+        {/* Warehouse Label */}
+        {order.warehouse && (
+          <div className={`warehouse-header warehouse-${order.warehouse.toLowerCase()}`}>
+            {order.warehouse} WAREHOUSE
+          </div>
+        )}
         {/* Header */}
         <div className="order-header">
           <div className="order-info">
             <div className="order-title-row">
               <h3>Order #{order.id.slice(-6)}</h3>
-              {order.warehouse && (
-                <span className="warehouse-label">{order.warehouse} Warehouse</span>
-              )}
             </div>
             <p className="order-date">
               {new Date(order.submittedAt).toLocaleString()}
@@ -357,22 +477,41 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
           </div>
 
           <div className="order-actions">
-                  <button
-                    onClick={() => toggleEdit(order.id)}
-                    className={isEditing ? 'btn-neon-cyan' : 'btn-edit'}
-                  >
-                    {isEditing ? 'Done' : 'Edit'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (window.confirm('Mark this order as delivered?')) {
-                        markOrderDelivered(order.id);
-                      }
-                    }}
-                    className="btn-neon-lime"
-                  >
-                    Mark Delivered
-                  </button>
+                  {isEditing ? (
+                    <>
+                      <button
+                        onClick={() => toggleEdit(order.id)}
+                        className="btn-neon-cyan"
+                      >
+                        Done
+                      </button>
+                      <button
+                        onClick={() => cancelEdit(order.id)}
+                        className="btn-cancel-edit"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => toggleEdit(order.id)}
+                        className="btn-edit"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Mark this order as delivered?')) {
+                            markOrderDelivered(order.id);
+                          }
+                        }}
+                        className="btn-neon-lime"
+                      >
+                        Mark Delivered
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -388,6 +527,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                           min="1"
                           value={item.quantity}
                           onChange={(e) => updateItemQuantity(order.id, item.itemId, e.target.value)}
+                          onFocus={(e) => e.target.select()}
                           className="item-qty-input"
                         />
                         <span>×</span>
@@ -397,9 +537,10 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                           step="0.01"
                           value={item.pricePerKit}
                           onChange={(e) => updateItemPrice(order.id, item.itemId, e.target.value)}
+                          onFocus={(e) => e.target.select()}
                           className="item-price-input"
                         />
-                        <div className="item-total">${(item.quantity * item.pricePerKit).toFixed(2)}</div>
+                        <div className="item-total">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <button
                           onClick={() => removeItemFromOrder(order.id, item.itemId)}
                           className="item-remove-btn"
@@ -412,13 +553,55 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                       <>
                         <div className="item-details">
                           <span className="item-name">{item.itemName}</span>
-                          <span> × {item.quantity} @ ${item.pricePerKit.toFixed(2)}</span>
+                          <span> × {item.quantity} @ ${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
-                        <div className="item-total">${(item.quantity * item.pricePerKit).toFixed(2)}</div>
+                        <div className="item-total">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                       </>
                     )}
                   </div>
                 ))}
+                
+                {/* Add Product Button in Edit Mode */}
+                {isEditing && (
+                  <div className="add-product-section">
+                    {addingItemToOrder === order.id ? (
+                      <div className="add-product-form">
+                        <select 
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              addItemToOrder(order.id, e.target.value);
+                            }
+                          }}
+                          className="product-select"
+                          defaultValue=""
+                        >
+                          <option value="">Select a product...</option>
+                          {availableProducts
+                            .filter(p => (p.warehouseCosts?.[order.warehouse || 'US'] || 0) > 0)
+                            .map(product => (
+                              <option key={product.id} value={product.id}>
+                                {product.product} {product.strength} - ${product.warehouseCosts?.[order.warehouse || 'US'] || 0}
+                              </option>
+                            ))
+                          }
+                        </select>
+                        <button
+                          onClick={() => setAddingItemToOrder(null)}
+                          className="btn-cancel-add"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setAddingItemToOrder(order.id)}
+                        className="btn-add-product"
+                      >
+                        + Add Product
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Discount (edit mode only) */}
@@ -441,7 +624,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
               <div className="order-total">
                 <span>Order Total</span>
                 <div>
-                  <div className="total-amount">${finalTotal.toFixed(2)}</div>
+                  <div className="total-amount">${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   {discount > 0 && (
                     <div className="discount-indicator">{discount}% discount applied</div>
                   )}
@@ -464,7 +647,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
           >
             <span className={`collapse-indicator ${isCollapsed ? 'collapsed' : 'expanded'}`}>{isCollapsed ? '\u25b6' : '\u25bc'}</span>
             <h3>{dateKey}</h3>
-            <span className="date-total">Total Cost: ${groupTotal.toFixed(2)}</span>
+            <span className="date-total">Total Cost: ${groupTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div className={`orders-wrapper ${isCollapsed ? 'collapsed' : 'expanded'}`}>
             <div className="orders-container">

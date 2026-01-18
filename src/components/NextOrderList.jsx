@@ -104,10 +104,14 @@ const NextOrderList = ({ onSuccess, onError }) => {
 
       // Submit US warehouse order if there are items
       if (usItems.length > 0) {
-        const usTotal = usItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+        const usItemsWithIds = usItems.map(item => ({
+          ...item,
+          itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
+        }));
+        const usTotal = usItemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
         await addDoc(collection(db, 'c&pProductOrders'), {
           warehouse: 'US',
-          items: usItems,
+          items: usItemsWithIds,
           total: usTotal,
           submittedAt: timestamp,
           status: 'pending',
@@ -116,10 +120,14 @@ const NextOrderList = ({ onSuccess, onError }) => {
 
       // Submit HK warehouse order if there are items
       if (hkItems.length > 0) {
-        const hkTotal = hkItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+        const hkItemsWithIds = hkItems.map(item => ({
+          ...item,
+          itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
+        }));
+        const hkTotal = hkItemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
         await addDoc(collection(db, 'c&pProductOrders'), {
           warehouse: 'HK',
-          items: hkItems,
+          items: hkItemsWithIds,
           total: hkTotal,
           submittedAt: timestamp,
           status: 'pending',
@@ -214,6 +222,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
                       min="1"
                       value={item.quantity}
                       onChange={(e) => updateItem(item.itemName, 'quantity', e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       className="quantity-input"
                     />
                   </td>
