@@ -1,3 +1,12 @@
+// Format product name for display (GLP-2 → T[mass], GLP-3 → R[mass])
+function formatProductName(name) {
+  if (!name) return '';
+  const glp2 = name.match(/^GLP-2[^\d]*(\d+)/i);
+  if (glp2) return `T${glp2[1]}`;
+  const glp3 = name.match(/^GLP-3[^\d]*(\d+)/i);
+  if (glp3) return `R${glp3[1]}`;
+  return name;
+}
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -542,11 +551,13 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                   <div>Total</div>
                   {isEditing && <div></div>}
                 </div>
-                {order.items.map((item) => (
-                  <div key={item.itemId} className="order-item-grid-row">
-                    {isEditing ? (
-                      <>
-                        <div className="item-name-edit">{item.itemName}</div>
+                {[...order.items]
+                  .slice()
+                  .sort((a, b) => formatProductName(a.itemName).localeCompare(formatProductName(b.itemName)))
+                  .map((item) => (
+                    isEditing ? (
+                      <div key={item.itemId} className="order-item-grid-row">
+                        <div className="item-name-edit">{formatProductName(item.itemName)}</div>
                         <input
                           type="number"
                           min="1"
@@ -572,17 +583,17 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                         >
                           ×
                         </button>
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        <div className="item-name-view">{item.itemName}</div>
+                      <div key={item.itemId} className="order-item-grid-row">
+                        <div className="item-name-view">{formatProductName(item.itemName)}</div>
                         <div className="item-qty-view">{item.quantity}</div>
                         <div className="item-unit-view">${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <div className="item-total-view">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                      </>
-                    )}
-                  </div>
-                ))}
+                      </div>
+                    )
+                  ))}
+
                 
                 {/* Add Product Button in Edit Mode */}
                 {isEditing && (
