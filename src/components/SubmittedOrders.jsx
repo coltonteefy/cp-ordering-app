@@ -486,7 +486,10 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       const lines = [
         warehouse,
         ...sortedItems.map(item => {
-          const product = item.productName || item.product || '';
+          let product = item.productName || item.product || '';
+          // Shorten GLP-2 to TZ and GLP-3 to RT
+          if (/^GLP-2/i.test(product)) product = 'TZ';
+          if (/^GLP-3/i.test(product)) product = 'RT';
           const strength = item.productStrength || item.strength || '';
           const qty = item.quantity;
           return `${product} ${strength} x ${qty}`;
