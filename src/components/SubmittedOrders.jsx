@@ -1,3 +1,13 @@
+  // Permanently delete an order from pending orders
+  const deleteOrder = async (orderId) => {
+    try {
+      await deleteDoc(doc(db, 'c&pProductOrders', orderId));
+      onSuccess && onSuccess('Order deleted.');
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      onError && onError('Failed to delete order.');
+    }
+  };
 // Format product name for display (GLP-2 → T[mass], GLP-3 → R[mass])
 function formatProductName(name) {
   if (!name) return '';
@@ -439,6 +449,18 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
           <div className="order-info">
             <div className="order-title-row">
               <h3>Order #{order.id.slice(-6)}</h3>
+              <button
+                className="btn-delete-order"
+                style={{ marginLeft: 'auto', background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
+                title="Delete this order"
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to permanently delete this order?')) {
+                    deleteOrder(order.id);
+                  }
+                }}
+              >
+                Delete
+              </button>
             </div>
             {isEditing ? (
               <input
