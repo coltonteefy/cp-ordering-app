@@ -474,9 +474,18 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     const copied = copiedOrderId === order.id;
     const handleCopyOrderItems = () => {
       const warehouse = order.warehouse ? `${order.warehouse} WAREHOUSE` : '';
+      // Sort items by product name, then strength (like display)
+      const sortedItems = [...order.items].sort((a, b) => {
+        const nameA = (a.productName || a.product || '').toLowerCase();
+        const nameB = (b.productName || b.product || '').toLowerCase();
+        if (nameA === nameB) {
+          return (a.productStrength || a.strength || '').localeCompare(b.productStrength || b.strength || '');
+        }
+        return nameA.localeCompare(nameB);
+      });
       const lines = [
         warehouse,
-        ...order.items.map(item => {
+        ...sortedItems.map(item => {
           const product = item.productName || item.product || '';
           const strength = item.productStrength || item.strength || '';
           const qty = item.quantity;
