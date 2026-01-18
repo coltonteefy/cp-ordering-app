@@ -44,7 +44,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
           // Ensure all items have unique itemIds
           const itemsWithIds = data.items?.map(item => ({
             ...item,
-            itemId: item.itemId || `${doc.id}-${item.itemName}-${Math.random().toString(36).substr(2, 9)}`
+            itemId: item.itemId || `${doc.id}-${item.productName || ''}-${item.productStrength || ''}-${Math.random().toString(36).substr(2, 9)}`
           })) || [];
           
           ordersData.push({
@@ -605,8 +605,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                   .map((item) => (
                     isEditing ? (
                       <div key={item.itemId} className="order-item-grid-row">
-                        <div className="item-product-edit">{item.productName}</div>
-                        <div className="item-strength-edit">{item.productStrength}</div>
+                        <div className="item-product-edit">{item.productName || item.product || ''}</div>
+                        <div className="item-strength-edit">{item.productStrength || item.strength || ''}</div>
                         <input
                           type="number"
                           min="1"
@@ -635,8 +635,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                       </div>
                     ) : (
                       <div key={item.itemId} className="order-item-grid-row">
-                        <div className="item-product-view">{item.productName}</div>
-                        <div className="item-strength-view">{item.productStrength}</div>
+                        <div className="item-product-view">{item.productName || item.product || ''}</div>
+                        <div className="item-strength-view">{item.productStrength || item.strength || ''}</div>
                         <div className="item-qty-view">{item.quantity}</div>
                         <div className="item-unit-view">${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <div className="item-total-view">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>

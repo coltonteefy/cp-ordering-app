@@ -58,7 +58,11 @@ const NextOrderList = ({ onSuccess, onError }) => {
   }, []);
 
   const handleProductClick = (product) => {
-    const alreadyInOrder = orderItems.find(item => item.productName === product.product && item.productStrength === product.strength && item.warehouse === activeWarehouse);
+    const alreadyInOrder = orderItems.find(item =>
+      item.productName === product.product &&
+      item.productStrength === product.strength &&
+      item.warehouse === activeWarehouse
+    );
     if (alreadyInOrder) {
       onError('This item is already in the order list.', 'Notice');
       return;
@@ -74,13 +78,20 @@ const NextOrderList = ({ onSuccess, onError }) => {
     setOrderItems([...orderItems, newItem]);
   };
 
-  const removeItem = (itemName) => {
-    setOrderItems(orderItems.filter(item => `${item.productName} ${item.productStrength}` !== itemName));
+  const removeItem = (targetItem) => {
+    setOrderItems(orderItems.filter(item =>
+      !(
+        item.productName === targetItem.productName &&
+        item.productStrength === targetItem.productStrength &&
+        item.warehouse === targetItem.warehouse
+      )
+    ));
   };
 
-  const updateItem = (itemName, field, value) => {
+  const updateItem = (itemKey, field, value) => {
     setOrderItems(orderItems.map(item => {
-      if (`${item.productName} ${item.productStrength}` === itemName) {
+      const key = `${item.productName} ${item.productStrength} ${item.warehouse}`;
+      if (key === itemKey) {
         if (field === 'quantity') {
           return { ...item, quantity: Math.max(1, parseInt(value) || 1) };
         } else if (field === 'pricePerKit') {
@@ -260,8 +271,11 @@ const NextOrderList = ({ onSuccess, onError }) => {
                       <div className="product-base-name">{productName}</div>
                       <div className="product-pills">
                         {variants.map((product, index) => {
-                          const itemName = `${product.product} ${product.strength}`;
-                          const isInOrder = orderItems.find(item => item.itemName === itemName);
+                          const isInOrder = orderItems.some(item =>
+                            item.productName === product.product &&
+                            item.productStrength === product.strength &&
+                            item.warehouse === activeWarehouse
+                          );
                           return (
                             <button
                               key={product.id || index}
@@ -282,8 +296,11 @@ const NextOrderList = ({ onSuccess, onError }) => {
                     <div className="product-pills">
                       {singleVariant.map(([productName, variants]) => {
                         const product = variants[0];
-                        const itemName = `${product.product} ${product.strength}`;
-                        const isInOrder = orderItems.find(item => item.itemName === itemName);
+                        const isInOrder = orderItems.some(item =>
+                          item.productName === product.product &&
+                          item.productStrength === product.strength &&
+                          item.warehouse === activeWarehouse
+                        );
                         return (
                           <button
                             key={productName}
@@ -326,47 +343,50 @@ const NextOrderList = ({ onSuccess, onError }) => {
                 </td>
               </tr>
             ) : (
-              orderItems.map((item) => (
-                <tr key={`${item.productName}-${item.productStrength}-${item.warehouse}`}>
-                  <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
-                  <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
-                  <td>
-                    <span className="warehouse-badge">{item.warehouse}</span>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="1"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(item.itemName, 'quantity', e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      className="quantity-input"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.pricePerKit}
-                      onChange={(e) => updateItem(item.itemName, 'pricePerKit', e.target.value)}
-                      className="price-input"
-                    />
-                  </td>
-                  <td className="total-cost">${formatPrice(item.quantity * item.pricePerKit)}</td>
-                  <td>
-                    <button
-                      onClick={() => removeItem(item.itemName)}
-                      className="remove-btn"
-                      title="Remove from order"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))
+              orderItems.map((item) => {
+                const itemKey = `${item.productName} ${item.productStrength} ${item.warehouse}`;
+                return (
+                  <tr key={itemKey}>
+                    <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
+                    <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
+                    <td>
+                      <span className="warehouse-badge">{item.warehouse}</span>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateItem(itemKey, 'quantity', e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className="quantity-input"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.pricePerKit}
+                        onChange={(e) => updateItem(itemKey, 'pricePerKit', e.target.value)}
+                        className="price-input"
+                      />
+                    </td>
+                    <td className="total-cost">${formatPrice(item.quantity * item.pricePerKit)}</td>
+                    <td>
+                      <button
+                        onClick={() => removeItem(item)}
+                        className="remove-btn"
+                        title="Remove from order"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
