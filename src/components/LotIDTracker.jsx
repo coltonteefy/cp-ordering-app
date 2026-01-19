@@ -322,12 +322,14 @@ const LotIDTracker = () => {
                     </div>
                   </>
                 )}
-                <button
-                  className="add-past-btn"
-                  onClick={() => handleAddPastCOA(key)}
-                >
-                  Add to Past COAs
-                </button>
+                <div className="lot-id-actions">
+                  <button
+                    className="add-past-btn"
+                    onClick={() => handleAddPastCOA(key)}
+                  >
+                    Add to Past COAs
+                  </button>
+                </div>
               </div>
 
               <div className="lot-id-pattern">

@@ -86,6 +86,7 @@ const ProductManager = ({ onSuccess, onError }) => {
               product: data.product,
               strength: data.strength,
               warehouseCosts: warehouseCosts,
+              canvaTemplateUrl: data.canvaTemplateUrl || '',
               currentCoa: data.currentCoa || { lot: '', url: '' },
               pastCoas: data.pastCoas || []
             });

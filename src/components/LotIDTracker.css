@@ -89,9 +89,9 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: #f3efe9;
-  border: 1px dashed #d0c2ae;
-  border-radius: 10px;
+  background: #f9f6f1;
+  border: 1px dashed #dfd3c2;
+  border-radius: 12px;
   padding: 0.6rem 0.8rem;
 }
 
@@ -113,7 +113,11 @@
 }
 
 .lot-id-section {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.9rem;
+  padding: 0.75rem 0.85rem;
+  background: #f9f6f1;
+  border: 1px solid #ede3d4;
+  border-radius: 12px;
 }
 
 .lot-id-section label {
@@ -251,20 +255,21 @@
 }
 
 .add-past-btn {
-  background: #d45b42;
-  color: #fff;
-  border: none;
-  padding: 0.55rem 1.1rem;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 600;
+  background: transparent;
+  color: #d45b42;
+  border: 1px solid #d45b42;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
   margin-top: 0.5rem;
+  align-self: flex-end;
 }
 
 .add-past-btn:hover {
-  background: #c24f38;
+  background: #d45b4215;
   transform: translateY(-1px);
 }
 
@@ -273,6 +278,11 @@
   color: #a7a09a;
   cursor: not-allowed;
   transform: none;
+}
+
+.lot-id-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .lot-id-past-list {
