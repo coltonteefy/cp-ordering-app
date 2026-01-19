@@ -266,3 +266,52 @@
   background: #6B5437;
   transform: translateY(-1px);
 }
+
+.edit-modal {
+  max-width: 720px;
+  width: 100%;
+}
+
+.edit-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.edit-field.full {
+  grid-column: 1 / -1;
+}
+
+.edit-field label {
+  font-size: 0.85rem;
+  color: #d8d6d0;
+  margin-bottom: 0.35rem;
+}
+
+.edit-field input {
+  background: #0f1628;
+  border: 1px solid #34405b;
+  border-radius: 0.45rem;
+  padding: 0.65rem 0.75rem;
+  color: #f4f4f4;
+  font-size: 0.95rem;
+}
+
+.edit-field input:focus {
+  outline: none;
+  border-color: #d74f3b;
+  box-shadow: 0 0 0 3px rgba(215, 79, 59, 0.18);
+}
+
+.edit-actions {
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}

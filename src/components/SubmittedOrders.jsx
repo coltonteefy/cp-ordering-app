@@ -152,7 +152,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   useEffect(() => {
     // Listen to available products
     const unsubscribe = onSnapshot(
-      collection(db, 'c&pCostPerKit'),
+      collection(db, 'c&pProductList'),
       (snapshot) => {
         const productsData = [];
         snapshot.forEach((doc) => {

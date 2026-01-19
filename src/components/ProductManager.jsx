@@ -1,22 +1,63 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, onSnapshot, doc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import productsData from '../data/products.json';
 import './ProductManager.css';
 
+const buildDocId = (product, strength) =>
+  `${product.replace(/[^a-zA-Z0-9]/g, '_')}_${strength.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
 const ProductManager = ({ onSuccess, onError }) => {
-  const [products, setProducts] = useState(productsData.map((p) => ({ 
-    ...p, 
-    id: `${p.product.replace(/[^a-zA-Z0-9]/g, '_')}_${p.strength.replace(/[^a-zA-Z0-9]/g, '_')}`
-  })));
-  const [editingProduct, setEditingProduct] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [editForm, setEditForm] = useState(null);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProduct, setNewProduct] = useState({ product: '', strength: '', warehouseCosts: { US: 0, HK: 0 } });
 
+  const saveAllToFirestore = useCallback(async () => {
+    try {
+      for (const product of products) {
+        const docId = product.docId || buildDocId(product.product, product.strength);
+        await setDoc(doc(db, 'c&pProductList', docId), {
+          id: product.id || docId,
+          product: product.product,
+          strength: product.strength,
+          warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 },
+          canvaTemplateUrl: product.canvaTemplateUrl || '',
+          currentCoa: product.currentCoa || { lot: '', url: '' },
+          pastCoas: product.pastCoas || []
+        });
+      }
+      onSuccess('All products saved to Firestore!', 'Success');
+    } catch (error) {
+      console.error('Error saving products:', error);
+      onError('Failed to save products: ' + error.message, 'Error');
+    }
+  }, [onError, onSuccess, products]);
+
+  const syncToProductList = useCallback(async () => {
+    try {
+      for (const product of products) {
+        const docId = product.docId || buildDocId(product.product, product.strength);
+        await setDoc(doc(db, 'c&pProductList', docId), {
+          id: product.id || docId,
+          product: product.product,
+          strength: product.strength,
+          warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 },
+          canvaTemplateUrl: product.canvaTemplateUrl || '',
+          currentCoa: product.currentCoa || { lot: '', url: '' },
+          pastCoas: product.pastCoas || []
+        });
+      }
+      onSuccess('Products copied to c&pProductList with extended fields.', 'Success');
+    } catch (error) {
+      console.error('Error syncing products:', error);
+      onError('Failed to sync products: ' + error.message, 'Error');
+    }
+  }, [onError, onSuccess, products]);
+
   useEffect(() => {
     const unsubscribe = onSnapshot(
-      collection(db, 'c&pCostPerKit'),
+      collection(db, 'c&pProductList'),
       (snapshot) => {
         if (snapshot.empty && !hasInitialized) {
           // Auto-populate collection on first load
@@ -38,12 +79,15 @@ const ProductManager = ({ onSuccess, onError }) => {
                 HK: data.hkCostPerKit !== undefined ? data.hkCostPerKit : existingCost
               };
             }
-            
+
             firestoreProducts.push({
-              id: doc.id,
+              docId: doc.id,
+              id: data.id || doc.id,
               product: data.product,
               strength: data.strength,
-              warehouseCosts: warehouseCosts
+              warehouseCosts: warehouseCosts,
+              currentCoa: data.currentCoa || { lot: '', url: '' },
+              pastCoas: data.pastCoas || []
             });
           });
           setProducts(firestoreProducts);
@@ -56,46 +100,38 @@ const ProductManager = ({ onSuccess, onError }) => {
     );
 
     return () => unsubscribe();
-  }, [hasInitialized]);
-
-  const saveAllToFirestore = async () => {
-    try {
-      for (const product of products) {
-        const docId = `${product.product.replace(/[^a-zA-Z0-9]/g, '_')}_${product.strength.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        await setDoc(doc(db, 'c&pCostPerKit', docId), {
-          product: product.product,
-          strength: product.strength,
-          warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 }
-        });
-      }
-      onSuccess('All products saved to Firestore!', 'Success');
-    } catch (error) {
-      console.error('Error saving products:', error);
-      onError('Failed to save products: ' + error.message, 'Error');
-    }
-  };
+  }, [hasInitialized, saveAllToFirestore]);
 
   const updateProductCost = (id, warehouse, newCost) => {
-    setProducts(products.map(p => 
-      p.id === id ? { 
-        ...p, 
-        warehouseCosts: { 
-          ...p.warehouseCosts, 
-          [warehouse]: parseFloat(newCost) || 0 
-        } 
-      } : p
-    ));
+    setEditForm(prev => ({
+      ...prev,
+      warehouseCosts: {
+        ...prev.warehouseCosts,
+        [warehouse]: parseFloat(newCost) || 0
+      }
+    }));
   };
 
   const saveProduct = async (product) => {
     try {
-      const docId = `${product.product.replace(/[^a-zA-Z0-9]/g, '_')}_${product.strength.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      await setDoc(doc(db, 'c&pCostPerKit', docId), {
+      const docId = product.docId || buildDocId(product.product, product.strength);
+      await setDoc(doc(db, 'c&pProductList', docId), {
+        id: product.id?.trim() || docId,
         product: product.product,
         strength: product.strength,
-        warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 }
+        warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 },
+        canvaTemplateUrl: product.canvaTemplateUrl || '',
+        currentCoa: product.currentCoa || { lot: '', url: '' },
+        pastCoas: product.pastCoas || []
       });
-      setEditingProduct(null);
+      setProducts(prev =>
+        prev.map(p =>
+          p.docId === product.docId
+            ? { ...product, docId, id: product.id?.trim() || docId }
+            : p
+        )
+      );
+      setEditForm(null);
     } catch (error) {
       console.error('Error updating product:', error);
       onError('Failed to update product: ' + error.message, 'Error');
@@ -111,12 +147,29 @@ const ProductManager = ({ onSuccess, onError }) => {
     }
 
     try {
-      const docId = `${newProduct.product.replace(/[^a-zA-Z0-9]/g, '_')}_${newProduct.strength.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      await setDoc(doc(db, 'c&pCostPerKit', docId), {
+      const docId = buildDocId(newProduct.product, newProduct.strength);
+      await setDoc(doc(db, 'c&pProductList', docId), {
+        id: docId,
         product: newProduct.product,
         strength: newProduct.strength,
-        warehouseCosts: newProduct.warehouseCosts || { US: 0, HK: 0 }
+        warehouseCosts: newProduct.warehouseCosts || { US: 0, HK: 0 },
+        canvaTemplateUrl: newProduct.canvaTemplateUrl || '',
+        currentCoa: newProduct.currentCoa || { lot: '', url: '' },
+        pastCoas: newProduct.pastCoas || []
       });
+      setProducts(prev => [
+        ...prev,
+        {
+          docId,
+          id: docId,
+          product: newProduct.product,
+          strength: newProduct.strength,
+          warehouseCosts: newProduct.warehouseCosts || { US: 0, HK: 0 },
+          canvaTemplateUrl: newProduct.canvaTemplateUrl || '',
+          currentCoa: newProduct.currentCoa || { lot: '', url: '' },
+          pastCoas: newProduct.pastCoas || []
+        }
+      ]);
       setNewProduct({ product: '', strength: '', warehouseCosts: { US: 0, HK: 0 } });
       setShowAddForm(false);
     } catch (error) {
@@ -131,7 +184,7 @@ const ProductManager = ({ onSuccess, onError }) => {
     }
 
     try {
-      const snapshot = await getDocs(collection(db, 'c&pCostPerKit'));
+      const snapshot = await getDocs(collection(db, 'c&pProductList'));
       let migratedCount = 0;
 
       for (const docSnap of snapshot.docs) {
@@ -147,10 +200,14 @@ const ProductManager = ({ onSuccess, onError }) => {
           US: data.usCostPerKit !== undefined ? data.usCostPerKit : existingCost,
           HK: data.hkCostPerKit !== undefined ? data.hkCostPerKit : existingCost
         };
-        await setDoc(doc(db, 'c&pCostPerKit', docSnap.id), {
+        await setDoc(doc(db, 'c&pProductList', docSnap.id), {
+          id: data.id || docSnap.id,
           product: data.product,
           strength: data.strength,
-          warehouseCosts: warehouseCosts
+          warehouseCosts: warehouseCosts,
+          canvaTemplateUrl: data.canvaTemplateUrl || '',
+          currentCoa: data.currentCoa || { lot: '', url: '' },
+          pastCoas: data.pastCoas || []
         });
         migratedCount++;
       }
@@ -167,6 +224,9 @@ const ProductManager = ({ onSuccess, onError }) => {
       <div style={{ marginBottom: '1rem' }}>
         <button onClick={saveAllToFirestore} className="btn-neon-lime">
           Initialize Firestore Products
+        </button>
+        <button onClick={syncToProductList} className="btn-neon-cyan" style={{ marginLeft: '0.5rem' }}>
+          Sync to c&pProductList
         </button>
       </div>
       <div className="manager-header">
@@ -245,73 +305,166 @@ const ProductManager = ({ onSuccess, onError }) => {
         <table className="products-table">
           <thead>
             <tr>
+              <th>ID</th>
               <th>Product</th>
               <th>Strength</th>
               <th>US Cost per Kit ($)</th>
               <th>HK Cost per Kit ($)</th>
-              {editingProduct && <th>Actions</th>}
+              <th>Current COA</th>
+              <th>Edit</th>
             </tr>
           </thead>
           <tbody>
             {products.map(product => (
               <tr 
                 key={product.id}
-                onClick={() => editingProduct !== product.id && setEditingProduct(product.id)}
-                className={editingProduct === product.id ? 'editing' : 'clickable'}
+                className="clickable"
               >
+                <td className="product-id">{product.id}</td>
                 <td className="product-name">{product.product}</td>
                 <td className="product-strength">{product.strength}</td>
-                <td onClick={(e) => e.stopPropagation()}>
-                  {editingProduct === product.id ? (
-                    <input
-                      type="text"
-                      value={product.warehouseCosts?.US || 0}
-                      onChange={(e) => updateProductCost(product.id, 'US', e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      className="cost-input-edit"
-                    />
-                  ) : (
-                    <span className="cost-display">${(product.warehouseCosts?.US || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  )}
+                <td>
+                  <span className="cost-display">${(product.warehouseCosts?.US || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </td>
-                <td onClick={(e) => e.stopPropagation()}>
-                  {editingProduct === product.id ? (
-                    <input
-                      type="text"
-                      value={product.warehouseCosts?.HK || 0}
-                      onChange={(e) => updateProductCost(product.id, 'HK', e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      className="cost-input-edit"
-                    />
-                  ) : (
-                    <span className="cost-display">${(product.warehouseCosts?.HK || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  )}
+                <td>
+                  <span className="cost-display">${(product.warehouseCosts?.HK || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </td>
-                {editingProduct && (
-                  <td onClick={(e) => e.stopPropagation()}>
-                    {editingProduct === product.id && (
-                      <div className="action-buttons">
-                        <button
-                          onClick={() => saveProduct(product)}
-                          className="btn-neon-cyan btn-sm"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingProduct(null)}
-                          className="btn-cancel btn-sm"
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                <td className="product-coa">
+                  <div><b>Lot:</b> {product.currentCoa?.lot || '—'}</div>
+                  <div>
+                    <b>URL:</b>{' '}
+                    {product.currentCoa?.url ? (
+                      <a href={product.currentCoa.url} target="_blank" rel="noopener noreferrer">
+                        {product.currentCoa.url}
+                      </a>
+                    ) : (
+                      '—'
                     )}
-                  </td>
-                )}
+                  </div>
+                </td>
+                <td>
+                  <button
+                    className="btn-neon-cyan btn-sm"
+                    onClick={() =>
+                      setEditForm({
+                        ...product,
+                        docId: product.docId || product.id,
+                        warehouseCosts: { ...product.warehouseCosts },
+                        currentCoa: { lot: '', url: '', ...product.currentCoa },
+                        canvaTemplateUrl: product.canvaTemplateUrl || '',
+                        pastCoas: product.pastCoas || []
+                      })
+                    }
+                  >
+                    Edit
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {editForm && (
+        <>
+          <div className="modal-backdrop is-open" onClick={() => setEditForm(null)}></div>
+          <div className="modal-main is-open edit-modal">
+            <h2 className="modal-title">Edit Product</h2>
+            <div className="edit-form-grid">
+              <div className="edit-field full">
+                <label>ID</label>
+                <input
+                  type="text"
+                  value={editForm.id}
+                  onChange={(e) => setEditForm({ ...editForm, id: e.target.value })}
+                  placeholder="Doc ID"
+                />
+              </div>
+
+              <div className="edit-field">
+                <label>Product Name</label>
+                <input
+                  type="text"
+                  value={editForm.product}
+                  onChange={(e) => setEditForm({ ...editForm, product: e.target.value })}
+                />
+              </div>
+
+              <div className="edit-field">
+                <label>Strength</label>
+                <input
+                  type="text"
+                  value={editForm.strength}
+                  onChange={(e) => setEditForm({ ...editForm, strength: e.target.value })}
+                />
+              </div>
+
+              <div className="edit-field">
+                <label>US Cost per Kit ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.warehouseCosts?.US ?? 0}
+                  onChange={(e) => updateProductCost(editForm.id, 'US', e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                />
+              </div>
+
+              <div className="edit-field">
+                <label>HK Cost per Kit ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.warehouseCosts?.HK ?? 0}
+                  onChange={(e) => updateProductCost(editForm.id, 'HK', e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                />
+              </div>
+
+              <div className="edit-field full">
+                <label>Canva Template URL</label>
+                <input
+                  type="text"
+                  value={editForm.canvaTemplateUrl || ''}
+                  onChange={(e) => setEditForm({ ...editForm, canvaTemplateUrl: e.target.value })}
+                />
+              </div>
+
+              <div className="edit-field">
+                <label>Current COA Lot</label>
+                <input
+                  type="text"
+                  value={editForm.currentCoa?.lot || ''}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      currentCoa: { ...editForm.currentCoa, lot: e.target.value }
+                    })
+                  }
+                />
+              </div>
+
+              <div className="edit-field">
+                <label>Current COA URL</label>
+                <input
+                  type="text"
+                  value={editForm.currentCoa?.url || ''}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      currentCoa: { ...editForm.currentCoa, url: e.target.value }
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div className="modal-actions edit-actions">
+              <button className="btn-cancel" onClick={() => setEditForm(null)}>Cancel</button>
+              <button className="btn-neon-cyan" onClick={() => saveProduct(editForm)}>Save</button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -7,6 +7,7 @@ import NextOrderList from './components/NextOrderList';
 import SubmittedOrders from './components/SubmittedOrders';
 import ProductManager from './components/ProductManager';
 import PromoSchedule from './components/PromoSchedule';
+import LotIDTracker from './components/LotIDTracker';
 import './App.css';
 
 function App() {
@@ -79,6 +80,7 @@ function App() {
               <button onClick={() => { setActivePage('orders'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
               <button onClick={() => { setActivePage('products'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'products' ? 'active' : ''}`}>Products</button>
               <button onClick={() => { setActivePage('promo'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
+              <button onClick={() => { setActivePage('lotid'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
             </div>
             <div className="nav-actions">
               <button onClick={handleSignOut} className="btn-secondary">
@@ -116,6 +118,8 @@ function App() {
                 onSuccess={showModal}
                 onError={showModal}
               />
+            ) : activePage === 'lotid' ? (
+              <LotIDTracker />
             ) : (
               <>
                 <NextOrderList 

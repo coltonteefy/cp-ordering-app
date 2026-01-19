@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import productsData from '../data/products.json';
 import './NextOrderList.css';
 
 const formatPrice = (price) => {
@@ -15,7 +14,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
     return savedOrder ? JSON.parse(savedOrder) : [];
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [products, setProducts] = useState(productsData);
+  const [products, setProducts] = useState([]);
   const [activeWarehouse, setActiveWarehouse] = useState('US');
 
   // Save orderItems to localStorage whenever they change
@@ -29,7 +28,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
-      collection(db, 'c&pCostPerKit'),
+      collection(db, 'c&pProductList'),
       (snapshot) => {
         if (!snapshot.empty) {
           const firestoreProducts = [];
@@ -43,14 +42,12 @@ const NextOrderList = ({ onSuccess, onError }) => {
           });
           setProducts(firestoreProducts);
         } else {
-          // If no Firestore data, use local products.json with warehouse field
-          setProducts(productsData);
+          setProducts([]);
         }
       },
       (error) => {
         console.error('Error loading products:', error);
-        // Fallback to local data on error
-        setProducts(productsData);
+        setProducts([]);
       }
     );
 
