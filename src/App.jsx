@@ -15,7 +15,14 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
-  const [activePage, setActivePage] = useState('orders');
+  const validPages = ['orders', 'products', 'promo', 'lotid'];
+  const parseHashPage = () => {
+    if (typeof window === 'undefined') return 'orders';
+    const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+    return validPages.includes(raw) ? raw : 'orders';
+  };
+
+  const [activePage, setActivePage] = useState(parseHashPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -38,6 +45,29 @@ function App() {
 
   const closeModal = () => {
     setModal({ isOpen: false, title: '', message: '' });
+  };
+
+  // Keep URL hash in sync with active page and respond to hash changes (acts like lightweight routing)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const next = parseHashPage();
+      setActivePage(next);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    const desiredHash = `#/${activePage}`;
+    if (window.location.hash !== desiredHash) {
+      window.history.replaceState(null, '', desiredHash);
+    }
+  }, [activePage]);
+
+  const goToPage = (page) => {
+    if (!validPages.includes(page)) return;
+    setActivePage(page);
+    setMobileMenuOpen(false);
   };
 
   const handleSignOut = async () => {
@@ -77,10 +107,10 @@ function App() {
               <span className="hamburger"></span>
             </button>
             <div className={`nav-menu ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-              <button onClick={() => { setActivePage('orders'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
-              <button onClick={() => { setActivePage('products'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'products' ? 'active' : ''}`}>Products</button>
-              <button onClick={() => { setActivePage('promo'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
-              <button onClick={() => { setActivePage('lotid'); setMobileMenuOpen(false); }} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
+              <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
+              <button onClick={() => goToPage('products')} className={`nav-link ${activePage === 'products' ? 'active' : ''}`}>Products</button>
+              <button onClick={() => goToPage('promo')} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
+              <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
             </div>
             <div className="nav-actions">
               <button onClick={handleSignOut} className="btn-secondary">
