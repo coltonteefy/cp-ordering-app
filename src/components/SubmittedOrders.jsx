@@ -1,7 +1,8 @@
-  // Permanently delete an order from pending orders
-  const deleteOrder = async (orderId) => {
+  // Permanently delete an order from pending or delivered collections
+  const deleteOrder = async (order) => {
     try {
-      await deleteDoc(doc(db, 'c&pProductOrders', orderId));
+      const collectionName = order?.deliveredAt ? 'c&pPastInventoryOrders' : 'c&pProductOrders';
+      await deleteDoc(doc(db, collectionName, order.id));
       onSuccess && onSuccess('Order deleted.');
     } catch (error) {
       console.error('Error deleting order:', error);
@@ -299,7 +300,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       const deliveredOrderData = {
         ...order,
         deliveredAt: new Date().toISOString(),
-        originalOrderId: orderId
+        originalOrderId: orderId,
+        status: 'delivered'
       };
       delete deliveredOrderData.id;
       
@@ -558,7 +560,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                     className="order-delete-link"
                     onClick={() => {
                       if (window.confirm('Are you sure you want to permanently delete this order?')) {
-                        deleteOrder(order.id);
+                        deleteOrder(order);
                       }
                     }}
                     title="Delete this order"
@@ -685,7 +687,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
               </div>
             ) : trackingEntries.length ? (
               <div className="tracking-display-multi">
-                    {trackingEntries.map((entry, idx) => (
+                {trackingEntries.map((entry, idx) => (
                   <div key={entry.id || idx} className="tracking-display-wrap">
                     <div className="tracking-inline">
                       {entry.carrier && entry.number ? (
@@ -693,13 +695,13 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                           href={getTrackingUrl(entry.carrier, entry.number)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="tracking-display"
+                          className={`tracking-display${(entry.status || 'pending') === 'delivered' ? ' delivered' : ''}`}
                         >
                           <span className="carrier-text">{entry.carrier}</span>
                           <span className="tracking-text">{entry.number}</span>
                         </a>
                       ) : (
-                        <div className="tracking-display tracking-empty">
+                        <div className={`tracking-display tracking-empty${(entry.status || 'pending') === 'delivered' ? ' delivered' : ''}`}>
                           <span className="carrier-text">{entry.carrier || 'UPS'}</span>
                           <span className="tracking-text">No tracking number</span>
                         </div>
@@ -750,7 +752,11 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                             setOrders(prev =>
                               prev.map(o => o.id === order.id ? { ...o, status: nextStatus } : o)
                             );
-                            updateOrderStatus(order.id, nextStatus);
+                            if (nextStatus === 'delivered') {
+                              markOrderDelivered(order.id);
+                            } else {
+                              updateOrderStatus(order.id, nextStatus);
+                            }
                           }}
                         />
                         <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>

@@ -596,6 +596,14 @@
   box-shadow: none;
 }
 
+.tracking-display.delivered .carrier-text,
+.tracking-display.delivered .tracking-text,
+.tracking-display.tracking-empty.delivered .carrier-text,
+.tracking-display.tracking-empty.delivered .tracking-text {
+  color: #3c8c4a;
+  font-weight: 700;
+}
+
 .tracking-display.tracking-empty {
   opacity: 0.6;
   cursor: default;
