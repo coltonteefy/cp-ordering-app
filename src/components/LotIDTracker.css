@@ -1,16 +1,90 @@
 
 .lot-id-tracker-container {
-  padding: 2rem 1.5rem;
-  background: #f7f6f4;
+  position: relative;
+  padding: 1.5rem 1rem 2rem 1rem;
+  background: transparent;
+  width: 100%;
+}
+
+.lot-id-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  width: min(1600px, 100%);
+  margin: 0 auto;
+}
+
+.lot-id-sidebar {
+  position: sticky;
+  top: 90px;
+  align-self: start;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0.6rem 0.4rem 0.6rem 0;
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.lot-id-sidebar-list {
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.lot-id-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 0.18rem 0.15rem;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  text-align: left;
+}
+
+.lot-id-sidebar-group-btn {
+  justify-content: flex-start;
+  font-weight: 800;
+}
+
+.lot-id-sidebar-item:hover {
+  color: #b1432d;
+}
+
+.lot-id-sidebar-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: inherit;
+}
+
+.lot-id-sidebar-item.active {
+  color: inherit;
 }
 
 .lot-id-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.5rem;
+  width: 100%;
+  margin: 0 auto;
+  justify-items: center;
 }
 
 .lot-id-card {
+  width: 100%;
+  max-width: 520px;
   background: #ffffff;
   border-radius: 14px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
@@ -19,6 +93,11 @@
   flex-direction: column;
   gap: 1rem;
   border: 1px solid #f0e8dc;
+}
+
+.lot-id-card-highlight {
+  box-shadow: 0 0 0 3px #e6a94a55, 0 10px 25px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease;
 }
 
 .lot-id-header {
@@ -341,6 +420,34 @@
 }
 
 @media (max-width: 600px) {
+  .lot-id-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .lot-id-tracker-container {
+    padding: 1.2rem 1rem;
+  }
+
+  .lot-id-sidebar {
+    position: relative;
+    top: auto;
+    max-height: none;
+    width: 100%;
+    padding: 0.4rem 0;
+  }
+
+  .lot-id-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1200px) {
+  .lot-id-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
   .lot-id-grid {
     grid-template-columns: 1fr;
   }
