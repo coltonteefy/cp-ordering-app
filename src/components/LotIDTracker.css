@@ -100,6 +100,64 @@
   transition: box-shadow 0.2s ease;
 }
 
+.cap-color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.cap-color-label {
+  font-weight: 700;
+  color: #5D3A1A;
+  font-size: 0.9rem;
+}
+
+.cap-color-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid #d0c4b4;
+  background: #e7dfd3;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.cap-color-input {
+  flex: 1;
+  border: 1px solid #e6a94a;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  color: #2f2a26;
+  background: #fffefb;
+}
+
+.cap-color-input:focus {
+  outline: none;
+  border-color: #d45b42;
+  box-shadow: 0 0 0 2px rgba(212, 91, 66, 0.12);
+}
+
+.cap-color-row.view {
+  margin-top: 0.25rem;
+}
+
+.cap-color-pill {
+  border-radius: 999px;
+  border: 1px solid #e0d6c6;
+  background: #fffaf3;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.9rem;
+  color: #46382a;
+  min-width: 0;
+}
+
+.cap-color-pill.empty {
+  color: #9b9081;
+  border-style: dashed;
+}
+
 .lot-id-header {
   display: flex;
   align-items: center;

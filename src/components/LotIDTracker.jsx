@@ -3,9 +3,21 @@ import { collection, onSnapshot, updateDoc, doc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import "./LotIDTracker.css";
 
-const createEmptyCOA = () => ({ lot: "", url: "" });
+const createEmptyCOA = () => ({ lot: "", url: "", capColor: "" });
 const pastCoAsSafe = (arr) => (Array.isArray(arr) ? arr : []);
 const buildCoaUrl = (id) => (id ? `https://coffeeandpeppers.com/${id}` : "");
+const resolveCapColorValue = (value) => {
+  const cleaned = (value || "").trim();
+  if (!cleaned) return null;
+  const compact = cleaned.toLowerCase().replace(/\s+/g, "");
+  const supportsColor =
+    typeof CSS !== "undefined" && CSS.supports
+      ? (c) => CSS.supports("color", c)
+      : () => false;
+  if (supportsColor(compact)) return compact;
+  if (supportsColor(cleaned)) return cleaned;
+  return null;
+};
 const pickLabelLink = (p) => {
   const raw =
     p?.canvaTemplateUrl ||
@@ -176,6 +188,7 @@ const LotIDTracker = () => {
           const normalizedCurrent = {
             lot: currentCoa.lot || "",
             url: buildCoaUrl(currentCoa.lot || data.id || ""),
+            capColor: currentCoa.capColor || data.capColor || "",
           };
           items.push({
             docId: doc.id,
@@ -185,6 +198,7 @@ const LotIDTracker = () => {
             currentCoa: normalizedCurrent,
             pastCoas: data.pastCoas || [],
             canvaTemplateUrl: data.canvaTemplateUrl || "",
+            capColor: currentCoa.capColor || data.capColor || ""
           });
         });
         items.sort((a, b) => a.product.localeCompare(b.product));
@@ -197,6 +211,7 @@ const LotIDTracker = () => {
               ...createEmptyCOA(),
               ...p.currentCoa,
               url: buildCoaUrl(p.currentCoa?.lot || p.id || ""),
+              capColor: p.currentCoa?.capColor || p.capColor || "",
             },
             pastCOAs: Array.isArray(p.pastCoas)
               ? p.pastCoas.map((c) => ({
@@ -204,6 +219,7 @@ const LotIDTracker = () => {
                   url: buildCoaUrl(c.lot || c.url || p.id || ""),
                 }))
               : [],
+            capColor: p.currentCoa?.capColor || p.capColor || ""
           };
           return acc;
         }, {});
@@ -283,6 +299,7 @@ const LotIDTracker = () => {
     const normalized = {
       ...currentCOA,
       url: buildCoaUrl(currentCOA.lot || ""),
+      capColor: currentCOA.capColor || "",
     };
     setProductData((prev) => ({
       ...prev,
@@ -301,6 +318,32 @@ const LotIDTracker = () => {
       [key]: { ...prev[key], pastCOAs: normalized },
     }));
     await saveSection(key, { pastCoas: normalized });
+  };
+
+  const handleCapColorChange = (key, value) => {
+    setProductData((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        capColor: value,
+        currentCOA: { ...prev[key].currentCOA, capColor: value },
+      },
+    }));
+  };
+
+  const handleSaveCapColor = async (key, value) => {
+    setProductData((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        capColor: value,
+        currentCOA: { ...prev[key].currentCOA, capColor: value },
+      },
+    }));
+    await saveSection(key, {
+      capColor: value || "",
+      currentCoa: { ...(productData[key]?.currentCOA || createEmptyCOA()), capColor: value || "" },
+    });
   };
 
   const handleRemovePastCOA = (key, index) => {
@@ -350,6 +393,11 @@ const LotIDTracker = () => {
               currentCOA: createEmptyCOA(),
               pastCOAs: [],
             };
+          const capColorText =
+            (productData[key]?.capColor ||
+              data.currentCOA.capColor ||
+              "").trim();
+          const capColorSwatch = resolveCapColorValue(capColorText);
           const usedCount =
             (data.pastCOAs?.length || 0) + (data.currentCOA?.lot ? 1 : 0);
           const nextSeq = String(usedCount + 1).padStart(2, "0");
@@ -406,7 +454,7 @@ const LotIDTracker = () => {
 
               <div className="lot-id-section">
                 <div className="lot-id-section-header">
-                  <label>Current COA</label>
+                  <label>Current Lot ID</label>
                   <button
                       className="lot-id-edit-btn"
                       onClick={async () => {
@@ -436,6 +484,23 @@ const LotIDTracker = () => {
                           placeholder="COA ID"
                         />
                       </div>
+                      <div className="cap-color-row">
+                        <span className="cap-color-label">Cap Color</span>
+                        <span
+                          className="cap-color-marker"
+                          style={{
+                            backgroundColor: capColorSwatch || "#e7dfd3",
+                          }}
+                        ></span>
+                        <input
+                          type="text"
+                          className="cap-color-input"
+                          value={productData[key]?.capColor || ""}
+                          onChange={(e) => handleCapColorChange(key, e.target.value)}
+                          onBlur={(e) => handleSaveCapColor(key, e.target.value)}
+                          placeholder="e.g., White"
+                        />
+                      </div>
                     </>
                   ) : (
                     <>
@@ -462,20 +527,32 @@ const LotIDTracker = () => {
                             target="_blank"
                             rel="noopener noreferrer"
                           >
-                            <span className="lot-id-url-prefix">https://coffeeandpeppers.com/</span>
-                            <span className="lot-id-url-suffix">{data.currentCOA.lot}</span>
-                          </a>
-                        ) : (
-                          <span className="lot-id-muted">URL</span>
-                        )}
+                        <span className="lot-id-url-prefix">https://coffeeandpeppers.com/</span>
+                        <span className="lot-id-url-suffix">{data.currentCOA.lot}</span>
+                      </a>
+                          ) : (
+                            <span className="lot-id-muted">URL</span>
+                          )}
+                        </div>
+                      <div className="cap-color-row view">
+                        <span className="cap-color-label">Cap Color</span>
+                        <span
+                          className="cap-color-marker"
+                          style={{
+                            backgroundColor: capColorSwatch || "#e7dfd3",
+                          }}
+                        ></span>
+                        <span className={`cap-color-pill${(productData[key]?.capColor || data.currentCOA.capColor) ? '' : ' empty'}`}>
+                          {productData[key]?.capColor || data.currentCOA.capColor || 'Not set'}
+                        </span>
                       </div>
                     </>
                   )}
-                  <div className="lot-id-actions">
-                    <button
-                      className="add-past-btn"
-                      onClick={() => handleAddPastCOA(key)}
-                    >
+                <div className="lot-id-actions">
+                  <button
+                    className="add-past-btn"
+                    onClick={() => handleAddPastCOA(key)}
+                  >
                       Add to Past COAs
                     </button>
                   </div>
