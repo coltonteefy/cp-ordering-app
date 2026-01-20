@@ -514,24 +514,31 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       setTimeout(() => setCopiedOrderId(null), 900);
     };
 
-    return (
-      <div key={order.id} className="order-card">
-        {/* Warehouse Label */}
-        {order.warehouse && (
-          <div className={`warehouse-header warehouse-${order.warehouse.toLowerCase()}`}>
-            {order.warehouse} WAREHOUSE
-          </div>
-        )}
-        {/* Header */}
-              <div className="order-header">
-                <div className="order-info">
-                  <div className="order-title-row">
-                    <h3>Order #{order.id.slice(-6)}</h3>
-                    <button
-                      className="btn-delete-order"
-                      style={{ background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
-                      title="Delete this order"
-                      onClick={() => {
+        return (
+          <div key={order.id} className="order-card">
+            {/* Warehouse Label */}
+            {order.warehouse && (
+              <div className={`warehouse-header warehouse-${order.warehouse.toLowerCase()}`}>
+                <span>{order.warehouse} WAREHOUSE</span>
+                <button
+                  className="order-edit-link"
+                  onClick={() => toggleEdit(order.id)}
+                  title={editingOrders.has(order.id) ? 'Finish editing' : 'Edit order'}
+                >
+                  {editingOrders.has(order.id) ? 'Done' : 'Edit Order'}
+                </button>
+              </div>
+            )}
+            {/* Header */}
+            <div className="order-header">
+              <div className="order-info">
+                <div className="order-title-row">
+                  <h3>Order #{order.id.slice(-6)}</h3>
+                  <button
+                    className="btn-delete-order"
+                    style={{ background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
+                    title="Delete this order"
+                    onClick={() => {
                         if (window.confirm('Are you sure you want to permanently delete this order?')) {
                           deleteOrder(order.id);
                         }
@@ -675,12 +682,6 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                   {isEditing ? (
                     <>
                       <button
-                        onClick={() => toggleEdit(order.id)}
-                        className="btn-neon-cyan"
-                      >
-                        Done
-                      </button>
-                      <button
                         onClick={() => cancelEdit(order.id)}
                         className="btn-cancel-edit"
                       >
@@ -689,12 +690,6 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                     </>
                   ) : (
                     <>
-                      <button
-                        onClick={() => toggleEdit(order.id)}
-                        className="btn-edit"
-                      >
-                        Edit
-                      </button>
                       <label className="status-toggle">
                         <input
                           type="checkbox"

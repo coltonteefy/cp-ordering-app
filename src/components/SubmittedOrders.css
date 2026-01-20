@@ -372,6 +372,20 @@
   flex-wrap: wrap;
 }
 
+.order-edit-link {
+  background: none;
+  border: none;
+  color: #b1432d;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 0.35rem;
+  text-decoration: underline;
+}
+
+.order-edit-link:hover {
+  color: #8d311b;
+}
+
 .order-info h3 {
   font-size: 1.125rem;
   font-weight: 600;
@@ -393,6 +407,9 @@
   text-transform: uppercase;
   text-align: center;
   border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .warehouse-header.warehouse-us {
@@ -405,6 +422,19 @@
   background: #6B9BD1;
   color: #FFFFFF;
   border-bottom-color: #5580B5;
+}
+
+.warehouse-header .order-edit-link {
+  background: none;
+  border: none;
+  color: #ffffff;
+  text-decoration: underline;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.warehouse-header .order-edit-link:hover {
+  color: #f7e7c6;
 }
 
 .order-date {
