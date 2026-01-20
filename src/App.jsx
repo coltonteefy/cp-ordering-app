@@ -138,6 +138,7 @@ function App() {
 
         {/* Main Content */}
           <div className="main-content">
+            <div className="page-transition" key={activePage}>
             {activePage === 'products' ? (
               <ProductManager 
                 onSuccess={showModal}
@@ -155,13 +156,14 @@ function App() {
                 <NextOrderList 
                   onSuccess={showModal}
                   onError={showModal}
-                />
-                <SubmittedOrders 
-                  onSuccess={showModal}
-                  onError={showModal}
-                />
-              </>
+              />
+              <SubmittedOrders 
+                onSuccess={showModal}
+                onError={showModal}
+              />
+            </>
             )}
+            </div>
           </div>
         </div>
       )}

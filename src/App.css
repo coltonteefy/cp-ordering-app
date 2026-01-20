@@ -468,6 +468,22 @@ body {
   gap: 2rem;
 }
 
+.page-transition {
+  animation: fadeSlide 0.35s ease;
+  will-change: opacity, transform;
+}
+
+@keyframes fadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Button styles */
 .btn-neon-cyan {
   background: #C85A3F;
@@ -542,4 +558,3 @@ body {
 .h-5 {
   height: 1.25rem;
 }
-
