@@ -340,6 +340,32 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     }
   };
 
+  const updateTrackingStatus = async (orderId, entryIdx, status) => {
+    setOrders(prev =>
+      prev.map(o => {
+        if (o.id !== orderId) return o;
+        const entries = o.trackingEntries && Array.isArray(o.trackingEntries) && o.trackingEntries.length
+          ? [...o.trackingEntries]
+          : (o.trackingNumber && o.carrier ? [{ id: 'legacy', carrier: o.carrier, number: o.trackingNumber, note: '', status: o.status || 'pending' }] : []);
+        if (!entries[entryIdx]) return o;
+        entries[entryIdx] = { ...entries[entryIdx], status };
+        return { ...o, trackingEntries: entries };
+      })
+    );
+
+    try {
+      const order = orders.find(o => o.id === orderId);
+      const entries = order?.trackingEntries && Array.isArray(order.trackingEntries) && order.trackingEntries.length
+        ? [...order.trackingEntries]
+        : (order?.trackingNumber && order?.carrier ? [{ id: 'legacy', carrier: order.carrier, number: order.trackingNumber, note: '', status: order.status || 'pending' }] : []);
+      if (!entries[entryIdx]) return;
+      entries[entryIdx] = { ...entries[entryIdx], status };
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { trackingEntries: entries });
+    } catch (error) {
+      console.error('Error updating tracking status:', error);
+    }
+  };
+
   const updateItemQuantity = (orderId, itemId, newQuantity) => {
     setOrders(prevOrders => {
       const updated = prevOrders.map(order => {
@@ -481,8 +507,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     const discount = order.discountPercent || 0;
     const finalTotal = rawTotal - (rawTotal * (discount / 100));
     const trackingEntries = order.trackingEntries && Array.isArray(order.trackingEntries) && order.trackingEntries.length > 0
-      ? order.trackingEntries
-      : (order.trackingNumber && order.carrier ? [{ id: 'legacy', carrier: order.carrier, number: order.trackingNumber }] : []);
+      ? order.trackingEntries.map(te => ({ ...te, status: te.status || 'pending' }))
+      : (order.trackingNumber && order.carrier ? [{ id: 'legacy', carrier: order.carrier, number: order.trackingNumber, note: '', status: 'pending' }] : []);
 
     // CSV copy handler
     const copied = copiedOrderId === order.id;
@@ -520,13 +546,26 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
             {order.warehouse && (
               <div className={`warehouse-header warehouse-${order.warehouse.toLowerCase()}`}>
                 <span>{order.warehouse} WAREHOUSE</span>
-                <button
-                  className="order-edit-link"
-                  onClick={() => toggleEdit(order.id)}
-                  title={editingOrders.has(order.id) ? 'Finish editing' : 'Edit order'}
-                >
-                  {editingOrders.has(order.id) ? 'Done' : 'Edit Order'}
-                </button>
+                <div className="warehouse-actions">
+                  <button
+                    className="order-edit-link"
+                    onClick={() => toggleEdit(order.id)}
+                    title={editingOrders.has(order.id) ? 'Finish editing' : 'Edit order'}
+                  >
+                    {editingOrders.has(order.id) ? 'Done' : 'Edit Order'}
+                  </button>
+                  <button
+                    className="order-delete-link"
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to permanently delete this order?')) {
+                        deleteOrder(order.id);
+                      }
+                    }}
+                    title="Delete this order"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             )}
             {/* Header */}
@@ -534,19 +573,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
               <div className="order-info">
                 <div className="order-title-row">
                   <h3>Order #{order.id.slice(-6)}</h3>
-                  <button
-                    className="btn-delete-order"
-                    style={{ background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
-                    title="Delete this order"
-                    onClick={() => {
-                        if (window.confirm('Are you sure you want to permanently delete this order?')) {
-                          deleteOrder(order.id);
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                </div>
             {isEditing ? (
               <input
                 type="datetime-local"
@@ -564,10 +591,10 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
             {isEditing ? (
               <div className="tracking-multi">
                 {(trackingEntries.length ? trackingEntries : [{ id: Date.now().toString(), carrier: order.carrier || 'UPS', number: order.trackingNumber || '', note: '' }]).map((entry, idx) => (
-                    <div className="tracking-row" key={entry.id || idx}>
-                      <div className="tracking-row-main">
-                        <select
-                          value={entry.carrier || 'UPS'}
+                  <div className="tracking-row" key={entry.id || idx}>
+                    <div className="tracking-row-main">
+                      <select
+                        value={entry.carrier || 'UPS'}
                           onChange={(e) => {
                             const updated = trackingEntries.length ? [...trackingEntries] : [];
                             if (!updated.length) updated.push({ ...entry });
@@ -613,6 +640,21 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                         </button>
                       )}
                     </div>
+                    <label className="tracking-status-toggle">
+                      <input
+                        type="checkbox"
+                        checked={(entry.status || 'pending') === 'delivered'}
+                        onChange={(e) => {
+                          const updated = trackingEntries.length ? [...trackingEntries] : [];
+                          if (!updated.length) updated.push({ ...entry });
+                          updated[idx] = { ...updated[idx], status: e.target.checked ? 'delivered' : 'pending' };
+                          setOrders(prev =>
+                            prev.map(o => o.id === order.id ? { ...o, trackingEntries: updated } : o)
+                          );
+                        }}
+                      />
+                      <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+                    </label>
                     <textarea
                       className="tracking-note"
                       rows="2"
@@ -632,7 +674,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                 <button
                   className="tracking-add"
                   onClick={() => {
-                    const updated = [...trackingEntries, { id: Date.now().toString(), carrier: 'UPS', number: '', note: '' }];
+                    const updated = [...trackingEntries, { id: Date.now().toString(), carrier: 'UPS', number: '', note: '', status: 'pending' }];
                     setOrders(prev =>
                       prev.map(o => o.id === order.id ? { ...o, trackingEntries: updated } : o)
                     );
@@ -643,25 +685,34 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
               </div>
             ) : trackingEntries.length ? (
               <div className="tracking-display-multi">
-                {trackingEntries.map((entry, idx) => (
+                    {trackingEntries.map((entry, idx) => (
                   <div key={entry.id || idx} className="tracking-display-wrap">
-                    {entry.carrier && entry.number ? (
-                      <a
-                        href={getTrackingUrl(entry.carrier, entry.number)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="tracking-display"
-                      >
-                        <span className="carrier-text">{entry.carrier}</span>
-                        <span className="tracking-text">{entry.number}</span>
-                        <span className="tracking-link-icon">📦</span>
-                      </a>
-                    ) : (
-                      <div className="tracking-display tracking-empty">
-                        <span className="carrier-text">{entry.carrier || 'UPS'}</span>
-                        <span className="tracking-text">No tracking number</span>
-                      </div>
-                    )}
+                    <div className="tracking-inline">
+                      {entry.carrier && entry.number ? (
+                        <a
+                          href={getTrackingUrl(entry.carrier, entry.number)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="tracking-display"
+                        >
+                          <span className="carrier-text">{entry.carrier}</span>
+                          <span className="tracking-text">{entry.number}</span>
+                        </a>
+                      ) : (
+                        <div className="tracking-display tracking-empty">
+                          <span className="carrier-text">{entry.carrier || 'UPS'}</span>
+                          <span className="tracking-text">No tracking number</span>
+                        </div>
+                      )}
+                      <label className="tracking-status-toggle">
+                        <input
+                          type="checkbox"
+                          checked={(entry.status || 'pending') === 'delivered'}
+                          onChange={(e) => updateTrackingStatus(order.id, idx, e.target.checked ? 'delivered' : 'pending')}
+                        />
+                        <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+                      </label>
+                    </div>
                     {entry.note ? (
                       <div className="tracking-note-display">
                         {entry.note}

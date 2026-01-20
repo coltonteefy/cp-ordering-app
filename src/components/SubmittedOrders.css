@@ -412,6 +412,12 @@
   align-items: center;
 }
 
+.warehouse-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .warehouse-header.warehouse-us {
   background: #D4A574;
   color: #FFFFFF;
@@ -435,6 +441,19 @@
 
 .warehouse-header .order-edit-link:hover {
   color: #f7e7c6;
+}
+
+.warehouse-header .order-delete-link {
+  background: none;
+  border: none;
+  color: #ffecec;
+  text-decoration: underline;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.warehouse-header .order-delete-link:hover {
+  color: #ffd0d0;
 }
 
 .order-date {
@@ -509,6 +528,27 @@
   flex-direction: column;
   gap: 0.2rem;
 }
+
+.tracking-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tracking-status-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: #8B6F47;
+}
+
+.tracking-status-toggle input {
+  transform: scale(1.1);
+  accent-color: #e6a94a;
+}
+
 
 .tracking-note {
   width: 100%;
