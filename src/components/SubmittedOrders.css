@@ -83,6 +83,34 @@
   margin-top: 2rem;
 }
 
+.orders-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.summary-item {
+  background: #FEFAF5;
+  border: 1px solid #E6A94A;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.summary-label {
+  font-size: 0.85rem;
+  color: #8B6F47;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.35rem;
+}
+
+.summary-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #5D3A1A;
+}
+
 .orders-group {
   margin-bottom: 3rem;
 }

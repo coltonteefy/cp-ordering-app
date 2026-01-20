@@ -962,8 +962,27 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     });
   };
 
+  const totalPending = calculateTotalCost(orders);
+  const totalDelivered = calculateTotalCost(deliveredOrders);
+  const totalAll = totalPending + totalDelivered;
+
   return (
     <div className="submitted-orders-section">
+      <div className="orders-summary">
+        <div className="summary-item">
+          <div className="summary-label">All Orders</div>
+          <div className="summary-value">${totalAll.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        </div>
+        <div className="summary-item">
+          <div className="summary-label">Pending</div>
+          <div className="summary-value">${totalPending.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        </div>
+        <div className="summary-item">
+          <div className="summary-label">Delivered</div>
+          <div className="summary-value">${totalDelivered.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        </div>
+      </div>
+
       {/* Pending Orders */}
       <div className="orders-group">
         <h2 className="text-glow-fuchsia">Pending Orders</h2>
