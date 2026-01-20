@@ -15,6 +15,29 @@ const pickLabelLink = (p) => {
     "";
   return raw.trim();
 };
+const buildEmbedLink = (url) => {
+  const trimmed = (url || "").trim();
+  if (!trimmed) return "";
+
+  // If it's already an embed link, use it as-is
+  if (trimmed.includes("embed")) return trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    // Force Canva URLs to /view and add embed=1 param
+    if (parsed.hostname.includes("canva.com")) {
+      parsed.pathname = parsed.pathname.replace(/\/edit$/, "/view").replace(/\/view$/, "/view");
+      parsed.searchParams.set("embed", "1");
+      return parsed.toString();
+    }
+    // Fallback for other hosts: just add embed param
+    parsed.searchParams.set("embed", "1");
+    return parsed.toString();
+  } catch (e) {
+    // If URL constructor fails, append query param manually
+    return `${trimmed}${trimmed.includes("?") ? "&" : "?"}embed=1`;
+  }
+};
 
 const LotIDTracker = () => {
   const [products, setProducts] = useState([]);
@@ -203,6 +226,7 @@ const LotIDTracker = () => {
         {products.map((p, idx) => {
         const key = p.docId;
           const labelLink = pickLabelLink(p);
+          const embedLink = buildEmbedLink(labelLink);
           const data = productData[key] || {
             productID: "",
             currentCOA: createEmptyCOA(),
@@ -230,14 +254,14 @@ const LotIDTracker = () => {
             </div>
 
             <div className="lot-id-template">
-              {idx === 0 && (
+              {embedLink && (
                 <div className="lot-id-template-frame">
                   <iframe
                     loading="lazy"
-                    src="https://www.canva.com/design/DAG-4Dea7-s/bS8nzpq96ZVjYdNaN59ctQ/view?embed"
+                    src={embedLink}
                     allowFullScreen
                     allow="fullscreen"
-                    title="Freedom testing labels template"
+                    title={`${p.product} labels template`}
                   ></iframe>
                 </div>
               )}
