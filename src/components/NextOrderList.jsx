@@ -136,8 +136,10 @@ const NextOrderList = ({ onSuccess, onError }) => {
       }
     });
 
-    // Remove empty groups
-    return Object.entries(groups).filter(([_, products]) => products.length > 0);
+    // Remove empty groups and sort categories A→Z
+    return Object.entries(groups)
+      .filter(([_, products]) => products.length > 0)
+      .sort(([a], [b]) => a.localeCompare(b));
   };
 
   // Group products by base name (without strength)
@@ -234,175 +236,128 @@ const NextOrderList = ({ onSuccess, onError }) => {
         </button>
       </div>
 
-      {/* Add Item Form */}
-      <div className="add-item-form">
-        <h3>Select Products - {activeWarehouse} Warehouse</h3>
-        <div className="categories-grid">
-          {groupProductsByCategory(
-            products.filter(product => {
+      <div className="order-layout-2col">
+        <div className="order-col-left">
+          {/* Add Item Form */}
+          <div className="add-item-form">
+            <h3>Select Products - {activeWarehouse} Warehouse</h3>
+        <div className="product-flat-list">
+          {products
+            .filter(product => {
               const cost = product.warehouseCosts?.[activeWarehouse];
               return cost !== undefined && cost > 0;
             })
-          ).map(([categoryName, categoryProducts]) => {
-            const groupedByName = groupProductsByName(categoryProducts);
-            
-            // Separate into multi-variant and single-variant products
-            const multiVariant = [];
-            const singleVariant = [];
-            
-            Object.entries(groupedByName).forEach(([productName, variants]) => {
-              if (variants.length > 1) {
-                multiVariant.push([productName, variants]);
-              } else {
-                singleVariant.push([productName, variants]);
-              }
-            });
-            
-            return (
-              <div key={categoryName} className="product-category">
-                <h4 className="category-title">{categoryName}</h4>
-                <div className="product-groups">
-                  {/* Render multi-variant products first */}
-                  {multiVariant.map(([productName, variants]) => (
-                    <div key={productName} className="product-group">
-                      <div className="product-base-name">{productName}</div>
-                      <div className="product-pills">
-                        {variants.map((product, index) => {
-                          const isInOrder = orderItems.some(item =>
-                            item.productName === product.product &&
-                            item.productStrength === product.strength &&
-                            item.warehouse === activeWarehouse
-                          );
-                          return (
-                            <button
-                              key={product.id || index}
-                              onClick={() => handleProductClick(product)}
-                              className={`product-pill ${isInOrder ? 'in-order' : ''}`}
-                              disabled={isInOrder}
-                            >
-                              {product.strength}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                  
-                  {/* Render single-variant products at the bottom */}
-                  {singleVariant.length > 0 && (
-                    <div className="product-pills">
-                      {singleVariant.map(([productName, variants]) => {
-                        const product = variants[0];
-                        const isInOrder = orderItems.some(item =>
-                          item.productName === product.product &&
-                          item.productStrength === product.strength &&
-                          item.warehouse === activeWarehouse
-                        );
-                        return (
-                          <button
-                            key={productName}
-                            onClick={() => handleProductClick(product)}
-                            className={`product-pill ${isInOrder ? 'in-order' : ''}`}
-                            disabled={isInOrder}
-                          >
-                            {product.product} - {product.strength}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+            .sort((a, b) => (a.id || '').localeCompare(b.id || ''))
+            .map((product, index) => {
+              const isInOrder = orderItems.some(item =>
+                item.productName === product.product &&
+                item.productStrength === product.strength &&
+                item.warehouse === activeWarehouse
+              );
+              const label = `${product.id || product.product} ${product.strength}`;
+              return (
+                <button
+                  key={product.id || index}
+                  onClick={() => handleProductClick(product)}
+                  className={`product-pill ${isInOrder ? 'in-order' : ''}`}
+                  disabled={isInOrder}
+                >
+                  {label}
+                </button>
+              );
+            })}
         </div>
       </div>
+        </div>
 
-      {/* Order List Table */}
-      <div className="order-table-container">
-        <table className="order-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Strength</th>
-              <th>Warehouse</th>
-              <th>Quantity</th>
-              <th>Price per Kit</th>
-              <th>Total Cost</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orderItems.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="empty-row">
-                  No items in order list. Use the form above to add items.
-                </td>
-              </tr>
-            ) : (
-              orderItems.map((item) => {
-                const itemKey = `${item.productName} ${item.productStrength} ${item.warehouse}`;
-                return (
-                  <tr key={itemKey}>
-                    <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
-                    <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
-                    <td>
-                      <span className="warehouse-badge">{item.warehouse}</span>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => updateItem(itemKey, 'quantity', e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="quantity-input"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.pricePerKit}
-                        onChange={(e) => updateItem(itemKey, 'pricePerKit', e.target.value)}
-                        className="price-input"
-                      />
-                    </td>
-                    <td className="total-cost">${formatPrice(item.quantity * item.pricePerKit)}</td>
-                    <td>
-                      <button
-                        onClick={() => removeItem(item)}
-                        className="remove-btn"
-                        title="Remove from order"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                      </button>
+        <div className="order-col-right">
+          {/* Order List Table */}
+          <div className="order-table-container">
+            <table className="order-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Strength</th>
+                  <th>Warehouse</th>
+                  <th>Quantity</th>
+                  <th>Price per Kit</th>
+                  <th>Total Cost</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderItems.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="empty-row">
+                      No items in order list. Use the form above to add items.
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                ) : (
+                  orderItems.map((item) => {
+                    const itemKey = `${item.productName} ${item.productStrength} ${item.warehouse}`;
+                    return (
+                      <tr key={itemKey}>
+                        <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
+                        <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
+                        <td>
+                          <span className="warehouse-badge">{item.warehouse}</span>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(itemKey, 'quantity', e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            className="quantity-input"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.pricePerKit}
+                            onChange={(e) => updateItem(itemKey, 'pricePerKit', e.target.value)}
+                            className="price-input"
+                          />
+                        </td>
+                        <td className="total-cost">${formatPrice(item.quantity * item.pricePerKit)}</td>
+                        <td>
+                          <button
+                            onClick={() => removeItem(item)}
+                            className="remove-btn"
+                            title="Remove from order"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
 
-      {/* Order Total */}
-      <div className="order-total-card">
-        <h3>Order Total</h3>
-        <p className="total-amount">${formatPrice(calculateTotal())}</p>
-      </div>
+          {/* Order Total */}
+          <div className="order-total-card">
+            <h3>Order Total</h3>
+            <p className="total-amount">${formatPrice(calculateTotal())}</p>
+          </div>
 
-      {/* Submit Order Button */}
-      <button
-        onClick={submitOrder}
-        className="btn-neon-lime submit-order-btn"
-        disabled={orderItems.length === 0 || isSubmitting}
-      >
-        {isSubmitting ? 'Submitting...' : 'Submit Order'}
-      </button>
+          {/* Submit Order Button */}
+          <button
+            onClick={submitOrder}
+            className="btn-neon-lime submit-order-btn"
+            disabled={orderItems.length === 0 || isSubmitting}
+          >
+            {isSubmitting ? 'Submitting...' : 'Submit Order'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
