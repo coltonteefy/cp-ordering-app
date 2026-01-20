@@ -302,68 +302,47 @@ const ProductManager = ({ onSuccess, onError }) => {
         </div>
       )}
 
-      <div className="products-table-container">
-        <table className="products-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Product</th>
-              <th>Strength</th>
-              <th>US Cost per Kit ($)</th>
-              <th>HK Cost per Kit ($)</th>
-              <th>Current COA</th>
-              <th>Edit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map(product => (
-              <tr 
-                key={product.id}
-                className="clickable"
+      <div className="products-card-grid">
+        {products.map((product) => (
+          <div key={product.id} className="product-card">
+            <div className="product-card-top">
+              <div className="product-card-id">{product.id}</div>
+              <button
+                className="btn-neon-cyan btn-sm"
+                onClick={() =>
+                  setEditForm({
+                    ...product,
+                    docId: product.docId || product.id,
+                    warehouseCosts: { ...product.warehouseCosts },
+                    currentCoa: { lot: '', url: '', ...product.currentCoa },
+                    canvaTemplateUrl: product.canvaTemplateUrl || '',
+                    pastCoas: product.pastCoas || []
+                  })
+                }
               >
-                <td className="product-id">{product.id}</td>
-                <td className="product-name">{product.product}</td>
-                <td className="product-strength">{product.strength}</td>
-                <td>
-                  <span className="cost-display">${(product.warehouseCosts?.US || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </td>
-                <td>
-                  <span className="cost-display">${(product.warehouseCosts?.HK || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </td>
-                <td className="product-coa">
-                  <div><b>Lot:</b> {product.currentCoa?.lot || '—'}</div>
-                  <div>
-                    <b>URL:</b>{' '}
-                    {product.currentCoa?.url ? (
-                      <a href={product.currentCoa.url} target="_blank" rel="noopener noreferrer">
-                        {product.currentCoa.url}
-                      </a>
-                    ) : (
-                      '—'
-                    )}
-                  </div>
-                </td>
-                <td>
-                  <button
-                    className="btn-neon-cyan btn-sm"
-                    onClick={() =>
-                      setEditForm({
-                        ...product,
-                        docId: product.docId || product.id,
-                        warehouseCosts: { ...product.warehouseCosts },
-                        currentCoa: { lot: '', url: '', ...product.currentCoa },
-                        canvaTemplateUrl: product.canvaTemplateUrl || '',
-                        pastCoas: product.pastCoas || []
-                      })
-                    }
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                Edit
+              </button>
+            </div>
+            <div className="product-card-name">{product.product}</div>
+            <div className="product-card-meta">
+              <span className="pill">{product.strength || '—'}</span>
+            </div>
+            <div className="product-card-costs">
+              <div className="cost-block">
+                <div className="cost-label">US Cost / Kit</div>
+                <div className="cost-value">
+                  ${(product.warehouseCosts?.US || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+              <div className="cost-block">
+                <div className="cost-label">HK Cost / Kit</div>
+                <div className="cost-value">
+                  ${(product.warehouseCosts?.HK || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {editForm && (
