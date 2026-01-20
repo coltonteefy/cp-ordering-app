@@ -3,6 +3,7 @@
   display: flex;
   flex-direction: column;
   margin: 0 0 1.5rem 0;
+  padding: 0 0.75rem 0.75rem;
 }
 
 .order-items-header {
@@ -11,9 +12,9 @@
   font-weight: 700;
   color: #a67c3c;
   background: #f7f1e7;
-  padding: 10px 0 10px 0;
+  padding: 8px 6px;
   border-bottom: 2px solid #e6a94a;
-  font-size: 1.02em;
+  font-size: 0.85em;
   text-align: center;
 }
 
@@ -22,11 +23,11 @@
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   align-items: center;
-  padding: 14px 0 14px 0;
+  padding: 10px 6px;
   border-bottom: 1px solid #f0e6da;
   background: #fdf8f3;
   gap: 0.5rem;
-  font-size: 1.01em;
+  font-size: 0.85em;
   text-align: center;
 }
 
@@ -412,6 +413,13 @@
   margin-top: 0.25rem;
 }
 
+.order-copy-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.35rem 0 0.5rem 0;
+  padding: 0 0.75rem;
+}
+
 .tracking-inputs {
   display: flex;
   gap: 0.5rem;
@@ -620,6 +628,19 @@
   gap: 0.75rem;
   align-items: flex-start;
   flex-wrap: wrap;
+}
+
+.status-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: #8B6F47;
+}
+
+.status-toggle input {
+  transform: scale(1.2);
+  accent-color: #e6a94a;
 }
 
 .btn-edit {

@@ -67,7 +67,8 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
           ordersData.push({
             id: doc.id,
             ...data,
-            items: itemsWithIds
+            items: itemsWithIds,
+            status: data.status || 'pending'
           });
         });
         
@@ -331,6 +332,14 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     }
   };
 
+  const updateOrderStatus = async (orderId, status) => {
+    try {
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { status });
+    } catch (error) {
+      console.error('Error updating order status:', error);
+    }
+  };
+
   const updateItemQuantity = (orderId, itemId, newQuantity) => {
     setOrders(prevOrders => {
       const updated = prevOrders.map(order => {
@@ -514,46 +523,23 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
           </div>
         )}
         {/* Header */}
-        <div className="order-header">
-          <div className="order-info">
-            <div className="order-title-row">
-              <h3>Order #{order.id.slice(-6)}</h3>
-              <button
-                className={`btn-copy-order${copied ? ' copied' : ''}`}
-                style={{
-                  marginLeft: 'auto',
-                  background: copied ? '#E6A94A' : '#f7e7c6',
-                  color: copied ? '#fff' : '#8B6F47',
-                  border: '1px solid #E6A94A',
-                  borderRadius: '4px',
-                  padding: '4px 10px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  marginRight: 8,
-                  transition: 'background 0.3s, color 0.3s',
-                  boxShadow: copied ? '0 0 8px #E6A94A' : 'none',
-                  outline: copied ? '2px solid #E6A94A' : 'none',
-                  outlineOffset: copied ? '2px' : '0',
-                  opacity: copied ? 0.85 : 1
-                }}
-                title="Copy order items as text"
-                onClick={handleCopyOrderItems}
-              >
-                {copied ? 'Copied!' : 'Copy Items'}
-              </button>
-              <button
-                className="btn-delete-order"
-                style={{ background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
-                title="Delete this order"
-                onClick={() => {
-                  if (window.confirm('Are you sure you want to permanently delete this order?')) {
-                    deleteOrder(order.id);
-                  }
-                }}
-              >
-                Delete
-              </button>
-            </div>
+              <div className="order-header">
+                <div className="order-info">
+                  <div className="order-title-row">
+                    <h3>Order #{order.id.slice(-6)}</h3>
+                    <button
+                      className="btn-delete-order"
+                      style={{ background: '#fff0f0', color: '#c00', border: '1px solid #c00', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
+                      title="Delete this order"
+                      onClick={() => {
+                        if (window.confirm('Are you sure you want to permanently delete this order?')) {
+                          deleteOrder(order.id);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
             {isEditing ? (
               <input
                 type="datetime-local"
@@ -567,7 +553,7 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
               </p>
             )}
 
-            {/* Tracking Info */}
+              {/* Tracking Info */}
             {isEditing ? (
               <div className="tracking-multi">
                 {(trackingEntries.length ? trackingEntries : [{ id: Date.now().toString(), carrier: order.carrier || 'UPS', number: order.trackingNumber || '', note: '' }]).map((entry, idx) => (
@@ -709,20 +695,46 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                       >
                         Edit
                       </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm('Mark this order as delivered?')) {
-                            markOrderDelivered(order.id);
-                          }
-                        }}
-                        className="btn-neon-lime"
-                      >
-                        Mark Delivered
-                      </button>
+                      <label className="status-toggle">
+                        <input
+                          type="checkbox"
+                          checked={(order.status || 'pending') === 'delivered'}
+                          onChange={(e) => {
+                            const nextStatus = e.target.checked ? 'delivered' : 'pending';
+                            setOrders(prev =>
+                              prev.map(o => o.id === order.id ? { ...o, status: nextStatus } : o)
+                            );
+                            updateOrderStatus(order.id, nextStatus);
+                          }}
+                        />
+                        <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+                      </label>
                     </>
                   )}
                 </div>
               </div>
+
+          <div className="order-copy-row">
+            <button
+              className={`btn-copy-order${copied ? ' copied' : ''}`}
+              style={{
+                background: 'transparent',
+                color: copied ? '#E6A94A' : '#8B6F47',
+                border: '1px solid #E6A94A',
+                borderRadius: '4px',
+                padding: '4px 10px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'background 0.3s, color 0.3s',
+                boxShadow: 'none',
+                opacity: copied ? 0.85 : 1
+              }}
+              title="Copy order items as text"
+              onClick={handleCopyOrderItems}
+            >
+              {copied ? 'Copied!' : 'Copy Items'}
+            </button>
+          </div>
 
               {/* Items List */}
               <div className="order-items-grid">
