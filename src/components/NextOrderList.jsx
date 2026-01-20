@@ -13,6 +13,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
     const savedOrder = localStorage.getItem('pendingOrder');
     return savedOrder ? JSON.parse(savedOrder) : [];
   });
+  const [recentlyAddedKey, setRecentlyAddedKey] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [products, setProducts] = useState([]);
   const [activeWarehouse, setActiveWarehouse] = useState('US');
@@ -72,7 +73,10 @@ const NextOrderList = ({ onSuccess, onError }) => {
       pricePerKit: pricePerKit,
       warehouse: activeWarehouse,
     };
+    const itemKey = `${newItem.productName} ${newItem.productStrength} ${newItem.warehouse}`;
     setOrderItems([...orderItems, newItem]);
+    setRecentlyAddedKey(itemKey);
+    setTimeout(() => setRecentlyAddedKey(null), 900);
   };
 
   const removeItem = (targetItem) => {
@@ -293,15 +297,16 @@ const NextOrderList = ({ onSuccess, onError }) => {
                     </td>
                   </tr>
                 ) : (
-                  orderItems.map((item) => {
-                    const itemKey = `${item.productName} ${item.productStrength} ${item.warehouse}`;
-                    return (
-                      <tr key={itemKey}>
-                        <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
-                        <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
-                        <td>
-                          <span className="warehouse-badge">{item.warehouse}</span>
-                        </td>
+              orderItems.map((item) => {
+                const itemKey = `${item.productName} ${item.productStrength} ${item.warehouse}`;
+                const highlight = recentlyAddedKey === itemKey;
+                return (
+                  <tr key={itemKey} className={highlight ? 'order-row-new' : ''}>
+                    <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
+                    <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
+                    <td>
+                      <span className="warehouse-badge">{item.warehouse}</span>
+                    </td>
                         <td>
                           <input
                             type="number"
