@@ -323,14 +323,6 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     }
   };
 
-  const updateTrackingNumber = async (orderId, trackingNumber) => {
-    try {
-      await updateDoc(doc(db, 'c&pProductOrders', orderId), { trackingNumber });
-    } catch (error) {
-      console.error('Error updating tracking number:', error);
-    }
-  };
-
   const updateDiscount = async (orderId, discountPercent) => {
     try {
       await updateDoc(doc(db, 'c&pProductOrders', orderId), { discountPercent });
@@ -383,11 +375,21 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
 
+    const effectiveTrackingEntries = (ord) => {
+      if (ord.trackingEntries && ord.trackingEntries.length) return ord.trackingEntries;
+      if (ord.trackingNumber && ord.carrier) {
+        return [{ id: 'legacy', carrier: ord.carrier, number: ord.trackingNumber, note: '' }];
+      }
+      return [];
+    };
+
     try {
       await updateDoc(doc(db, 'c&pProductOrders', orderId), {
         items: order.items,
         total: order.total,
-        submittedAt: order.submittedAt
+        submittedAt: order.submittedAt,
+        notes: order.notes || '',
+        trackingEntries: effectiveTrackingEntries(order)
       });
     } catch (error) {
       console.error('Error saving order changes:', error);
@@ -469,6 +471,9 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     const rawTotal = order.total;
     const discount = order.discountPercent || 0;
     const finalTotal = rawTotal - (rawTotal * (discount / 100));
+    const trackingEntries = order.trackingEntries && Array.isArray(order.trackingEntries) && order.trackingEntries.length > 0
+      ? order.trackingEntries
+      : (order.trackingNumber && order.carrier ? [{ id: 'legacy', carrier: order.carrier, number: order.trackingNumber }] : []);
 
     // CSV copy handler
     const copied = copiedOrderId === order.id;
@@ -564,14 +569,24 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
 
             {/* Tracking Info */}
             {isEditing ? (
-              <div className="tracking-inputs">
-                      <select
-                        value={order.carrier || 'UPS'}
-                        onChange={(e) => updateCarrier(order.id, e.target.value)}
-                        className="carrier-select"
-                      >
-                        <option value="">Select Carrier</option>
-                        <option value="USPS">USPS</option>
+              <div className="tracking-multi">
+                {(trackingEntries.length ? trackingEntries : [{ id: Date.now().toString(), carrier: order.carrier || 'UPS', number: order.trackingNumber || '', note: '' }]).map((entry, idx) => (
+                    <div className="tracking-row" key={entry.id || idx}>
+                      <div className="tracking-row-main">
+                        <select
+                          value={entry.carrier || 'UPS'}
+                          onChange={(e) => {
+                            const updated = trackingEntries.length ? [...trackingEntries] : [];
+                            if (!updated.length) updated.push({ ...entry });
+                            updated[idx] = { ...updated[idx], carrier: e.target.value };
+                            setOrders(prev =>
+                              prev.map(o => o.id === order.id ? { ...o, trackingEntries: updated } : o)
+                            );
+                          }}
+                          className="carrier-select"
+                        >
+                          <option value="">Select Carrier</option>
+                          <option value="USPS">USPS</option>
                         <option value="UPS">UPS</option>
                         <option value="FedEx">FedEx</option>
                         <option value="DHL">DHL</option>
@@ -579,37 +594,95 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                       <input
                         type="text"
                         placeholder="Tracking Number"
-                        value={order.trackingNumber || ''}
+                        value={entry.number || ''}
                         onChange={(e) => {
-                          const newValue = e.target.value;
-                          // Update local state for immediate feedback
-                          const updatedOrders = orders.map(o => 
-                            o.id === order.id ? { ...o, trackingNumber: newValue } : o
+                          const updated = trackingEntries.length ? [...trackingEntries] : [];
+                          if (!updated.length) updated.push({ ...entry });
+                          updated[idx] = { ...updated[idx], number: e.target.value };
+                          setOrders(prev =>
+                            prev.map(o => o.id === order.id ? { ...o, trackingEntries: updated } : o)
                           );
-                          setOrders(updatedOrders);
-                          // Save to database
-                          updateTrackingNumber(order.id, newValue);
                         }}
                         className="tracking-input"
                       />
+                      {trackingEntries.length > 1 && (
+                        <button
+                          className="tracking-remove"
+                          onClick={() => {
+                            const updated = trackingEntries.filter((_, i) => i !== idx);
+                            setOrders(prev =>
+                              prev.map(o => o.id === order.id ? { ...o, trackingEntries: updated } : o)
+                            );
+                          }}
+                          title="Remove tracking"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
-                  ) : order.trackingNumber && order.carrier ? (
-                    <a
-                      href={getTrackingUrl(order.carrier, order.trackingNumber)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="tracking-display"
-                    >
-                      <span className="carrier-text">{order.carrier}</span>
-                      <span className="tracking-text">{order.trackingNumber}</span>
-                      <span className="tracking-link-icon">📦</span>
-                    </a>
-                  ) : (
-                    <div className="tracking-display tracking-empty">
-                      <span className="carrier-text">{order.carrier || 'UPS'}</span>
-                      <span className="tracking-text">No tracking number</span>
-                    </div>
-                  )}
+                    <textarea
+                      className="tracking-note"
+                      rows="2"
+                      placeholder="Tracking notes (optional)"
+                      value={entry.note || ''}
+                      onChange={(e) => {
+                        const updated = trackingEntries.length ? [...trackingEntries] : [];
+                        if (!updated.length) updated.push({ ...entry });
+                        updated[idx] = { ...updated[idx], note: e.target.value };
+                        setOrders(prev =>
+                          prev.map(o => o.id === order.id ? { ...o, trackingEntries: updated } : o)
+                        );
+                      }}
+                    />
+                  </div>
+                ))}
+                <button
+                  className="tracking-add"
+                  onClick={() => {
+                    const updated = [...trackingEntries, { id: Date.now().toString(), carrier: 'UPS', number: '', note: '' }];
+                    setOrders(prev =>
+                      prev.map(o => o.id === order.id ? { ...o, trackingEntries: updated } : o)
+                    );
+                  }}
+                >
+                  + Add Tracking
+                </button>
+              </div>
+            ) : trackingEntries.length ? (
+              <div className="tracking-display-multi">
+                {trackingEntries.map((entry, idx) => (
+                  <div key={entry.id || idx} className="tracking-display-wrap">
+                    {entry.carrier && entry.number ? (
+                      <a
+                        href={getTrackingUrl(entry.carrier, entry.number)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="tracking-display"
+                      >
+                        <span className="carrier-text">{entry.carrier}</span>
+                        <span className="tracking-text">{entry.number}</span>
+                        <span className="tracking-link-icon">📦</span>
+                      </a>
+                    ) : (
+                      <div className="tracking-display tracking-empty">
+                        <span className="carrier-text">{entry.carrier || 'UPS'}</span>
+                        <span className="tracking-text">No tracking number</span>
+                      </div>
+                    )}
+                    {entry.note ? (
+                      <div className="tracking-note-display">
+                        {entry.note}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="tracking-display tracking-empty">
+                <span className="carrier-text">{order.carrier || 'UPS'}</span>
+                <span className="tracking-text">No tracking number</span>
+              </div>
+            )}
           </div>
 
           <div className="order-actions">

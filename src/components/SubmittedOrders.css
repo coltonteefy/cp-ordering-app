@@ -167,6 +167,58 @@
   padding: 1rem;
 }
 
+.order-notes {
+  margin: 1rem 0 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.order-notes-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: #5D3A1A;
+}
+
+.order-notes-hint {
+  font-size: 0.8rem;
+  color: #8B6F47;
+}
+
+.order-notes-input {
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid #E6A94A;
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.95rem;
+  color: #3a2c1a;
+  background: #fffefb;
+  resize: vertical;
+}
+
+.order-notes-input:focus {
+  outline: none;
+  border-color: #d45b42;
+  box-shadow: 0 0 0 2px rgba(212, 91, 66, 0.1);
+}
+
+.order-notes-display {
+  background: #f9f6f1;
+  border: 1px solid #ede3d4;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  color: #3a2c1a;
+  min-height: 64px;
+}
+
+.order-notes-display.empty {
+  color: #9b8f82;
+  font-style: italic;
+}
+
 .date-group {
   margin-bottom: 2rem;
   background: #FFFFFF;
@@ -366,6 +418,86 @@
   align-items: center;
   margin-top: 0.5rem;
   flex-wrap: wrap;
+}
+.tracking-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.tracking-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tracking-row-main {
+  display: grid;
+  grid-template-columns: 160px 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tracking-remove {
+  background: #fff0f0;
+  color: #c00;
+  border: 1px solid #c00;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.tracking-add {
+  align-self: flex-start;
+  background: #f7e7c6;
+  color: #8B6F47;
+  border: 1px solid #E6A94A;
+  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.tracking-display-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tracking-display-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.tracking-note {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid #E6A94A;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+  color: #3a2c1a;
+  background: #fffefb;
+  resize: vertical;
+}
+
+.tracking-note:focus {
+  outline: none;
+  border-color: #d45b42;
+  box-shadow: 0 0 0 2px rgba(212, 91, 66, 0.1);
+}
+
+.tracking-note-display {
+  background: #f9f6f1;
+  border: 1px solid #ede3d4;
+  border-radius: 6px;
+  padding: 0.35rem 0.45rem;
+  color: #5D3A1A;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
 }
 
 .tracking-display {
