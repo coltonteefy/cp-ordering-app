@@ -1,0 +1,345 @@
+.payment-tracker {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #f0e8dc;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.05);
+}
+
+.payment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.chip-stack {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.info-chip {
+  background: linear-gradient(135deg, #f6f2ff, #efe8ff);
+  border: 1px solid #dfd2ff;
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  min-width: 180px;
+}
+
+.info-chip.delivered-chip {
+  background: linear-gradient(135deg, #e9f7ff, #def1ff);
+  border-color: #cfe8fb;
+}
+
+.payment-eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #b1432d;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+
+.payment-header h2 {
+  font-size: 1.4rem;
+  color: #2f2a26;
+  margin-bottom: 0.2rem;
+}
+
+.payment-subtitle {
+  color: #7b7366;
+  font-size: 0.95rem;
+}
+
+.balance-chip {
+  background: linear-gradient(135deg, #fff3e3, #ffe7d1);
+  border: 1px solid #ffd7ad;
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  min-width: 180px;
+}
+
+.chip-label {
+  font-size: 0.8rem;
+  color: #7b7366;
+}
+
+.chip-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #b1432d;
+  line-height: 1.2;
+}
+
+.chip-note {
+  font-size: 0.8rem;
+  color: #4f7f4f;
+  margin-top: 0.15rem;
+}
+
+.payment-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.8rem;
+  margin: 1rem 0 1.2rem;
+}
+
+.stat-card {
+  background: #fffaf3;
+  border: 1px solid #f0e8dc;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-card.paid-card {
+  background: linear-gradient(135deg, #e9f7ef, #d8f1e6);
+  border-color: #b7e6cc;
+}
+
+.stat-card.open-balance-card {
+  background: linear-gradient(135deg, #fff3e3, #ffe7d1);
+  border: 1px solid #ffd7ad;
+  border-radius: 12px;
+  color: #2f2a26;
+  box-shadow: 0 8px 20px rgba(177, 67, 45, 0.12);
+}
+
+.stat-card.open-balance-card .stat-value {
+  color: #b1432d;
+  font-size: 1.35rem;
+}
+
+.stat-card.delivered-card {
+  background: linear-gradient(135deg, #e9f3ff, #deedff);
+  border-color: #c9e0ff;
+}
+
+.stat-card.pending-card {
+  background: linear-gradient(135deg, #fff6e5, #ffeed4);
+  border-color: #ffe0b8;
+}
+
+.stat-card.accent {
+  background: linear-gradient(135deg, #fde7d2, #ffe9d7);
+  border-color: #ffd7ad;
+}
+
+.stat-card.positive {
+  background: linear-gradient(135deg, #e1f2df, #d4edd2);
+  border-color: #b8e3b0;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: #7b7366;
+}
+
+.stat-value {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #2f2a26;
+}
+
+.payment-body {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.payment-form {
+  border: 1px solid #f0e8dc;
+  border-radius: 12px;
+  padding: 1rem;
+  background: #fffcf6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.payment-form label {
+  font-size: 0.9rem;
+  color: #4a4238;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.payment-form input {
+  border: 1px solid #e6a94a;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.95rem;
+  color: #2f2a26;
+  background: #ffffff;
+}
+
+.payment-form select {
+  border: 1px solid #e6a94a;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.95rem;
+  color: #2f2a26;
+  background: #ffffff;
+}
+
+.payment-form input:focus {
+  outline: none;
+  border-color: #d45b42;
+  box-shadow: 0 0 0 2px rgba(212, 91, 66, 0.12);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.form-actions button {
+  background: #b1432d;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.6rem 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.form-actions button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.form-actions button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(177, 67, 45, 0.18);
+}
+
+.form-hint {
+  color: #7b7366;
+  font-size: 0.85rem;
+}
+
+.payment-list {
+  border: 1px solid #f0e8dc;
+  border-radius: 12px;
+  padding: 1rem;
+  background: #ffffff;
+  max-height: 415px;
+  display: flex;
+  flex-direction: column;
+}
+
+.payment-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.payment-count {
+  color: #7b7366;
+  font-size: 0.9rem;
+}
+
+.payment-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.payment-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid #f2ece2;
+}
+
+.payment-row.striped {
+  background: #fff8ef;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.payment-row:last-child {
+  border-bottom: none;
+}
+
+.payment-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.payment-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #2f2a26;
+}
+
+.payment-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  color: #7b7366;
+  font-size: 0.9rem;
+}
+
+.dot-sep::before {
+  content: "•";
+  margin-right: 0.4rem;
+  color: #c5b9aa;
+}
+
+.muted {
+  color: #9b9081;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #b1432d;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.3rem 0.4rem;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.empty-payments {
+  color: #7b7366;
+  padding: 0.5rem 0;
+}
+
+@media (max-width: 960px) {
+  .payment-body {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

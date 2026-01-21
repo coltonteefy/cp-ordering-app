@@ -8,6 +8,7 @@ import SubmittedOrders from './components/SubmittedOrders';
 import ProductManager from './components/ProductManager';
 import PromoSchedule from './components/PromoSchedule';
 import LotIDTracker from './components/LotIDTracker';
+import PaymentTracker from './components/PaymentTracker';
 import './App.css';
 
 function App() {
@@ -156,6 +157,10 @@ function App() {
                 <NextOrderList 
                   onSuccess={showModal}
                   onError={showModal}
+              />
+              <PaymentTracker 
+                onSuccess={showModal}
+                onError={showModal}
               />
               <SubmittedOrders 
                 onSuccess={showModal}
