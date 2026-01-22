@@ -10,6 +10,7 @@ const buildDocId = (product, strength) =>
 const ProductManager = ({ onSuccess, onError }) => {
   const [products, setProducts] = useState([]);
   const [editForm, setEditForm] = useState(null);
+  const [isClosing, setIsClosing] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProduct, setNewProduct] = useState({ product: '', strength: '', warehouseCosts: { US: 0, HK: 0 } });
@@ -133,7 +134,7 @@ const ProductManager = ({ onSuccess, onError }) => {
             : p
         )
       );
-      setEditForm(null);
+      handleClose();
     } catch (error) {
       console.error('Error updating product:', error);
       onError('Failed to update product: ' + error.message, 'Error');
@@ -148,6 +149,19 @@ const ProductManager = ({ onSuccess, onError }) => {
       document.body.style.overflow = prev;
     };
   }, [editForm]);
+
+  useEffect(() => {
+    if (editForm) setIsClosing(false);
+  }, [editForm]);
+
+  const handleClose = () => {
+    if (!editForm || isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      setEditForm(null);
+      setIsClosing(false);
+    }, 260);
+  };
 
   const addNewProduct = async () => {
     const strengthValue = newProduct.strength.replace(/[^0-9.]/g, '').trim();
@@ -349,9 +363,9 @@ const ProductManager = ({ onSuccess, onError }) => {
 
       {editForm &&
         ReactDOM.createPortal(
-          <div className="product-edit-overlay">
-            <div className="edit-backdrop" onClick={() => setEditForm(null)}></div>
-            <div className="edit-drawer">
+          <div className={`product-edit-overlay ${isClosing ? 'closing' : 'open'}`}>
+            <div className="edit-backdrop" onClick={handleClose}></div>
+            <div className={`edit-drawer ${isClosing ? 'closing' : 'open'}`}>
               <h2 className="modal-title">Edit Product</h2>
               <div className="edit-form-grid">
                 <div className="edit-field full">

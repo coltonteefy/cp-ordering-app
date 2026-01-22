@@ -326,7 +326,8 @@
   justify-content: center;
   padding: 0;
   z-index: 1200;
-  pointer-events: auto;
+  pointer-events: none;
+  opacity: 0;
 }
 
 .product-edit-overlay .edit-backdrop {
@@ -334,6 +335,19 @@
   inset: 0;
   background: rgba(51, 35, 26, 0.55);
   pointer-events: auto;
+}
+
+.product-edit-overlay.open,
+.product-edit-overlay.closing {
+  pointer-events: auto;
+}
+
+.product-edit-overlay.open {
+  animation: overlayFadeIn 0.32s ease forwards;
+}
+
+.product-edit-overlay.closing {
+  animation: overlayFadeOut 0.22s ease forwards;
 }
 
 .product-edit-overlay .edit-drawer {
@@ -345,11 +359,11 @@
   border-radius: 18px 18px 0 0;
   box-shadow: 0 26px 60px rgba(78, 58, 36, 0.2);
   padding: 1.75rem 1.5rem 2rem;
-  transform: translateY(0);
+  transform: translateY(30px);
   pointer-events: auto;
   overflow-y: auto;
   border: 1px solid #e6a94a38;
-  animation: slideUpModal 0.25s ease forwards;
+  opacity: 0;
 }
 
 .product-edit-overlay .modal-title {
@@ -388,13 +402,54 @@
   background: #c85a3f;
 }
 
-@keyframes slideUpModal {
+.product-edit-overlay.open .edit-drawer {
+  animation: drawerBounceIn 0.36s cubic-bezier(0.2, 0.85, 0.4, 1.1) forwards;
+}
+
+.product-edit-overlay.closing .edit-drawer {
+  animation: drawerSlideOut 0.22s ease forwards;
+}
+
+@keyframes drawerBounceIn {
+  0% {
+    transform: translateY(42px);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes drawerSlideOut {
   from {
-    transform: translateY(40px);
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(42px);
+    opacity: 0;
+  }
+}
+
+@keyframes overlayFadeIn {
+  from {
     opacity: 0;
   }
   to {
-    transform: translateY(0);
     opacity: 1;
+  }
+}
+
+@keyframes overlayFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
