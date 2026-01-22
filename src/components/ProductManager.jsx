@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { collection, onSnapshot, doc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './ProductManager.css';
@@ -138,6 +139,15 @@ const ProductManager = ({ onSuccess, onError }) => {
       onError('Failed to update product: ' + error.message, 'Error');
     }
   };
+
+  useEffect(() => {
+    if (!editForm) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [editForm]);
 
   const addNewProduct = async () => {
     const strengthValue = newProduct.strength.replace(/[^0-9.]/g, '').trim();
@@ -337,106 +347,108 @@ const ProductManager = ({ onSuccess, onError }) => {
         ))}
       </div>
 
-      {editForm && (
-        <>
-          <div className="modal-backdrop is-open" onClick={() => setEditForm(null)}></div>
-          <div className="modal-main is-open edit-modal">
-            <h2 className="modal-title">Edit Product</h2>
-            <div className="edit-form-grid">
-              <div className="edit-field full">
-                <label>ID</label>
-                <input
-                  type="text"
-                  value={editForm.id}
-                  onChange={(e) => setEditForm({ ...editForm, id: e.target.value })}
-                  placeholder="Doc ID"
-                />
-              </div>
+      {editForm &&
+        ReactDOM.createPortal(
+          <div className="product-edit-overlay">
+            <div className="edit-backdrop" onClick={() => setEditForm(null)}></div>
+            <div className="edit-drawer">
+              <h2 className="modal-title">Edit Product</h2>
+              <div className="edit-form-grid">
+                <div className="edit-field full">
+                  <label>ID</label>
+                  <input
+                    type="text"
+                    value={editForm.id}
+                    onChange={(e) => setEditForm({ ...editForm, id: e.target.value })}
+                    placeholder="Doc ID"
+                  />
+                </div>
 
-              <div className="edit-field">
-                <label>Product Name</label>
-                <input
-                  type="text"
-                  value={editForm.product}
-                  onChange={(e) => setEditForm({ ...editForm, product: e.target.value })}
-                />
-              </div>
+                <div className="edit-field">
+                  <label>Product Name</label>
+                  <input
+                    type="text"
+                    value={editForm.product}
+                    onChange={(e) => setEditForm({ ...editForm, product: e.target.value })}
+                  />
+                </div>
 
-              <div className="edit-field">
-                <label>Strength</label>
-                <input
-                  type="text"
-                  value={editForm.strength}
-                  onChange={(e) => setEditForm({ ...editForm, strength: e.target.value })}
-                />
-              </div>
+                <div className="edit-field">
+                  <label>Strength</label>
+                  <input
+                    type="text"
+                    value={editForm.strength}
+                    onChange={(e) => setEditForm({ ...editForm, strength: e.target.value })}
+                  />
+                </div>
 
-              <div className="edit-field">
-                <label>US Cost per Kit ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editForm.warehouseCosts?.US ?? 0}
-                  onChange={(e) => updateProductCost(editForm.id, 'US', e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                />
-              </div>
+                <div className="edit-field">
+                  <label>US Cost per Kit ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editForm.warehouseCosts?.US ?? 0}
+                    onChange={(e) => updateProductCost(editForm.id, 'US', e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                  />
+                </div>
 
-              <div className="edit-field">
-                <label>HK Cost per Kit ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editForm.warehouseCosts?.HK ?? 0}
-                  onChange={(e) => updateProductCost(editForm.id, 'HK', e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                />
-              </div>
+                <div className="edit-field">
+                  <label>HK Cost per Kit ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editForm.warehouseCosts?.HK ?? 0}
+                    onChange={(e) => updateProductCost(editForm.id, 'HK', e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                  />
+                </div>
 
-              <div className="edit-field full">
-                <label>Canva Template URL</label>
-                <input
-                  type="text"
-                  value={editForm.canvaTemplateUrl || ''}
-                  onChange={(e) => setEditForm({ ...editForm, canvaTemplateUrl: e.target.value })}
-                />
-              </div>
+                <div className="edit-field full">
+                  <label>Canva Template URL</label>
+                  <input
+                    type="text"
+                    value={editForm.canvaTemplateUrl || ''}
+                    onChange={(e) => setEditForm({ ...editForm, canvaTemplateUrl: e.target.value })}
+                  />
+                </div>
 
-              <div className="edit-field">
-                <label>Current COA Lot</label>
-                <input
-                  type="text"
-                  value={editForm.currentCoa?.lot || ''}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      currentCoa: { ...editForm.currentCoa, lot: e.target.value }
-                    })
-                  }
-                />
-              </div>
+                <div className="edit-field">
+                  <label>Current COA Lot</label>
+                  <input
+                    type="text"
+                    value={editForm.currentCoa?.lot || ''}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        currentCoa: { ...editForm.currentCoa, lot: e.target.value }
+                      })
+                    }
+                  />
+                </div>
 
-              <div className="edit-field">
-                <label>Current COA URL</label>
-                <input
-                  type="text"
-                  value={editForm.currentCoa?.url || ''}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      currentCoa: { ...editForm.currentCoa, url: e.target.value }
-                    })
-                  }
-                />
+                <div className="edit-field">
+                  <label>Current COA URL</label>
+                  <input
+                    type="text"
+                    value={editForm.currentCoa?.url || ''}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        currentCoa: { ...editForm.currentCoa, url: e.target.value }
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="modal-actions edit-actions">
+                <button className="btn-cancel" onClick={() => setEditForm(null)}>Cancel</button>
+                <button className="btn-neon-cyan" onClick={() => saveProduct(editForm)}>Save</button>
               </div>
             </div>
-            <div className="modal-actions edit-actions">
-              <button className="btn-cancel" onClick={() => setEditForm(null)}>Cancel</button>
-              <button className="btn-neon-cyan" onClick={() => saveProduct(editForm)}>Save</button>
-            </div>
-          </div>
-        </>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

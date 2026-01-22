@@ -317,3 +317,84 @@
   justify-content: flex-end;
   gap: 0.75rem;
 }
+
+.product-edit-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  z-index: 1200;
+  pointer-events: auto;
+}
+
+.product-edit-overlay .edit-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(51, 35, 26, 0.55);
+  pointer-events: auto;
+}
+
+.product-edit-overlay .edit-drawer {
+  position: relative;
+  width: min(1100px, 96vw);
+  max-height: calc(100vh - 16px);
+  background: #ffffff;
+  color: #3a2c1a;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 26px 60px rgba(78, 58, 36, 0.2);
+  padding: 1.75rem 1.5rem 2rem;
+  transform: translateY(0);
+  pointer-events: auto;
+  overflow-y: auto;
+  border: 1px solid #e6a94a38;
+  animation: slideUpModal 0.25s ease forwards;
+}
+
+.product-edit-overlay .modal-title {
+  color: #5d3a1a;
+  margin-bottom: 1.25rem;
+}
+
+.product-edit-overlay .edit-field label {
+  color: #8b6f47;
+  font-weight: 700;
+}
+
+.product-edit-overlay .edit-field input {
+  background: #fffdf9;
+  border-color: #e6a94a;
+  color: #3a2c1a;
+}
+
+.product-edit-overlay .edit-field input:focus {
+  border-color: #c85a3f;
+  box-shadow: 0 0 0 3px rgba(200, 90, 63, 0.15);
+}
+
+.product-edit-overlay .modal-actions {
+  gap: 0.75rem;
+}
+
+.product-edit-overlay .btn-cancel {
+  background: transparent;
+  color: #c85a3f;
+  border: none;
+  text-decoration: underline;
+}
+
+.product-edit-overlay .btn-neon-cyan {
+  background: #c85a3f;
+}
+
+@keyframes slideUpModal {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
