@@ -222,14 +222,6 @@ const ProductManager = ({ onSuccess, onError }) => {
 
   return (
     <div className="product-manager">
-      <div style={{ marginBottom: '1rem' }}>
-        <button onClick={saveAllToFirestore} className="btn-neon-lime">
-          Initialize Firestore Products
-        </button>
-        <button onClick={syncToProductList} className="btn-neon-cyan" style={{ marginLeft: '0.5rem' }}>
-          Sync to c&pProductList
-        </button>
-      </div>
       <div className="manager-header">
         <h2 className="text-glow-fuchsia">Product Cost Manager</h2>
         <div className="header-actions">
