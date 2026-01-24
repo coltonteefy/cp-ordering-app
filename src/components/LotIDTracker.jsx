@@ -361,6 +361,19 @@ const LotIDTracker = () => {
 
   return (
     <div className="lot-id-tracker-container">
+      <div className="lot-id-hero">
+        <div className="lot-id-hero-text">
+          <span className="lot-id-hero-eyebrow">Lot ID Tracker</span>
+          <h1>Stay on top of every batch</h1>
+          <p>Quickly grab current lots, next batch IDs, labels, and COAs for the full catalog.</p>
+        </div>
+        <div className="lot-id-hero-metrics">
+          <div className="lot-id-metric-card">
+            <div className="lot-id-metric-label">Total products</div>
+            <div className="lot-id-metric-value">{products.length}</div>
+          </div>
+        </div>
+      </div>
       <div className="lot-id-layout">
         <aside className="lot-id-sidebar">
           <div className="lot-id-sidebar-list">
