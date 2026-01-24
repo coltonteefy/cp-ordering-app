@@ -5,6 +5,7 @@ import Modal from './components/Modal';
 import LoginForm from './components/LoginForm';
 import NextOrderList from './components/NextOrderList';
 import SubmittedOrders from './components/SubmittedOrders';
+import OrdersHero from './components/OrdersHero';
 import ProductManager from './components/ProductManager';
 import PromoSchedule from './components/PromoSchedule';
 import LotIDTracker from './components/LotIDTracker';
@@ -154,6 +155,7 @@ function App() {
               <LotIDTracker />
             ) : (
               <>
+                <OrdersHero />
                 <NextOrderList 
                   onSuccess={showModal}
                   onError={showModal}

@@ -80,7 +80,71 @@
   margin-right: 0.5rem;
 }
 .submitted-orders-section {
-  margin-top: 2rem;
+  margin-top: 1.5rem;
+}
+
+.orders-hero {
+  width: min(1600px, 100%);
+  margin: 0 auto 1.25rem auto;
+  background: radial-gradient(circle at 18% 20%, #f9efe1 0, #f5e3cf 35%, #f2d9c0 70%, #f5e6d3 100%);
+  border: 1px solid #f0e3d4;
+  border-radius: 18px;
+  padding: 1.25rem 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.05);
+}
+
+.orders-hero-text h1 {
+  margin: 0.1rem 0 0.3rem 0;
+  font-size: 1.6rem;
+  color: #2f2a26;
+}
+
+.orders-hero-text p {
+  margin: 0;
+  color: #6f6256;
+  max-width: 640px;
+}
+
+.orders-hero-eyebrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b1432d;
+  font-weight: 800;
+}
+
+.orders-hero-metrics {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.orders-metric-card {
+  background: #fff;
+  border: 1px solid #eddac5;
+  border-radius: 14px;
+  padding: 0.85rem 1.1rem;
+  min-width: 150px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+.orders-metric-label {
+  font-size: 0.85rem;
+  color: #7b6c5d;
+  margin-bottom: 0.25rem;
+  font-weight: 700;
+}
+
+.orders-metric-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #2f2a26;
 }
 
 .orders-group {
@@ -153,6 +217,11 @@
 @media (max-width: 768px) {
   .orders-container {
     grid-template-columns: 1fr;
+  }
+
+  .orders-hero {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
