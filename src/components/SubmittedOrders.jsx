@@ -686,9 +686,9 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
                 </button>
               </div>
             ) : trackingEntries.length ? (
-              <div className="tracking-display-multi">
+              <div className="tracking-display-grid">
                 {trackingEntries.map((entry, idx) => (
-                  <div key={entry.id || idx} className="tracking-display-wrap">
+                  <div key={entry.id || idx} className="tracking-card">
                     <div className="tracking-inline">
                       {entry.carrier && entry.number ? (
                         <a
