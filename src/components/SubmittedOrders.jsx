@@ -38,7 +38,7 @@ import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'fireb
 import { db } from '../firebaseConfig';
 import './SubmittedOrders.css';
 
-const SubmittedOrders = ({ onSuccess, onError }) => {
+const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   // Track which order's copy button is animating
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -940,25 +940,25 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
 
   return (
     <div className="submitted-orders-section">
-      {/* Pending Orders */}
-      <div className="orders-group">
-        <h2 className="text-glow-fuchsia">Pending Orders</h2>
-        {orders.length === 0 ? (
-          <div className="empty-orders">No pending orders.</div>
-        ) : (
-          renderOrderTabsView(
-            groupOrdersByDate(orders),
-            Object.keys(groupOrdersByDate(orders)).sort((a, b) => new Date(b) - new Date(a)),
-            activePendingDate,
-            setActivePendingDate,
-            activePendingOrderId,
-            setActivePendingOrderId
-          )
-        )}
-      </div>
+      {!deliveredOnly && (
+        <div className="orders-group">
+          <h2 className="text-glow-fuchsia">Pending Orders</h2>
+          {orders.length === 0 ? (
+            <div className="empty-orders">No pending orders.</div>
+          ) : (
+            renderOrderTabsView(
+              groupOrdersByDate(orders),
+              Object.keys(groupOrdersByDate(orders)).sort((a, b) => new Date(b) - new Date(a)),
+              activePendingDate,
+              setActivePendingDate,
+              activePendingOrderId,
+              setActivePendingOrderId
+            )
+          )}
+        </div>
+      )}
 
-      {/* Delivered Orders */}
-      {deliveredOrders.length > 0 && (
+      {!deliveredOnly && deliveredOrders.length > 0 && (
         <div className="orders-group delivered-section">
           <h2 className="text-glow-fuchsia">Delivered Orders</h2>
           {renderOrderTabsView(
@@ -968,6 +968,24 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
             setActiveDeliveredDate,
             activeDeliveredOrderId,
             setActiveDeliveredOrderId
+          )}
+        </div>
+      )}
+
+      {deliveredOnly && (
+        <div className="orders-group delivered-section">
+          <h2 className="text-glow-fuchsia">Delivered Orders</h2>
+          {deliveredOrders.length === 0 ? (
+            <div className="empty-orders">No delivered orders.</div>
+          ) : (
+            renderOrderTabsView(
+              groupOrdersByDate(deliveredOrders),
+              Object.keys(groupOrdersByDate(deliveredOrders)).sort((a, b) => new Date(b) - new Date(a)),
+              activeDeliveredDate,
+              setActiveDeliveredDate,
+              activeDeliveredOrderId,
+              setActiveDeliveredOrderId
+            )
           )}
         </div>
       )}
