@@ -84,7 +84,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     return () => unsubscribe();
   }, [hasShownError, onError]);
 
-  // Set initial active pending date
+  // Maintain active pending date/order without jumping away on every change
   useEffect(() => {
     if (!orders.length) {
       setActivePendingDate(null);
@@ -93,11 +93,23 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     }
     const grouped = groupOrdersByDate(orders);
     const dateKeys = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
-    const date = dateKeys[0] || null;
-    const firstOrder = date ? grouped[date]?.[0]?.id || null : null;
-    setActivePendingDate(date);
-    setActivePendingOrderId(firstOrder);
-  }, [orders]);
+    const fallbackDate = dateKeys[0] || null;
+
+    // If current active date is missing, fall back to latest
+    if (!activePendingDate || !grouped[activePendingDate]) {
+      const firstOrder = fallbackDate ? grouped[fallbackDate]?.[0]?.id || null : null;
+      setActivePendingDate(fallbackDate);
+      setActivePendingOrderId(firstOrder);
+      return;
+    }
+
+    // Ensure active order id exists for the active date
+    const currentDateOrders = grouped[activePendingDate] || [];
+    const stillExists = currentDateOrders.some((o) => o.id === activePendingOrderId);
+    if (!stillExists) {
+      setActivePendingOrderId(currentDateOrders[0]?.id || null);
+    }
+  }, [orders, activePendingDate, activePendingOrderId]);
 
   // Listen to delivered orders
   useEffect(() => {
@@ -113,10 +125,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
         const grouped = groupOrdersByDate(ordersData);
         const dateKeys = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
-        const date = dateKeys[0] || null;
-        const firstOrder = date ? grouped[date]?.[0]?.id || null : null;
-        setActiveDeliveredDate(date);
-        setActiveDeliveredOrderId(firstOrder);
+        const fallbackDate = dateKeys[0] || null;
+
+        if (!activeDeliveredDate || !grouped[activeDeliveredDate]) {
+          const firstOrder = fallbackDate ? grouped[fallbackDate]?.[0]?.id || null : null;
+          setActiveDeliveredDate(fallbackDate);
+          setActiveDeliveredOrderId(firstOrder);
+        } else {
+          const currentDateOrders = grouped[activeDeliveredDate] || [];
+          const exists = currentDateOrders.some((o) => o.id === activeDeliveredOrderId);
+          if (!exists) {
+            setActiveDeliveredOrderId(currentDateOrders[0]?.id || null);
+          }
+        }
       },
       (error) => {
         console.error('Error listening to delivered orders:', error);
@@ -489,6 +510,25 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 )}
               </div>
             </div>
+            <div className="order-status-top">
+              <span className="status-label">Order Status:</span>
+              <label className="status-toggle">
+                <input
+                  type="checkbox"
+                  checked={(order.status || 'pending') === 'delivered'}
+                  onChange={(e) => {
+                    const nextStatus = e.target.checked ? 'delivered' : 'pending';
+                    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
+                    if (nextStatus === 'delivered') {
+                      markOrderDelivered(order.id);
+                    } else {
+                      updateOrderStatus(order.id, nextStatus);
+                    }
+                  }}
+                />
+                <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+              </label>
+            </div>
             <div className="warehouse-actions">
               <button
                 className="order-edit-link"
@@ -659,31 +699,17 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
             )}
 
             <div className="order-actions">
-              {isEditing ? (
+              {isEditing && (
                 <button onClick={() => cancelEdit(order.id)} className="btn-cancel-edit">
                   Cancel
                 </button>
-              ) : (
-                <label className="status-toggle">
-                  <input
-                    type="checkbox"
-                    checked={(order.status || 'pending') === 'delivered'}
-                    onChange={(e) => {
-                      const nextStatus = e.target.checked ? 'delivered' : 'pending';
-                      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
-                      if (nextStatus === 'delivered') {
-                        markOrderDelivered(order.id);
-                      } else {
-                        updateOrderStatus(order.id, nextStatus);
-                      }
-                    }}
-                  />
-                  <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
-                </label>
               )}
             </div>
 
-            <div className="order-copy-row">
+          </div>
+
+          <div className="order-col-right">
+            <div className="order-copy-row order-copy-row-right">
               <button
                 className={`btn-copy-order${copied ? ' copied' : ''}`}
                 style={{
@@ -704,9 +730,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 {copied ? 'Copied!' : 'Copy Items'}
               </button>
             </div>
-          </div>
 
-          <div className="order-col-right">
             <div className="order-items-grid">
               <div className="order-items-header">
                 <div>Product</div>
