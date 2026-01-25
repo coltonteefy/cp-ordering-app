@@ -90,41 +90,28 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     return () => unsubscribe();
   }, []);
 
+  // When orders data updates, collapse all pending groups by default
   useEffect(() => {
     if (orders.length === 0) {
       setCollapsedPendingDates(new Set());
       return;
     }
-    
-    // Collapse all NEW pending order date groups by default (only add new dates, don't reset existing state)
+
     const grouped = {};
-    orders.forEach(order => {
+    orders.forEach((order) => {
       const date = new Date(order.submittedAt);
-      const dateKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = [];
-      }
+      const dateKey = date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      if (!grouped[dateKey]) grouped[dateKey] = [];
       grouped[dateKey].push(order);
     });
-    
+
     const dateKeys = Object.keys(grouped);
-    
-    setCollapsedPendingDates(prevCollapsed => {
-      const newCollapsed = new Set(prevCollapsed);
-      let changed = false;
-      
-      dateKeys.forEach(dateKey => {
-        // Only add if it doesn't exist yet (new date)
-        if (!prevCollapsed.has(dateKey)) {
-          newCollapsed.add(dateKey);
-          changed = true;
-        }
-      });
-      
-      // Only return new set if something actually changed
-      return changed ? newCollapsed : prevCollapsed;
-    });
-  }, [orders.length]);
+    setCollapsedPendingDates(new Set(dateKeys)); // collapsed = present in set
+  }, [orders]);
 
   useEffect(() => {
     // Listen to delivered orders
@@ -142,6 +129,20 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         // Sort by delivery date (newest first)
         ordersData.sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
         setDeliveredOrders(ordersData);
+
+        const grouped = {};
+        ordersData.forEach((order) => {
+          const date = new Date(order.deliveredAt);
+          const dateKey = date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+          if (!grouped[dateKey]) grouped[dateKey] = [];
+          grouped[dateKey].push(order);
+        });
+        const dateKeys = Object.keys(grouped);
+        setCollapsedDeliveredDates(new Set(dateKeys)); // collapsed by default
       },
       (error) => {
         console.error('Error listening to delivered orders:', error);

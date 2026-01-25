@@ -1,0 +1,41 @@
+.orders-tabs-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.orders-tabs-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  background: #fff8ef;
+  border: 1px solid #f0e3d4;
+  border-radius: 12px;
+  padding: 0.4rem;
+}
+
+.orders-tab-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #7b6c5d;
+  padding: 0.55rem 0.95rem;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.orders-tab-btn:hover {
+  color: #b1432d;
+}
+
+.orders-tab-btn.active {
+  background: #f3e3cf;
+  border-color: #e5cfb4;
+  color: #2f2a26;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+.orders-tab-panel {
+  background: transparent;
+}

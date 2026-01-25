@@ -3,9 +3,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import Modal from './components/Modal';
 import LoginForm from './components/LoginForm';
-import NextOrderList from './components/NextOrderList';
-import SubmittedOrders from './components/SubmittedOrders';
-import OrdersHero from './components/OrdersHero';
+import OrdersTabs from './components/OrdersTabs';
 import ProductManager from './components/ProductManager';
 import PromoSchedule from './components/PromoSchedule';
 import LotIDTracker from './components/LotIDTracker';
@@ -155,19 +153,10 @@ function App() {
               <LotIDTracker />
             ) : (
               <>
-                <OrdersHero />
-                <NextOrderList 
+                <OrdersTabs 
                   onSuccess={showModal}
                   onError={showModal}
-              />
-              <PaymentTracker 
-                onSuccess={showModal}
-                onError={showModal}
-              />
-              <SubmittedOrders 
-                onSuccess={showModal}
-                onError={showModal}
-              />
+                />
             </>
             )}
             </div>

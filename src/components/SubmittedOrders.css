@@ -83,6 +83,107 @@
   margin-top: 1.5rem;
 }
 
+.orders-aggregate {
+  background: #fffdf8;
+  border: 1px solid #f0e3d4;
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+.orders-aggregate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.orders-aggregate-header h3 {
+  margin: 0;
+  color: #2f2a26;
+}
+
+.orders-aggregate-header p {
+  margin: 0.05rem 0 0 0;
+  color: #7b6c5d;
+  font-size: 0.95rem;
+}
+
+.orders-aggregate-count {
+  background: #f4e6d5;
+  border: 1px solid #e6d7c4;
+  border-radius: 12px;
+  padding: 0.35rem 0.8rem;
+  font-weight: 700;
+  color: #4a3a2b;
+}
+
+.orders-aggregate-table-wrap {
+  overflow-x: auto;
+}
+
+.orders-aggregate-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  color: #3a2c1a;
+}
+
+.orders-aggregate-table th,
+.orders-aggregate-table td {
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid #efe5d7;
+}
+
+.orders-aggregate-table th {
+  color: #6f5a44;
+  font-weight: 700;
+  background: #f9f1e6;
+}
+
+.orders-aggregate-table tbody tr:hover {
+  background: #fef7ec;
+}
+
+.orders-date-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.6rem 0;
+}
+
+.orders-date-tab {
+  border: 1px solid #e5cfb4;
+  background: #fff7ec;
+  color: #6f5a44;
+  padding: 0.4rem 0.75rem;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.orders-date-tab.active {
+  background: #d45b42;
+  color: #ffffff;
+  border-color: #c24f38;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
+.orders-date-tab:hover:not(.active) {
+  color: #b1432d;
+  border-color: #d7b58f;
+}
+
+.qty-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  width: 120px;
+}
+
 .orders-hero {
   width: min(1600px, 100%);
   margin: 0 auto 1.25rem auto;
@@ -205,9 +306,9 @@
 }
 
 .orders-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
   padding: 1rem;
   min-height: 0;
   overflow: hidden;
@@ -215,10 +316,6 @@
 }
 
 @media (max-width: 768px) {
-  .orders-container {
-    grid-template-columns: 1fr;
-  }
-
   .orders-hero {
     flex-direction: column;
     align-items: flex-start;
@@ -307,19 +404,14 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  cursor: pointer;
   user-select: none;
+  cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   background: #FEFAF5;
   border: none;
   border-radius: 0;
   box-shadow: none;
   border-bottom: 1px solid #F0E4D0;
-}
-
-.orders-wrapper.collapsed ~ .date-header,
-.date-header:has(+ .orders-wrapper.collapsed) {
-  border-bottom: none;
 }
 
 .date-header:hover {
@@ -332,30 +424,30 @@
   font-weight: 600;
 }
 
-.date-header .collapse-indicator {
+.date-total {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #C85A3F;
+  margin-left: auto;
+}
+
+.collapse-indicator {
   font-size: 0.75rem;
   color: #8B6F47;
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s;
   display: inline-block;
 }
 
-.date-header .collapse-indicator.collapsed {
+.collapse-indicator.collapsed {
   transform: rotate(0deg);
 }
 
-.date-header .collapse-indicator.expanded {
+.collapse-indicator.expanded {
   transform: rotate(90deg);
 }
 
 .date-header:hover .collapse-indicator {
   color: #C85A3F;
-}
-
-.date-total {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #C85A3F;
-  margin-left: auto;
 }
 
 .order-card {
@@ -434,11 +526,10 @@
   padding: 1.5rem;
   background: #FEFAF5;
   border-bottom: 1px solid #F0E4D0;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
   gap: 1rem;
-  flex-wrap: wrap;
 }
 
 .order-edit-link {
@@ -529,6 +620,19 @@
   font-size: 0.75rem;
   color: #8B6F47;
   margin-top: 0.25rem;
+}
+
+.order-content-columns {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 1rem;
+  padding: 0 1rem 1rem 1rem;
+}
+
+@media (max-width: 980px) {
+  .order-content-columns {
+    grid-template-columns: 1fr;
+  }
 }
 
 .order-copy-row {
