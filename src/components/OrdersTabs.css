@@ -4,16 +4,46 @@
   gap: 0.75rem;
 }
 
+.orders-tabs-bar-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  position: sticky;
+  top: 90px; /* sit just below the main nav */
+  z-index: 6;
+  padding: 0.5rem 0 0.35rem;
+  margin-top: 0;
+  background: #ffffff;
+}
+
+.orders-tabs-bar-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  border-radius: 0;
+  z-index: 0;
+}
+
 .orders-tabs-bar {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  background: #fff8ef;
-  border: 1px solid #f0e3d4;
-  border-radius: 12px;
-  padding: 0.4rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  max-width: min(900px, 100%);
+  position: relative;
+  z-index: 1;
 }
 
+.orders-tabs-bar-wrap.is-sticky::before {
+  opacity: 1;
+}
 .orders-tab-btn {
   border: 1px solid transparent;
   background: transparent;
@@ -38,4 +68,11 @@
 
 .orders-tab-panel {
   background: transparent;
+  min-height: 120px;
+  margin-top: 1.5rem;
+}
+
+.tab-transition {
+  animation: fadeSlide 0.35s ease;
+  will-change: opacity, transform;
 }

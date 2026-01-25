@@ -221,7 +221,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
   return (
     <div className="next-order-section">
       <div className="section-header">
-        <h2 className="text-glow-fuchsia">Next Order List</h2>
+      {/* Title removed per request */}
       </div>
 
       {/* Warehouse Tabs */}

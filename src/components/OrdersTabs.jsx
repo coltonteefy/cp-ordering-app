@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import OrdersHero from "./OrdersHero";
 import NextOrderList from "./NextOrderList";
 import OrdersIncoming from "./OrdersIncoming";
@@ -17,25 +17,44 @@ const TAB_CONFIG = [
 
 const OrdersTabs = ({ onSuccess, onError }) => {
   const [activeTab, setActiveTab] = useState("next");
+  const [isSticky, setIsSticky] = useState(false);
+
+  useEffect(() => {
+    const handler = () => {
+      const wrap = document.querySelector(".orders-tabs-bar-wrap");
+      if (!wrap) return;
+      const { top } = wrap.getBoundingClientRect();
+      const stuck = top <= 80 + 0.5; // close to sticky threshold
+      setIsSticky(stuck);
+      wrap.classList.toggle("is-sticky", stuck);
+    };
+    handler();
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
 
   return (
     <div className="orders-tabs-page">
       <OrdersHero />
-      <div className="orders-tabs-bar">
-        {TAB_CONFIG.map((tab) => (
-          <button
-            key={tab.key}
-            className={`orders-tab-btn ${activeTab === tab.key ? "active" : ""}`}
-            onClick={() => setActiveTab(tab.key)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="orders-tabs-bar-wrap">
+        <div className="orders-tabs-bar">
+          {TAB_CONFIG.map((tab) => (
+            <button
+              key={tab.key}
+              className={`orders-tab-btn ${activeTab === tab.key ? "active" : ""}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="orders-tab-panel">
         {TAB_CONFIG.map(({ key, component: Component }) =>
           key === activeTab ? (
-            <Component key={key} onSuccess={onSuccess} onError={onError} />
+            <div key={key} className="page-transition tab-transition">
+              <Component onSuccess={onSuccess} onError={onError} />
+            </div>
           ) : null
         )}
       </div>
