@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, onSnapshot } from 'firebase/firestore';
+import { collection, setDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './NextOrderList.css';
 
@@ -161,6 +161,17 @@ const NextOrderList = ({ onSuccess, onError }) => {
     return grouped;
   };
 
+  const formatOrderId = (warehouse, dateObj) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const y = dateObj.getFullYear();
+    const m = pad(dateObj.getMonth() + 1);
+    const d = pad(dateObj.getDate());
+    const hh = pad(dateObj.getHours());
+    const mm = pad(dateObj.getMinutes());
+    const ss = pad(dateObj.getSeconds());
+    return `CP-ORDER-${warehouse.toUpperCase()}-${y}${m}${d}${hh}${mm}${ss}`;
+  };
+
   const submitOrder = async () => {
     if (orderItems.length === 0) {
       onError('No items in order list to submit.');
@@ -174,7 +185,8 @@ const NextOrderList = ({ onSuccess, onError }) => {
       const usItems = orderItems.filter(item => item.warehouse === 'US');
       const hkItems = orderItems.filter(item => item.warehouse === 'HK');
 
-      const timestamp = new Date().toISOString();
+      const timestampDate = new Date();
+      const timestamp = timestampDate.toISOString();
 
       // Submit US warehouse order if there are items
       if (usItems.length > 0) {
@@ -183,7 +195,9 @@ const NextOrderList = ({ onSuccess, onError }) => {
           itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
         }));
         const usTotal = usItemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
-        await addDoc(collection(db, 'c&pProductOrders'), {
+        const orderId = formatOrderId('US', timestampDate);
+        await setDoc(doc(db, 'c&pProductOrders', orderId), {
+          id: orderId,
           warehouse: 'US',
           items: usItemsWithIds,
           total: usTotal,
@@ -199,7 +213,9 @@ const NextOrderList = ({ onSuccess, onError }) => {
           itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
         }));
         const hkTotal = hkItemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
-        await addDoc(collection(db, 'c&pProductOrders'), {
+        const orderId = formatOrderId('HK', timestampDate);
+        await setDoc(doc(db, 'c&pProductOrders', orderId), {
+          id: orderId,
           warehouse: 'HK',
           items: hkItemsWithIds,
           total: hkTotal,
