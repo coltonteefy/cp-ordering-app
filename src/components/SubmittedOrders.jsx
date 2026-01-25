@@ -46,8 +46,10 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
   const [editingOrders, setEditingOrders] = useState(new Set());
   const [originalOrders, setOriginalOrders] = useState({});
   const [hasShownError, setHasShownError] = useState(false);
-  const [collapsedPendingDates, setCollapsedPendingDates] = useState(new Set());
-  const [collapsedDeliveredDates, setCollapsedDeliveredDates] = useState(new Set());
+  const [activePendingDate, setActivePendingDate] = useState(null);
+  const [activeDeliveredDate, setActiveDeliveredDate] = useState(null);
+  const [activePendingOrderId, setActivePendingOrderId] = useState(null);
+  const [activeDeliveredOrderId, setActiveDeliveredOrderId] = useState(null);
   const [availableProducts, setAvailableProducts] = useState([]);
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
 
@@ -90,27 +92,19 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     return () => unsubscribe();
   }, []);
 
-  // When orders data updates, collapse all pending groups by default
   useEffect(() => {
     if (orders.length === 0) {
-      setCollapsedPendingDates(new Set());
+      setActivePendingDate(null);
+      setActivePendingOrderId(null);
       return;
     }
 
-    const grouped = {};
-    orders.forEach((order) => {
-      const date = new Date(order.submittedAt);
-      const dateKey = date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-      if (!grouped[dateKey]) grouped[dateKey] = [];
-      grouped[dateKey].push(order);
-    });
-
-    const dateKeys = Object.keys(grouped);
-    setCollapsedPendingDates(new Set(dateKeys)); // collapsed = present in set
+    const grouped = groupOrdersByDate(orders);
+    const dateKeys = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+    const date = dateKeys[0] || null;
+    const firstOrder = date ? (grouped[date]?.[0]?.id || null) : null;
+    setActivePendingDate(date);
+    setActivePendingOrderId(firstOrder);
   }, [orders]);
 
   useEffect(() => {
@@ -130,19 +124,12 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         ordersData.sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
         setDeliveredOrders(ordersData);
 
-        const grouped = {};
-        ordersData.forEach((order) => {
-          const date = new Date(order.deliveredAt);
-          const dateKey = date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          });
-          if (!grouped[dateKey]) grouped[dateKey] = [];
-          grouped[dateKey].push(order);
-        });
-        const dateKeys = Object.keys(grouped);
-        setCollapsedDeliveredDates(new Set(dateKeys)); // collapsed by default
+        const grouped = groupOrdersByDate(ordersData);
+        const dateKeys = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+        const date = dateKeys[0] || null;
+        const firstOrder = date ? (grouped[date]?.[0]?.id || null) : null;
+        setActiveDeliveredDate(date);
+        setActiveDeliveredOrderId(firstOrder);
       },
       (error) => {
         console.error('Error listening to delivered orders:', error);
@@ -229,30 +216,6 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
     if (addingItemToOrder === orderId) {
       setAddingItemToOrder(null);
     }
-  };
-
-  const toggleDateCollapse = (dateKey) => {
-    setCollapsedPendingDates(prevCollapsed => {
-      const newCollapsed = new Set(prevCollapsed);
-      if (newCollapsed.has(dateKey)) {
-        newCollapsed.delete(dateKey);
-      } else {
-        newCollapsed.add(dateKey);
-      }
-      return newCollapsed;
-    });
-  };
-
-  const toggleDeliveredDateCollapse = (dateKey) => {
-    setCollapsedDeliveredDates(prevCollapsed => {
-      const newCollapsed = new Set(prevCollapsed);
-      if (newCollapsed.has(dateKey)) {
-        newCollapsed.delete(dateKey);
-      } else {
-        newCollapsed.add(dateKey);
-      }
-      return newCollapsed;
-    });
   };
 
   const updateOrderItems = async (orderId, items) => {
@@ -938,29 +901,41 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         );
   };
 
-  const renderGroupedOrders = (ordersList, collapsedSet, toggleFunc) => {
-    const groupedOrders = groupOrdersByDate(ordersList);
-    return Object.keys(groupedOrders).map(dateKey => {
-      const isCollapsed = collapsedSet.has(dateKey);
-      const groupTotal = calculateTotalCost(groupedOrders[dateKey]);
-      return (
-        <div key={dateKey} className="date-group">
-          <div 
-            className="date-header" 
-            onClick={() => toggleFunc(dateKey)}
-          >
-            <span className={`collapse-indicator ${isCollapsed ? 'collapsed' : 'expanded'}`}>{isCollapsed ? '\u25b6' : '\u25bc'}</span>
-            <h3>{dateKey}</h3>
-            <span className="date-total">Total Cost: ${groupTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          </div>
-          <div className={`orders-wrapper ${isCollapsed ? 'collapsed' : 'expanded'}`}>
-            <div className="orders-container">
-              {groupedOrders[dateKey].map(order => renderOrder(order))}
+  const renderOrderTabsView = (grouped, dateKeys, activeDate, setActiveDate, activeOrderId, setActiveOrderId) => {
+    if (!dateKeys.length) return <div className="empty-orders">No orders.</div>;
+
+    const safeDate = activeDate && grouped[activeDate] ? activeDate : dateKeys[0];
+    const ordersForDate = grouped[safeDate] || [];
+
+    return (
+      <>
+        <div className="orders-date-tabs">
+          {dateKeys.map((k) => (
+            <button
+              key={k}
+              className={`orders-date-tab ${safeDate === k ? 'active' : ''}`}
+              onClick={() => {
+                setActiveDate(k);
+                // when switching dates, show all orders (no per-order tab)
+                setActiveOrderId(null);
+              }}
+            >
+              {k}
+            </button>
+          ))}
+        </div>
+
+        {ordersForDate.length > 0 && (
+          <div className="date-group">
+            <div className="orders-wrapper expanded">
+              <div className="orders-container">
+                {ordersForDate.map((order) => renderOrder(order))}
+              </div>
             </div>
           </div>
-        </div>
-      );
-    });
+        )}
+      </>
+    );
   };
 
   return (
@@ -971,7 +946,14 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
         {orders.length === 0 ? (
           <div className="empty-orders">No pending orders.</div>
         ) : (
-          renderGroupedOrders(orders, collapsedPendingDates, toggleDateCollapse)
+          renderOrderTabsView(
+            groupOrdersByDate(orders),
+            Object.keys(groupOrdersByDate(orders)).sort((a, b) => new Date(b) - new Date(a)),
+            activePendingDate,
+            setActivePendingDate,
+            activePendingOrderId,
+            setActivePendingOrderId
+          )
         )}
       </div>
 
@@ -979,7 +961,14 @@ const SubmittedOrders = ({ onSuccess, onError }) => {
       {deliveredOrders.length > 0 && (
         <div className="orders-group delivered-section">
           <h2 className="text-glow-fuchsia">Delivered Orders</h2>
-          {renderGroupedOrders(deliveredOrders, collapsedDeliveredDates, toggleDeliveredDateCollapse)}
+          {renderOrderTabsView(
+            groupOrdersByDate(deliveredOrders),
+            Object.keys(groupOrdersByDate(deliveredOrders)).sort((a, b) => new Date(b) - new Date(a)),
+            activeDeliveredDate,
+            setActiveDeliveredDate,
+            activeDeliveredOrderId,
+            setActiveDeliveredOrderId
+          )}
         </div>
       )}
     </div>
