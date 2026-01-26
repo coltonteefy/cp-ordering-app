@@ -9,6 +9,16 @@
   color: #5D3A1A;
   background-color: #F5E6D3;
 
+  /* Shared hero theme */
+  --hero-bg: radial-gradient(circle at 22% 28%, #f7edde 0%, #e9d5b8 45%, #d9b98d 70%, #c79d68 100%);
+  --hero-border: #c9a56e;
+  /* Default hero copy (Submitted Orders) */
+  --hero-heading: #2b1a0f;
+  --hero-body: #4b3526;
+  --hero-eyebrow: #c2702d;
+  --hero-metric-label: #8b6f47;
+  --hero-metric-value: #3a2414;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

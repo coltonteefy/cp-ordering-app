@@ -435,11 +435,20 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   };
 
   // Rendering helpers -----------------------------------------
+  const calculateFinalTotal = (order) => {
+    const itemsTotal = (order.items || []).reduce(
+      (sum, item) => sum + (item.quantity || 0) * (item.pricePerKit || 0),
+      0
+    );
+    const baseTotal = typeof order.total === 'number' ? order.total : itemsTotal;
+    const discount = order.discountPercent || 0;
+    return baseTotal - baseTotal * (discount / 100);
+  };
+
   const renderOrder = (order) => {
     const isEditing = editingOrders.has(order.id);
-    const rawTotal = order.total || 0;
     const discount = order.discountPercent || 0;
-    const finalTotal = rawTotal - rawTotal * (discount / 100);
+    const finalTotal = calculateFinalTotal(order);
     const submittedAtDisplay = new Date(order.submittedAt).toLocaleString();
     const trackingEntries =
       order.trackingEntries && Array.isArray(order.trackingEntries) && order.trackingEntries.length > 0
@@ -884,6 +893,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     if (!dateKeys.length) return <div className="empty-orders">No orders.</div>;
     const safeDate = activeDate && grouped[activeDate] ? activeDate : dateKeys[0];
     const ordersForDate = grouped[safeDate] || [];
+    const dateTotal = ordersForDate.reduce((sum, ord) => sum + calculateFinalTotal(ord), 0);
+    const dateCount = ordersForDate.length;
 
     return (
       <>
@@ -900,6 +911,17 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         </div>
         {ordersForDate.length > 0 && (
           <div className="date-group">
+            <div className="orders-total-banner">
+              <div className="orders-total-banner-label">Total for {safeDate}</div>
+              <div className="orders-total-banner-meta">
+                <span className="orders-total-banner-count">
+                  {dateCount} order{dateCount === 1 ? '' : 's'}
+                </span>
+                <span className="orders-total-banner-value">
+                  ${dateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
             <div className="orders-wrapper expanded">
               <div className="orders-container">{ordersForDate.map((order) => renderOrder(order))}</div>
             </div>

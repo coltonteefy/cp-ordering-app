@@ -246,6 +246,20 @@ const ProductManager = ({ onSuccess, onError }) => {
 
   return (
     <div className="product-manager">
+      <div className="product-hero">
+        <div className="product-hero-text">
+          <span className="product-hero-eyebrow">Products</span>
+          <h1>Keep pricing tight and templates handy</h1>
+          <p>Review every SKU, adjust warehouse costs, and sync templates from a single place.</p>
+        </div>
+        <div className="product-hero-metrics">
+          <div className="product-metric-card">
+            <div className="product-metric-label">Total products</div>
+            <div className="product-metric-value">{products.length}</div>
+          </div>
+        </div>
+      </div>
+
       <div className="manager-header">
         <h2 className="text-glow-fuchsia">Product Cost Manager</h2>
         <div className="header-actions">

@@ -2,6 +2,70 @@
   padding: 2rem;
 }
 
+.promo-hero {
+  width: min(1600px, 100%);
+  margin: 0 auto 1.5rem auto;
+  background: var(--hero-bg);
+  border: 1px solid var(--hero-border);
+  border-radius: 18px;
+  padding: 1.25rem 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+}
+
+.promo-hero-text h1 {
+  margin: 0.1rem 0 0.3rem 0;
+  font-size: 1.6rem;
+  color: var(--hero-heading);
+}
+
+.promo-hero-text p {
+  margin: 0;
+  color: var(--hero-body);
+  max-width: 640px;
+}
+
+.promo-hero-eyebrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hero-eyebrow);
+  font-weight: 800;
+}
+
+.promo-hero-metrics {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.promo-metric-card {
+  background: #fff;
+  border: 1px solid #eddac5;
+  border-radius: 14px;
+  padding: 0.85rem 1.1rem;
+  min-width: 150px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.promo-metric-label {
+  font-size: 0.85rem;
+  color: var(--hero-metric-label);
+  margin-bottom: 0.25rem;
+  font-weight: 700;
+}
+
+.promo-metric-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--hero-metric-value);
+}
+
 .promo-header {
   display: flex;
   justify-content: space-between;

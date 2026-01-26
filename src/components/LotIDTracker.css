@@ -9,8 +9,8 @@
 .lot-id-hero {
   width: min(1600px, 100%);
   margin: 0 auto 1.25rem auto;
-  background: radial-gradient(circle at 20% 20%, #f9efe1 0, #f5e3cf 35%, #f2d9c0 70%, #f5e6d3 100%);
-  border: 1px solid #f0e3d4;
+  background: var(--hero-bg);
+  border: 1px solid var(--hero-border);
   border-radius: 18px;
   padding: 1.25rem 1.4rem;
   display: flex;
@@ -23,12 +23,12 @@
 .lot-id-hero-text h1 {
   margin: 0.1rem 0 0.3rem 0;
   font-size: 1.6rem;
-  color: #2f2a26;
+  color: var(--hero-heading);
 }
 
 .lot-id-hero-text p {
   margin: 0;
-  color: #6f6256;
+  color: var(--hero-body);
   max-width: 640px;
 }
 
@@ -37,7 +37,7 @@
   font-size: 0.85rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #b1432d;
+  color: var(--hero-eyebrow);
   font-weight: 800;
 }
 
@@ -58,7 +58,7 @@
 
 .lot-id-metric-label {
   font-size: 0.85rem;
-  color: #7b6c5d;
+  color: var(--hero-metric-label);
   margin-bottom: 0.25rem;
   font-weight: 700;
 }
@@ -66,7 +66,7 @@
 .lot-id-metric-value {
   font-size: 1.6rem;
   font-weight: 800;
-  color: #2f2a26;
+  color: var(--hero-metric-value);
 }
 
 .lot-id-layout {

@@ -209,6 +209,24 @@ const PromoSchedule = ({ onSuccess, onError }) => {
 
   return (
     <div className="promo-schedule">
+      <div className="promo-hero">
+        <div className="promo-hero-text">
+          <span className="promo-hero-eyebrow">Promo Schedule</span>
+          <h1>Plan the year, share the savings</h1>
+          <p>Keep every monthly campaign idea visible, editable, and ready to launch.</p>
+        </div>
+        <div className="promo-hero-metrics">
+          <div className="promo-metric-card">
+            <div className="promo-metric-label">Ideas</div>
+            <div className="promo-metric-value">{promoIdeasFromDb.length}</div>
+          </div>
+          <div className="promo-metric-card">
+            <div className="promo-metric-label">Active Promos</div>
+            <div className="promo-metric-value">{promos.filter(p => p.active).length}</div>
+          </div>
+        </div>
+      </div>
+
       <div className="promo-header">
         <h2 className="text-glow-fuchsia">Promo Schedule - 24 Campaign Ideas</h2>
         <button onClick={() => setShowAddForm(!showAddForm)} className="btn-neon-cyan">
