@@ -70,11 +70,16 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         });
 
         ordersData.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-        setOrders(ordersData);
+        const pendingOnly = ordersData.filter((o) => {
+          const status = (o.status || 'pending').toString().toLowerCase();
+          const deliveredFlag = status === 'delivered' || !!o.deliveredAt;
+          return !deliveredFlag;
+        });
+        setOrders(pendingOnly);
         setHasShownError(false);
 
         // Sync aggregate incoming list
-        syncIncomingAggregates(ordersData);
+        syncIncomingAggregates(pendingOnly);
       },
       (error) => {
         console.error('Error listening to orders:', error);
@@ -996,18 +1001,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
               activePendingDate,
               setActivePendingDate
             )
-          )}
-        </div>
-      )}
-
-      {!deliveredOnly && deliveredOrders.length > 0 && (
-        <div className="orders-group delivered-section">
-          <h2 className="text-glow-fuchsia">Delivered Orders</h2>
-          {renderOrderTabsView(
-            groupOrdersByDate(deliveredOrders),
-            Object.keys(groupOrdersByDate(deliveredOrders)).sort((a, b) => new Date(b) - new Date(a)),
-            activeDeliveredDate,
-            setActiveDeliveredDate
           )}
         </div>
       )}
