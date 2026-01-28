@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './SubmittedOrders.css';
 
@@ -41,6 +41,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [activeDeliveredOrderId, setActiveDeliveredOrderId] = useState(null); // kept for compatibility
   const [availableProducts, setAvailableProducts] = useState([]);
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
+  const syncedIncomingOnce = useRef(false);
 
   // Listen to pending orders
   useEffect(() => {
@@ -71,6 +72,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         ordersData.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
         setOrders(ordersData);
         setHasShownError(false);
+
+        // Sync aggregate incoming list
+        syncIncomingAggregates(ordersData);
       },
       (error) => {
         console.error('Error listening to orders:', error);
@@ -168,6 +172,45 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   }, []);
 
   // Helpers ---------------------------------------------------
+  const syncIncomingAggregates = async (pendingOrders) => {
+    try {
+      // Build aggregate qty per product/strength from pending orders only
+      const aggregates = {};
+      pendingOrders.forEach((order) => {
+        (order.items || []).forEach((item) => {
+          const name = item.productName || item.product || '';
+          const strength = item.productStrength || item.strength || '';
+          const key = `${name}__${strength}`;
+          const qty = Number(item.quantity) || 0;
+          if (!aggregates[key]) aggregates[key] = { name, strength, qty: 0 };
+          aggregates[key].qty += qty;
+        });
+      });
+
+      // Fetch existing docs to remove any no longer present
+      const existingSnap = await getDocs(collection(db, 'c&pIncomingProductRecieved'));
+      const existingKeys = new Set();
+      existingSnap.forEach((d) => existingKeys.add(d.id));
+
+      // Upsert current aggregates
+      await Promise.all(
+        Object.entries(aggregates).map(([key, data]) =>
+          setDoc(
+            doc(db, 'c&pIncomingProductRecieved', key),
+            { name: data.name, strength: data.strength, qty: data.qty },
+            { merge: true }
+          )
+        )
+      );
+
+      // Remove entries that no longer exist
+      const missing = [...existingKeys].filter((k) => !aggregates[k]);
+      await Promise.all(missing.map((k) => deleteDoc(doc(db, 'c&pIncomingProductRecieved', k))));
+    } catch (err) {
+      console.error('Failed to sync incoming aggregates', err);
+    }
+  };
+
   const groupOrdersByDate = (ordersList) => {
     const grouped = {};
     ordersList.forEach((order) => {
@@ -178,6 +221,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     });
     return grouped;
   };
+
+  // Ensure existing pending orders get pushed once into incoming aggregates after initial load
+  useEffect(() => {
+    if (!syncedIncomingOnce.current && orders.length > 0) {
+      syncedIncomingOnce.current = true;
+      syncIncomingAggregates(orders);
+    }
+  }, [orders]);
 
   const deleteOrder = async (order) => {
     try {

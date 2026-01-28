@@ -225,6 +225,49 @@
   width: 120px;
 }
 
+.received-cell {
+  cursor: pointer;
+  width: 80px;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.received-cell.editing {
+  background: #fff8ec;
+}
+
+.received-input {
+  width: 64px;
+  padding: 2px 6px;
+  font-size: 0.9em;
+  text-align: center;
+  border: 1px solid #cfa85f;
+  border-radius: 4px;
+  background: #fffdf9;
+  color: #3a2c1a;
+  margin: 0;
+  display: inline-block;
+}
+
+.received-input:focus {
+  outline: none;
+  border-color: #d45b42;
+  box-shadow: 0 0 0 2px rgba(212, 91, 66, 0.12);
+}
+
+/* Hide number spin buttons for a cleaner inline look */
+.received-input::-webkit-outer-spin-button,
+.received-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.received-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .orders-hero {
   width: min(1600px, 100%);
   margin: 0 auto 1.25rem auto;
