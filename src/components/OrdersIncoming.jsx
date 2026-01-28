@@ -74,8 +74,9 @@ const OrdersIncoming = () => {
       await setDoc(doc(db, "c&pIncomingProductRecieved", payload.key), {
         name: row.name,
         strength: row.strength,
+        qty: row.qty, // preserve qty so it doesn't get wiped on overwrite
         received: target,
-      });
+      }, { merge: true });
       setReceivedMap((prev) => ({ ...prev, [payload.key]: target }));
       setEditingValues((prev) => ({ ...prev, [payload.key]: String(target) }));
     } catch (err) {
