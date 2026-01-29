@@ -114,8 +114,10 @@ const PaymentTracker = ({ onError, onSuccess }) => {
     () => pendingTotal + deliveredTotal,
     [pendingTotal, deliveredTotal]
   );
-  const outstanding = Math.max(pendingTotal - totalPaid, 0);
-  const credit = Math.max(totalPaid - pendingTotal, 0);
+  // Open balance should only change when payments are logged,
+  // not when orders move between pending/delivered states.
+  const outstanding = Math.max(allOrdersTotal - totalPaid, 0);
+  const credit = Math.max(totalPaid - allOrdersTotal, 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
