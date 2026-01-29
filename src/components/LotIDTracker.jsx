@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { collection, onSnapshot, updateDoc, doc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import "./LotIDTracker.css";
@@ -94,6 +95,12 @@ const LotIDTracker = () => {
   const [editingSections, setEditingSections] = useState({});
   const [lotEditMode, setLotEditMode] = useState({});
   const [copyFlash, setCopyFlash] = useState({});
+  const [lotModalConfig, setLotModalConfig] = useState({
+    productKey: null,
+    lot: "",
+    capColor: "",
+    kits: "",
+  });
   const productRefs = useRef({});
   const [visibleProductId, setVisibleProductId] = useState(null);
 
@@ -218,6 +225,7 @@ const LotIDTracker = () => {
                 ? p.coaList.map((c) => ({
                     ...c,
                     url: buildCoaUrl(c.lot || c.url || p.id || ""),
+                    kits: Number(c.kits) || 0,
                   }))
                 : [],
               capColor: p.currentCoa?.capColor || p.capColor || ""
@@ -262,6 +270,7 @@ const LotIDTracker = () => {
     const normalized = coaList.map((c) => ({
       ...c,
       url: buildCoaUrl(c.lot || c.url || ""),
+      kits: Number(c.kits) || 0,
     }));
     setProductData((prev) => ({
       ...prev,
@@ -333,6 +342,60 @@ const LotIDTracker = () => {
         [key]: { ...(prev[key] || {}), coaList: currentList },
       };
     });
+  };
+
+  const handleUpdateLotKits = (key, index, value) => {
+    setProductData((prev) => {
+      const currentList = [...(prev[key]?.coaList || [])];
+      if (!currentList[index]) return prev;
+      currentList[index] = { ...currentList[index], kits: Number(value) || 0 };
+      handleSaveCoaList(key, currentList);
+      return {
+        ...prev,
+        [key]: { ...(prev[key] || {}), coaList: currentList },
+      };
+    });
+  };
+
+  const openLotModal = (key, nextLotId) => {
+    const capSeed =
+      productData[key]?.capColor ||
+      productData[key]?.currentCOA?.capColor ||
+      "";
+    setLotModalConfig({
+      productKey: key,
+      lot: nextLotId,
+      capColor: capSeed,
+      kits: "",
+    });
+  };
+
+  const closeLotModal = () =>
+    setLotModalConfig({ productKey: null, lot: "", capColor: "", kits: "" });
+
+  const confirmLotModal = async () => {
+    const { productKey, lot, capColor, kits } = lotModalConfig;
+    if (!productKey || !lot) return;
+    const entry = productData[productKey] || {
+      currentCOA: createEmptyCOA(),
+      coaList: [],
+    };
+    const updatedLots = [
+      {
+        lot,
+        url: buildCoaUrl(lot),
+        capColor: capColor || "",
+        kits: Number(kits) || 0,
+      },
+      ...(entry.coaList || []),
+    ];
+    setProductData((prev) => ({
+      ...prev,
+      [productKey]: { ...(prev[productKey] || entry), coaList: updatedLots },
+    }));
+    await handleSaveCoaList(productKey, updatedLots);
+    copyToClipboard(lot, productKey, "generatedLot");
+    closeLotModal();
   };
 
   return (
@@ -444,20 +507,7 @@ const LotIDTracker = () => {
                   </div>
                   <button
                     className="lot-id-generate-btn"
-                    onClick={async () => {
-                      const newLot = nextIdPreview;
-                      const entry = productData[key] || data;
-                      const updatedLots = [
-                        { lot: newLot, url: buildCoaUrl(newLot), capColor: "" },
-                        ...(entry.coaList || []),
-                      ];
-                      setProductData((prev) => ({
-                        ...prev,
-                        [key]: { ...(prev[key] || entry), coaList: updatedLots },
-                      }));
-                      await handleSaveCoaList(key, updatedLots);
-                      copyToClipboard(newLot, key, "generatedLot");
-                    }}
+                    onClick={() => openLotModal(key, nextIdPreview)}
                   >
                     + Generate Lot ID
                   </button>
@@ -480,22 +530,36 @@ const LotIDTracker = () => {
                               <span className="lot-id-capchip-text">
                                 {coa.capColor || "Cap color"}
                               </span>
-                            </span>
-                            {lotEditMode[key] && (
-                              <input
-                                type="text"
-                                className="lot-id-capchip-input"
-                                placeholder="Cap color"
-                                value={coa.capColor || ""}
-                                onChange={(e) => handleUpdateCoaCap(key, i, e.target.value)}
-                              />
-                            )}
-                          </div>
-                          {lotEditMode[key] ? (
-                            <input
-                              type="text"
-                              className="lot-id-edit-lot-input"
-                              value={coa.lot || ""}
+                        </span>
+                        {lotEditMode[key] && (
+                          <input
+                            type="text"
+                            className="lot-id-capchip-input"
+                            placeholder="Cap color"
+                            value={coa.capColor || ""}
+                            onChange={(e) => handleUpdateCoaCap(key, i, e.target.value)}
+                          />
+                        )}
+                      </div>
+                      {lotEditMode[key] ? (
+                        <input
+                          type="number"
+                          className="lot-id-kits-input"
+                          placeholder="Kits in batch"
+                          value={coa.kits ?? ""}
+                          onChange={(e) => handleUpdateLotKits(key, i, e.target.value)}
+                          min="0"
+                        />
+                      ) : (
+                        <div className="lot-id-kits-display">
+                          Kits: {typeof coa.kits === "number" ? coa.kits : "—"}
+                        </div>
+                      )}
+                      {lotEditMode[key] ? (
+                        <input
+                          type="text"
+                          className="lot-id-edit-lot-input"
+                          value={coa.lot || ""}
                               onChange={(e) => handleUpdateLotValue(key, i, e.target.value)}
                               placeholder="Lot ID"
                             />
@@ -525,6 +589,57 @@ const LotIDTracker = () => {
         })}
         </div>
       </div>
+
+      {lotModalConfig.productKey &&
+        createPortal(
+          <div className="lot-modal-backdrop" onClick={closeLotModal}>
+            <div className="lot-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Generate New Lot</h3>
+              <p className="lot-modal-sub">Lot ID is auto-created. Add cap color and batch size.</p>
+
+              <label className="lot-modal-label">Generated Lot ID</label>
+              <input
+                type="text"
+                value={lotModalConfig.lot}
+                readOnly
+                className="lot-modal-input"
+              />
+
+              <label className="lot-modal-label">Cap Color</label>
+              <input
+                type="text"
+                placeholder="e.g. Sand, #F5E9D8"
+                value={lotModalConfig.capColor}
+                onChange={(e) =>
+                  setLotModalConfig((prev) => ({ ...prev, capColor: e.target.value }))
+                }
+                className="lot-modal-input"
+              />
+
+              <label className="lot-modal-label">Kits in Batch</label>
+              <input
+                type="number"
+                min="0"
+                placeholder="Enter kit count"
+                value={lotModalConfig.kits}
+                onChange={(e) =>
+                  setLotModalConfig((prev) => ({ ...prev, kits: e.target.value }))
+                }
+                className="lot-modal-input"
+              />
+
+              <div className="lot-modal-actions">
+                <button type="button" className="lot-modal-btn secondary" onClick={closeLotModal}>
+                  Cancel
+                </button>
+                <button type="button" className="lot-modal-btn primary" onClick={confirmLotModal}>
+                  Save Lot
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

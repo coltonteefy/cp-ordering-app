@@ -69,6 +69,117 @@
   color: var(--hero-metric-value);
 }
 
+.lot-id-kits-display {
+  margin: 0.35rem 0;
+  font-size: 0.9rem;
+  color: #5a4a38;
+  font-weight: 600;
+}
+
+.lot-id-kits-input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e3d6c2;
+  border-radius: 8px;
+  margin: 0.35rem 0;
+  font-size: 0.95rem;
+}
+
+.lot-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 21, 15, 0.35);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 999;
+  padding: 12px;
+}
+
+.lot-modal {
+  background: #fffaf3;
+  border: 1px solid #e6d6be;
+  border-radius: 18px 18px 10px 10px;
+  padding: 22px;
+  width: min(540px, 96vw);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+  transform: translateY(6px);
+  animation: lot-sheet-in 220ms ease-out forwards;
+}
+
+@keyframes lot-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lot-modal h3 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  color: #3b2c1e;
+}
+
+.lot-modal-sub {
+  margin: 0 0 14px;
+  color: #6a5946;
+  font-size: 0.95rem;
+}
+
+.lot-modal-label {
+  display: block;
+  margin: 10px 0 6px;
+  font-weight: 700;
+  color: #4a3825;
+}
+
+.lot-modal-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e3d6c2;
+  background: #fff;
+  font-size: 1rem;
+}
+
+.lot-modal-input[readonly] {
+  background: #f7f1e6;
+  color: #56422e;
+  font-weight: 700;
+}
+
+.lot-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.lot-modal-btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lot-modal-btn.primary {
+  background: linear-gradient(135deg, #f0dbae, #e3c486);
+  color: #2f2416;
+  border-color: #d5bd8f;
+}
+
+.lot-modal-btn.secondary {
+  background: #fff;
+  color: #3b2c1e;
+  border-color: #d7c7b1;
+}
+
 .lot-id-layout {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
