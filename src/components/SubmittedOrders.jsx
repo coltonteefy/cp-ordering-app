@@ -29,6 +29,7 @@ function copyToClipboard(text) {
 
 const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [copiedOrderId, setCopiedOrderId] = useState(null);
+  const [copiedOrderType, setCopiedOrderType] = useState(null); // 'price' or 'no-price'
   const [orders, setOrders] = useState([]);
   const [deliveredOrders, setDeliveredOrders] = useState([]);
   const [editingOrders, setEditingOrders] = useState(new Set());
@@ -546,8 +547,12 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           : [];
 
     const copied = copiedOrderId === order.id;
-    const handleCopyOrderItems = () => {
+    const copiedWithPrice = copiedOrderId === order.id && copiedOrderType === 'price';
+    const copiedNoPrice = copiedOrderId === order.id && copiedOrderType === 'no-price';
+    
+    const getFormattedItems = (includePrice = true) => {
       const warehouse = order.warehouse ? `${order.warehouse} WAREHOUSE` : '';
+      const orderId = order.id || '';
       const sortedItems = [...order.items].sort((a, b) => {
         const nameA = (a.productName || a.product || '').toLowerCase();
         const nameB = (b.productName || b.product || '').toLowerCase();
@@ -556,19 +561,49 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         }
         return nameA.localeCompare(nameB);
       });
+      
       const lines = [
         warehouse,
+        orderId,
+        '═══════════════════════════',
         ...sortedItems.map((item) => {
           let product = item.productName || item.product || '';
           if (/^GLP-2/i.test(product)) product = 'TZ';
           if (/^GLP-3/i.test(product)) product = 'RT';
           const strength = item.productStrength || item.strength || '';
-          return `${product} ${strength} x ${item.quantity}`;
+          const qty = item.quantity || '';
+          
+          if (includePrice) {
+            const pricePerKit = item.pricePerKit || 0;
+            const total = (qty * pricePerKit).toFixed(2);
+            return `${product} ${strength} x ${qty} | $${pricePerKit.toFixed(2)} -> $${total}`;
+          } else {
+            return `${product} ${strength} x ${qty}`;
+          }
         })
       ];
-      copyToClipboard(lines.join('\n'));
+      
+      return lines.join('\n');
+    };
+    
+    const handleCopyOrderItems = () => {
+      copyToClipboard(getFormattedItems(true));
       setCopiedOrderId(order.id);
-      setTimeout(() => setCopiedOrderId(null), 900);
+      setCopiedOrderType('price');
+      setTimeout(() => {
+        setCopiedOrderId(null);
+        setCopiedOrderType(null);
+      }, 900);
+    };
+    
+    const handleCopyOrderItemsNoPrice = () => {
+      copyToClipboard(getFormattedItems(false));
+      setCopiedOrderId(order.id);
+      setCopiedOrderType('no-price');
+      setTimeout(() => {
+        setCopiedOrderId(null);
+        setCopiedOrderType(null);
+      }, 900);
     };
 
     return (
@@ -808,10 +843,10 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           <div className="order-col-right">
             <div className="order-copy-row order-copy-row-right">
               <button
-                className={`btn-copy-order${copied ? ' copied' : ''}`}
+                className={`btn-copy-order${copiedWithPrice ? ' copied' : ''}`}
                 style={{
                   background: 'transparent',
-                  color: copied ? '#E6A94A' : '#8B6F47',
+                  color: copiedWithPrice ? '#E6A94A' : '#8B6F47',
                   border: '1px solid #E6A94A',
                   borderRadius: '4px',
                   padding: '4px 10px',
@@ -819,12 +854,32 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   fontWeight: 600,
                   transition: 'background 0.3s, color 0.3s',
                   boxShadow: 'none',
-                  opacity: copied ? 0.85 : 1
+                  opacity: copiedWithPrice ? 0.85 : 1,
+                  marginRight: '8px'
                 }}
-                title="Copy order items as text"
+                title="Copy order items with pricing"
                 onClick={handleCopyOrderItems}
               >
-                {copied ? 'Copied!' : 'Copy Items'}
+                {copiedWithPrice ? 'Copied!' : 'Copy w/ Price'}
+              </button>
+              <button
+                className={`btn-copy-order${copiedNoPrice ? ' copied' : ''}`}
+                style={{
+                  background: 'transparent',
+                  color: copiedNoPrice ? '#E6A94A' : '#8B6F47',
+                  border: '1px solid #E6A94A',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'background 0.3s, color 0.3s',
+                  boxShadow: 'none',
+                  opacity: copiedNoPrice ? 0.85 : 1
+                }}
+                title="Copy order items without pricing"
+                onClick={handleCopyOrderItemsNoPrice}
+              >
+                {copiedNoPrice ? 'Copied!' : 'Copy Items'}
               </button>
             </div>
 
