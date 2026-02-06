@@ -316,8 +316,16 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     try {
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
+      
+      // Mark all items as delivered
+      const updatedItems = order.items.map((item) => ({
+        ...item,
+        status: 'delivered'
+      }));
+      
       const deliveredOrderData = {
         ...order,
+        items: updatedItems,
         deliveredAt: new Date().toISOString(),
         originalOrderId: orderId,
         status: 'delivered'
@@ -331,6 +339,29 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     } catch (error) {
       console.error('Error marking delivered:', error);
       onError && onError('Failed to mark order as delivered. Please try again.');
+    }
+  };
+
+  const updateItemStatus = async (orderId, itemId, status) => {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updatedItems = o.items.map((item) =>
+          item.itemId === itemId ? { ...item, status } : item
+        );
+        return { ...o, items: updatedItems };
+      })
+    );
+
+    try {
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) return;
+      const updatedItems = order.items.map((item) =>
+        item.itemId === itemId ? { ...item, status } : item
+      );
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { items: updatedItems });
+    } catch (error) {
+      console.error('Error updating item status:', error);
     }
   };
 
@@ -466,7 +497,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       productName: product.product,
       productStrength: product.strength,
       quantity: 1,
-      pricePerKit: price
+      pricePerKit: price,
+      status: 'pending'
     };
 
     const updatedItems = [...order.items, newItem];
@@ -803,6 +835,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <div>Qty</div>
                 <div>Unit</div>
                 <div>Total</div>
+                <div>Delivered</div>
                 {isEditing && <div></div>}
               </div>
               {[...order.items]
@@ -843,6 +876,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                           maximumFractionDigits: 2
                         })}
                       </div>
+                      <div className="item-delivered-edit">
+                        <label className="item-status-toggle">
+                          <input
+                            type="checkbox"
+                            checked={(item.status || 'pending') === 'delivered'}
+                            onChange={(e) => {
+                              const newStatus = e.target.checked ? 'delivered' : 'pending';
+                              updateItemStatus(order.id, item.itemId, newStatus);
+                            }}
+                          />
+                          <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
+                        </label>
+                      </div>
                       <button
                         onClick={() => removeItemFromOrder(order.id, item.itemId)}
                         className="item-remove-btn order-grid-remove"
@@ -864,6 +910,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2
                         })}
+                      </div>
+                      <div className="item-delivered-view">
+                        <label className="item-status-toggle">
+                          <input
+                            type="checkbox"
+                            checked={(item.status || 'pending') === 'delivered'}
+                            onChange={(e) => {
+                              const newStatus = e.target.checked ? 'delivered' : 'pending';
+                              updateItemStatus(order.id, item.itemId, newStatus);
+                            }}
+                          />
+                          <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
+                        </label>
                       </div>
                     </div>
                   )

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import OrdersHero from "./OrdersHero";
 import NextOrderList from "./NextOrderList";
-import OrdersIncoming from "./OrdersIncoming";
 import SubmittedOrders from "./SubmittedOrders";
 const DeliveredOrders = (props) => <SubmittedOrders deliveredOnly {...props} />;
 import PaymentTracker from "./PaymentTracker";
@@ -9,7 +8,6 @@ import "./OrdersTabs.css";
 
 const TAB_CONFIG = [
   { key: "next", label: "Next Order", component: NextOrderList },
-  { key: "incoming", label: "Incoming", component: OrdersIncoming },
   { key: "orders", label: "Pending", component: SubmittedOrders },
   { key: "delivered", label: "Delivered", component: DeliveredOrders },
   { key: "payments", label: "Payment Tracking", component: PaymentTracker },
