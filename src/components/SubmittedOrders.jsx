@@ -181,9 +181,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const syncIncomingAggregates = async (pendingOrders) => {
     try {
       // Build aggregate qty per product/strength from pending orders only
+      // Only count items that are NOT marked as delivered
       const aggregates = {};
       pendingOrders.forEach((order) => {
         (order.items || []).forEach((item) => {
+          // Skip items that are individually marked as delivered
+          const isItemDelivered = item.delivered || item.deliveredAt;
+          if (isItemDelivered) return;
+          
           const name = item.productName || item.product || '';
           const strength = item.productStrength || item.strength || '';
           const key = `${name}__${strength}`;
@@ -198,15 +203,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       const existingKeys = new Set();
       existingSnap.forEach((d) => existingKeys.add(d.id));
 
-      // Upsert current aggregates
+      // Upsert current aggregates, and ensure received doesn't exceed qty
       await Promise.all(
-        Object.entries(aggregates).map(([key, data]) =>
-          setDoc(
+        Object.entries(aggregates).map(([key, data]) => {
+          const existingDoc = existingSnap.docs.find(d => d.id === key);
+          const existingReceived = existingDoc ? Number(existingDoc.data().received) || 0 : 0;
+          // Cap received at the new qty to prevent orphaned received counts
+          const received = Math.min(existingReceived, data.qty);
+          return setDoc(
             doc(db, 'c&pIncomingProductRecieved', key),
-            { name: data.name, strength: data.strength, qty: data.qty },
+            { name: data.name, strength: data.strength, qty: data.qty, received },
             { merge: true }
-          )
-        )
+          );
+        })
       );
 
       // Remove entries that no longer exist

@@ -8,6 +8,7 @@ import ProductManager from './components/ProductManager';
 import PromoSchedule from './components/PromoSchedule';
 import LotIDTracker from './components/LotIDTracker';
 import PaymentTracker from './components/PaymentTracker';
+import IncomingProducts from './components/IncomingProducts';
 import './App.css';
 
 function App() {
@@ -15,7 +16,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
-  const validPages = ['orders', 'products', 'promo', 'lotid'];
+  const validPages = ['orders', 'products', 'promo', 'lotid', 'incoming'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -108,6 +109,7 @@ function App() {
             </button>
             <div className={`nav-menu ${mobileMenuOpen ? 'mobile-open' : ''}`}>
               <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
+              <button onClick={() => goToPage('incoming')} className={`nav-link ${activePage === 'incoming' ? 'active' : ''}`}>Incoming Products</button>
               <button onClick={() => goToPage('products')} className={`nav-link ${activePage === 'products' ? 'active' : ''}`}>Products</button>
               <button onClick={() => goToPage('promo')} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
               <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
@@ -139,7 +141,11 @@ function App() {
         {/* Main Content */}
           <div className="main-content">
             <div className="page-transition" key={activePage}>
-            {activePage === 'products' ? (
+            {activePage === 'incoming' ? (
+              <IncomingProducts 
+                onError={showModal}
+              />
+            ) : activePage === 'products' ? (
               <ProductManager 
                 onSuccess={showModal}
                 onError={showModal}

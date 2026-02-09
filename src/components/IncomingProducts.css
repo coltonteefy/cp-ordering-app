@@ -1,0 +1,236 @@
+.incoming-products-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.incoming-products-header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.incoming-products-header h1 {
+  font-size: 2.2rem;
+  color: #3a2c1a;
+  margin: 0 0 0.5rem 0;
+  font-weight: 700;
+}
+
+.incoming-subtitle {
+  color: #7a6a5a;
+  font-size: 1rem;
+  margin: 0;
+}
+
+/* Summary Cards */
+.incoming-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.summary-card {
+  background: linear-gradient(135deg, #f7f1e7 0%, #fdf8f3 100%);
+  border: 2px solid #e6a94a;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.summary-label {
+  font-size: 0.9rem;
+  color: #7a6a5a;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.summary-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #c87a3a;
+  font-variant-numeric: tabular-nums;
+}
+
+/* No Products Message */
+.no-products {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: #f7f1e7;
+  border-radius: 8px;
+  border: 2px dashed #e6a94a;
+}
+
+.no-products p {
+  color: #7a6a5a;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+/* Orders List */
+.orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.order-group {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(90deg, #a67c3c, #c87a3a);
+  color: white;
+  padding: 1rem;
+  font-weight: 700;
+}
+
+.order-date {
+  font-size: 0.95rem;
+}
+
+.order-qty-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+}
+
+/* Order Items Table */
+.order-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.order-items-table thead {
+  background: #f7f1e7;
+  border-bottom: 2px solid #e6a94a;
+}
+
+.order-items-table thead th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.9rem;
+  color: #7a6a5a;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.order-items-table thead th.qty-column {
+  text-align: center;
+}
+
+.order-items-table tbody tr {
+  border-bottom: 1px solid #f0e6da;
+  transition: background-color 0.2s;
+}
+
+.order-items-table tbody tr:hover {
+  background-color: #fdf8f3;
+}
+
+.order-items-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.order-items-table td {
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  color: #3a2c1a;
+}
+
+.order-items-table .product-name {
+  font-weight: 600;
+}
+
+.formatted-name {
+  display: block;
+  font-size: 1rem;
+  color: #b07a2a;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.full-name {
+  display: block;
+  font-size: 0.85rem;
+  color: #7a6a5a;
+  font-weight: 400;
+}
+
+.order-items-table .strength {
+  color: #7a6a5a;
+  font-weight: 500;
+}
+
+.order-items-table .qty-column {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #c87a3a;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem 2rem;
+  font-size: 1.1rem;
+  color: #7a6a5a;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .incoming-products-container {
+    padding: 0.75rem;
+    gap: 1.5rem;
+  }
+
+  .incoming-products-header h1 {
+    font-size: 1.8rem;
+  }
+
+  .incoming-summary {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .summary-card {
+    padding: 1rem;
+  }
+
+  .order-header {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .order-items-table {
+    font-size: 0.85rem;
+  }
+
+  .order-items-table thead th,
+  .order-items-table td {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .formatted-name {
+    font-size: 0.95rem;
+  }
+
+  .full-name {
+    display: none;
+  }
+}
