@@ -125,6 +125,156 @@
   margin-top: 1.5rem;
 }
 
+.orders-main-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+}
+
+.orders-main-tab {
+  border: 1px solid #e5cfb4;
+  background: #fff7ec;
+  color: #6f5a44;
+  padding: 0.55rem 0.95rem;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.orders-main-tab.active {
+  background: #d45b42;
+  color: #ffffff;
+  border-color: #c24f38;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+}
+
+.orders-main-tab:hover:not(.active) {
+  color: #b1432d;
+  border-color: #d7b58f;
+}
+
+.orders-summary {
+  background: #fffdf8;
+  border: 1px solid #f0e3d4;
+  border-radius: 16px;
+  padding: 1.2rem 1.4rem;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+.orders-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.orders-summary-header h2 {
+  margin: 0;
+  color: #2f2a26;
+}
+
+.orders-summary-header p {
+  margin: 0.2rem 0 0 0;
+  color: #7b6c5d;
+  font-size: 0.95rem;
+}
+
+.orders-summary-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.orders-summary-pill {
+  background: #f4e6d5;
+  border: 1px solid #e6d7c4;
+  color: #4a3a2b;
+  font-weight: 700;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.orders-summary-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.orders-summary-column h3 {
+  margin: 0 0 0.5rem 0;
+  color: #4a2f13;
+}
+
+.orders-summary-subtotal {
+  font-weight: 700;
+  color: #5c3f1d;
+  background: #fdf4e4;
+  border: 1px solid #c9a56e;
+  border-radius: 10px;
+  padding: 0.35rem 0.6rem;
+  display: inline-flex;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.orders-summary-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.orders-summary-item {
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid #efe5d7;
+  background: #fffaf3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.orders-summary-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.orders-summary-id {
+  font-weight: 700;
+  color: #3a2c1a;
+  word-break: break-all;
+}
+
+.orders-summary-warehouse {
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #a86b2e;
+  font-weight: 700;
+}
+
+.orders-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  color: #6c5841;
+  font-size: 0.85rem;
+}
+
+.orders-summary-total {
+  font-weight: 700;
+  color: #b07a2a;
+}
+
 .orders-aggregate {
   background: #fffdf8;
   border: 1px solid #f0e3d4;
