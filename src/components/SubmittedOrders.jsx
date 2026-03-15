@@ -42,6 +42,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [activeDeliveredOrderId, setActiveDeliveredOrderId] = useState(null); // kept for compatibility
   const [availableProducts, setAvailableProducts] = useState([]);
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
+  const [editingTrackingCards, setEditingTrackingCards] = useState({});
   const syncedIncomingOnce = useRef(false);
 
   // Listen to pending orders
@@ -399,36 +400,93 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     }
   };
 
-  const updateTrackingStatus = async (orderId, entryIdx, status) => {
+  const trackingCardKey = (orderId, entryIdx) => `${orderId}:${entryIdx}`;
+
+  const isTrackingCardEditing = (orderId, entryIdx) =>
+    Boolean(editingTrackingCards[trackingCardKey(orderId, entryIdx)]);
+
+  const setTrackingCardEditing = (orderId, entryIdx, isEditing) => {
+    setEditingTrackingCards((prev) => {
+      const next = { ...prev };
+      const key = trackingCardKey(orderId, entryIdx);
+      if (isEditing) {
+        next[key] = true;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+  };
+
+  const clearTrackingCardEditsForOrder = (orderId) => {
+    setEditingTrackingCards((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith(`${orderId}:`)) delete next[key];
+      });
+      return next;
+    });
+  };
+
+  const getEffectiveTrackingEntries = (ord) => {
+    if (ord?.trackingEntries && Array.isArray(ord.trackingEntries) && ord.trackingEntries.length) {
+      return ord.trackingEntries;
+    }
+    if (ord?.trackingNumber && ord?.carrier) {
+      return [{ id: 'legacy', carrier: ord.carrier, number: ord.trackingNumber, note: '', status: ord.status || 'pending' }];
+    }
+    return [];
+  };
+
+  const saveTrackingEntries = async (orderId, entries) => {
+    try {
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { trackingEntries: entries });
+    } catch (error) {
+      console.error('Error saving tracking entries:', error);
+      onError && onError('Failed to update tracking entries.');
+    }
+  };
+
+  const updateTrackingEntry = async (orderId, entryIdx, patch) => {
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== orderId) return o;
-        const entries =
-          o.trackingEntries && Array.isArray(o.trackingEntries) && o.trackingEntries.length
-            ? [...o.trackingEntries]
-            : o.trackingNumber && o.carrier
-              ? [{ id: 'legacy', carrier: o.carrier, number: o.trackingNumber, note: '', status: o.status || 'pending' }]
-              : [];
+        const entries = [...getEffectiveTrackingEntries(o)];
         if (!entries[entryIdx]) return o;
-        entries[entryIdx] = { ...entries[entryIdx], status };
+        entries[entryIdx] = { ...entries[entryIdx], ...patch };
         return { ...o, trackingEntries: entries };
       })
     );
 
-    try {
-      const order = orders.find((o) => o.id === orderId);
-      const entries =
-        order?.trackingEntries && Array.isArray(order.trackingEntries) && order.trackingEntries.length
-          ? [...order.trackingEntries]
-          : order?.trackingNumber && order?.carrier
-            ? [{ id: 'legacy', carrier: order.carrier, number: order.trackingNumber, note: '', status: order.status || 'pending' }]
-            : [];
-      if (!entries[entryIdx]) return;
-      entries[entryIdx] = { ...entries[entryIdx], status };
-      await updateDoc(doc(db, 'c&pProductOrders', orderId), { trackingEntries: entries });
-    } catch (error) {
-      console.error('Error updating tracking status:', error);
-    }
+    const order = orders.find((o) => o.id === orderId);
+    const entries = [...getEffectiveTrackingEntries(order)];
+    if (!entries[entryIdx]) return;
+    entries[entryIdx] = { ...entries[entryIdx], ...patch };
+    await saveTrackingEntries(orderId, entries);
+  };
+
+  const addTrackingEntry = async (orderId) => {
+    const order = orders.find((o) => o.id === orderId);
+    const entries = [...getEffectiveTrackingEntries(order)];
+    const newEntryIndex = entries.length;
+    entries.push({ id: Date.now().toString(), carrier: order?.carrier || 'UPS', number: '', note: '', status: 'pending' });
+
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    setTrackingCardEditing(orderId, newEntryIndex, true);
+    await saveTrackingEntries(orderId, entries);
+  };
+
+  const removeTrackingEntry = async (orderId, entryIdx) => {
+    const order = orders.find((o) => o.id === orderId);
+    const entries = [...getEffectiveTrackingEntries(order)].filter((_, i) => i !== entryIdx);
+
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    clearTrackingCardEditsForOrder(orderId);
+    await saveTrackingEntries(orderId, entries);
+  };
+
+  const updateTrackingStatus = async (orderId, entryIdx, status) => {
+    await updateTrackingEntry(orderId, entryIdx, { status });
   };
 
   const updateItemQuantity = (orderId, itemId, newQuantity) => {
@@ -532,6 +590,22 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     }
   };
 
+  const getTrackingNumbers = (rawNumber) => {
+    if (!rawNumber) return [];
+    const cleaned = String(rawNumber).replace(/\r/g, '\n').trim();
+    if (!cleaned) return [];
+
+    // Split pasted tracking blobs by common separators while keeping carrier tokens intact.
+    const byCommonDelimiters = cleaned
+      .replace(/\|/g, '\n')
+      .split(/[\n,;\t\s]+/)
+      .map((value) => value.trim())
+      .filter((value) => Boolean(value));
+
+    if (byCommonDelimiters.length > 1) return [...new Set(byCommonDelimiters)];
+    return [cleaned];
+  };
+
   // Rendering helpers -----------------------------------------
   const calculateFinalTotal = (order) => {
     const itemsTotal = (order.items || []).reduce(
@@ -554,6 +628,20 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         : order.trackingNumber && order.carrier
           ? [{ id: 'legacy', carrier: order.carrier, number: order.trackingNumber, note: '', status: 'pending' }]
           : [];
+    const orderedTrackingEntries = trackingEntries
+      .map((entry, originalIndex) => ({ entry, originalIndex }))
+      .sort((a, b) => {
+        const aDelivered = (a.entry.status || 'pending') === 'delivered';
+        const bDelivered = (b.entry.status || 'pending') === 'delivered';
+        if (aDelivered === bDelivered) return a.originalIndex - b.originalIndex;
+        return aDelivered ? 1 : -1;
+      });
+    const pendingTrackingEntries = orderedTrackingEntries.filter(
+      ({ entry }) => (entry.status || 'pending') !== 'delivered'
+    );
+    const deliveredTrackingEntries = orderedTrackingEntries.filter(
+      ({ entry }) => (entry.status || 'pending') === 'delivered'
+    );
 
     const copied = copiedOrderId === order.id;
     const copiedWithPrice = copiedOrderId === order.id && copiedOrderType === 'price';
@@ -613,6 +701,143 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         setCopiedOrderId(null);
         setCopiedOrderType(null);
       }, 900);
+    };
+
+    const renderTrackingCard = ({ entry, originalIndex }) => {
+      const isDelivered = (entry.status || 'pending') === 'delivered';
+      const trackingNumbers = getTrackingNumbers(entry.number);
+      const hasTrackingNumbers = trackingNumbers.length > 0;
+      const isWaitingNoTracking = !isDelivered && !hasTrackingNumbers;
+      const isCardEditing = isTrackingCardEditing(order.id, originalIndex);
+
+      return (
+        <div
+          key={entry.id || originalIndex}
+          className={`tracking-card ${isDelivered ? 'delivered-card' : 'pending-card'}${isCardEditing ? ' is-editing' : ''}`}
+        >
+          {isCardEditing ? (
+            <>
+              <div className="tracking-card-header">
+                <label className={`tracking-status-toggle tracking-status-toggle-card ${isDelivered ? 'delivered' : 'pending'}`}>
+                  <input
+                    type="checkbox"
+                    checked={(entry.status || 'pending') === 'delivered'}
+                    onChange={(e) =>
+                      updateTrackingStatus(order.id, originalIndex, e.target.checked ? 'delivered' : 'pending')
+                    }
+                  />
+                  <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+                </label>
+                <div className="tracking-card-actions">
+                  {trackingEntries.length > 1 && (
+                    <button
+                      className="tracking-remove"
+                      onClick={() => removeTrackingEntry(order.id, originalIndex)}
+                      title="Remove tracking"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  <button
+                    className="tracking-card-btn"
+                    onClick={() => setTrackingCardEditing(order.id, originalIndex, false)}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+              <div className="tracking-edit-grid">
+                <label className="tracking-field">
+                  <span className="tracking-field-label">Carrier</span>
+                  <select
+                    value={entry.carrier || 'UPS'}
+                    onChange={(e) => updateTrackingEntry(order.id, originalIndex, { carrier: e.target.value })}
+                    className="carrier-select"
+                  >
+                    <option value="">Select Carrier</option>
+                    <option value="USPS">USPS</option>
+                    <option value="UPS">UPS</option>
+                    <option value="FedEx">FedEx</option>
+                    <option value="DHL">DHL</option>
+                  </select>
+                </label>
+                <label className="tracking-field">
+                  <span className="tracking-field-label">Tracking #</span>
+                  <input
+                    type="text"
+                    placeholder="Tracking Number"
+                    value={entry.number || ''}
+                    onChange={(e) => updateTrackingEntry(order.id, originalIndex, { number: e.target.value })}
+                    className="tracking-input"
+                  />
+                </label>
+              </div>
+              <label className="tracking-field tracking-note-field">
+                <span className="tracking-field-label">Notes</span>
+                <textarea
+                  className="tracking-note"
+                  rows="2"
+                  placeholder="Tracking notes (optional)"
+                  value={entry.note || ''}
+                  onChange={(e) => updateTrackingEntry(order.id, originalIndex, { note: e.target.value })}
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <div className="tracking-card-header">
+                <label className={`tracking-status-toggle tracking-status-toggle-card ${isDelivered ? 'delivered' : 'pending'}`}>
+                  <input
+                    type="checkbox"
+                    checked={(entry.status || 'pending') === 'delivered'}
+                    onChange={(e) =>
+                      updateTrackingStatus(order.id, originalIndex, e.target.checked ? 'delivered' : 'pending')
+                    }
+                  />
+                  <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+                </label>
+                <button
+                  className="tracking-card-edit-link"
+                  onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
+                >
+                  Edit
+                </button>
+              </div>
+              {entry.carrier && hasTrackingNumbers ? (
+                <div className={`tracking-display${isDelivered ? ' delivered' : ''}`}>
+                  <span className="carrier-text carrier-badge">{entry.carrier}</span>
+                  <div className="tracking-number-list">
+                    {trackingNumbers.map((trackingNumber, trackingIdx) => (
+                      <a
+                        key={`${entry.id || originalIndex}-${trackingIdx}-${trackingNumber}`}
+                        href={getTrackingUrl(entry.carrier, trackingNumber)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="tracking-number-link tracking-text tracking-number-chip"
+                      >
+                        {trackingNumber}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className={`tracking-display tracking-empty${isDelivered ? ' delivered' : ''}${isWaitingNoTracking ? ' waiting-no-tracking' : ''}`}
+                >
+                  <span className="carrier-text carrier-badge">{entry.carrier || 'UPS'}</span>
+                  <span className="tracking-text">No tracking number</span>
+                </div>
+              )}
+              {entry.note ? (
+                <div className="tracking-note-display">
+                  <div className="tracking-note-label">Notes</div>
+                  <div className="tracking-note-content">{entry.note}</div>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      );
     };
 
     return (
@@ -695,147 +920,37 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
         <div className="order-body-split">
           <div className="order-col-left">
-            {isEditing ? (
-              <div className="tracking-multi">
-                {(trackingEntries.length
-                  ? trackingEntries
-                  : [{ id: Date.now().toString(), carrier: order.carrier || 'UPS', number: order.trackingNumber || '', note: '' }]
-                ).map((entry, idx) => (
-                  <div className="tracking-row" key={entry.id || idx}>
-                    <div className="tracking-row-main">
-                      <select
-                        value={entry.carrier || 'UPS'}
-                        onChange={(e) => {
-                          const updated = trackingEntries.length ? [...trackingEntries] : [];
-                          if (!updated.length) updated.push({ ...entry });
-                          updated[idx] = { ...updated[idx], carrier: e.target.value };
-                          setOrders((prev) =>
-                            prev.map((o) => (o.id === order.id ? { ...o, trackingEntries: updated } : o))
-                          );
-                        }}
-                        className="carrier-select"
-                      >
-                        <option value="">Select Carrier</option>
-                        <option value="USPS">USPS</option>
-                        <option value="UPS">UPS</option>
-                        <option value="FedEx">FedEx</option>
-                        <option value="DHL">DHL</option>
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="Tracking Number"
-                        value={entry.number || ''}
-                        onChange={(e) => {
-                          const updated = trackingEntries.length ? [...trackingEntries] : [];
-                          if (!updated.length) updated.push({ ...entry });
-                          updated[idx] = { ...updated[idx], number: e.target.value };
-                          setOrders((prev) =>
-                            prev.map((o) => (o.id === order.id ? { ...o, trackingEntries: updated } : o))
-                          );
-                        }}
-                        className="tracking-input"
-                      />
-                      {trackingEntries.length > 1 && (
-                        <button
-                          className="tracking-remove"
-                          onClick={() => {
-                            const updated = trackingEntries.filter((_, i) => i !== idx);
-                            setOrders((prev) =>
-                              prev.map((o) => (o.id === order.id ? { ...o, trackingEntries: updated } : o))
-                            );
-                          }}
-                          title="Remove tracking"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                    <label className="tracking-status-toggle">
-                      <input
-                        type="checkbox"
-                        checked={(entry.status || 'pending') === 'delivered'}
-                        onChange={(e) => {
-                          const updated = trackingEntries.length ? [...trackingEntries] : [];
-                          if (!updated.length) updated.push({ ...entry });
-                          updated[idx] = { ...updated[idx], status: e.target.checked ? 'delivered' : 'pending' };
-                          setOrders((prev) =>
-                            prev.map((o) => (o.id === order.id ? { ...o, trackingEntries: updated } : o))
-                          );
-                        }}
-                      />
-                      <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
-                    </label>
-                    <textarea
-                      className="tracking-note"
-                      rows="2"
-                      placeholder="Tracking notes (optional)"
-                      value={entry.note || ''}
-                      onChange={(e) => {
-                        const updated = trackingEntries.length ? [...trackingEntries] : [];
-                        if (!updated.length) updated.push({ ...entry });
-                        updated[idx] = { ...updated[idx], note: e.target.value };
-                        setOrders((prev) =>
-                          prev.map((o) => (o.id === order.id ? { ...o, trackingEntries: updated } : o))
-                        );
-                      }}
-                    />
+            {trackingEntries.length ? (
+              <div className="tracking-list-wrap">
+                {pendingTrackingEntries.length > 0 && (
+                  <div className="tracking-display-grid tracking-display-grid-pending">
+                    {pendingTrackingEntries.map(renderTrackingCard)}
                   </div>
-                ))}
-                <button
-                  className="tracking-add"
-                  onClick={() => {
-                    const updated = [
-                      ...trackingEntries,
-                      { id: Date.now().toString(), carrier: 'UPS', number: '', note: '', status: 'pending' }
-                    ];
-                    setOrders((prev) =>
-                      prev.map((o) => (o.id === order.id ? { ...o, trackingEntries: updated } : o))
-                    );
-                  }}
-                >
-                  + Add Tracking
-                </button>
-              </div>
-            ) : trackingEntries.length ? (
-              <div className="tracking-display-grid">
-                {trackingEntries.map((entry, idx) => (
-                  <div key={entry.id || idx} className="tracking-card">
-                    <div className="tracking-inline">
-                      {entry.carrier && entry.number ? (
-                        <a
-                          href={getTrackingUrl(entry.carrier, entry.number)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`tracking-display${(entry.status || 'pending') === 'delivered' ? ' delivered' : ''}`}
-                        >
-                          <span className="carrier-text">{entry.carrier}</span>
-                          <span className="tracking-text">{entry.number}</span>
-                        </a>
-                      ) : (
-                        <div
-                          className={`tracking-display tracking-empty${(entry.status || 'pending') === 'delivered' ? ' delivered' : ''}`}
-                        >
-                          <span className="carrier-text">{entry.carrier || 'UPS'}</span>
-                          <span className="tracking-text">No tracking number</span>
-                        </div>
-                      )}
-                      <label className="tracking-status-toggle">
-                        <input
-                          type="checkbox"
-                          checked={(entry.status || 'pending') === 'delivered'}
-                          onChange={(e) => updateTrackingStatus(order.id, idx, e.target.checked ? 'delivered' : 'pending')}
-                        />
-                        <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
-                      </label>
+                )}
+                <div className="tracking-list-footer">
+                  <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>
+                    + Add Tracking
+                  </button>
+                </div>
+                {deliveredTrackingEntries.length > 0 && (
+                  <div className="tracking-delivered-section">
+                    <div className="tracking-display-grid tracking-display-grid-delivered">
+                      {deliveredTrackingEntries.map(renderTrackingCard)}
                     </div>
-                    {entry.note ? <div className="tracking-note-display">{entry.note}</div> : null}
                   </div>
-                ))}
+                )}
               </div>
             ) : (
-              <div className="tracking-display tracking-empty">
-                <span className="carrier-text">{order.carrier || 'UPS'}</span>
-                <span className="tracking-text">No tracking number</span>
+              <div className="tracking-multi">
+                <div
+                  className={`tracking-display tracking-empty${(order.status || 'pending') !== 'delivered' ? ' waiting-no-tracking' : ''}`}
+                >
+                  <span className="carrier-text">{order.carrier || 'UPS'}</span>
+                  <span className="tracking-text">No tracking number</span>
+                </div>
+                <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>
+                  + Add Tracking
+                </button>
               </div>
             )}
 
