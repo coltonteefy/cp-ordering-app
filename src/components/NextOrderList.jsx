@@ -161,7 +161,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
     return grouped;
   };
 
-  const formatOrderId = (warehouse, dateObj) => {
+  const formatOrderId = (dateObj) => {
     const pad = (n) => String(n).padStart(2, '0');
     const y = dateObj.getFullYear();
     const m = pad(dateObj.getMonth() + 1);
@@ -169,7 +169,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
     const hh = pad(dateObj.getHours());
     const mm = pad(dateObj.getMinutes());
     const ss = pad(dateObj.getSeconds());
-    return `CP-ORDER-${warehouse.toUpperCase()}-${y}${m}${d}${hh}${mm}${ss}`;
+    return `CP-ORDER-${y}${m}${d}${hh}${mm}${ss}`;
   };
 
   const submitOrder = async () => {
@@ -181,48 +181,24 @@ const NextOrderList = ({ onSuccess, onError }) => {
     setIsSubmitting(true);
 
     try {
-      // Separate items by warehouse
-      const usItems = orderItems.filter(item => item.warehouse === 'US');
-      const hkItems = orderItems.filter(item => item.warehouse === 'HK');
-
       const timestampDate = new Date();
       const timestamp = timestampDate.toISOString();
 
-      // Submit US warehouse order if there are items
-      if (usItems.length > 0) {
-        const usItemsWithIds = usItems.map(item => ({
-          ...item,
-          itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
-        }));
-        const usTotal = usItemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
-        const orderId = formatOrderId('US', timestampDate);
-        await setDoc(doc(db, 'c&pProductOrders', orderId), {
-          id: orderId,
-          warehouse: 'US',
-          items: usItemsWithIds,
-          total: usTotal,
-          submittedAt: timestamp,
-          status: 'pending',
-        });
-      }
+      const itemsWithIds = orderItems.map(item => ({
+        ...item,
+        itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
+      }));
+      const total = itemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+      const orderId = formatOrderId(timestampDate);
 
-      // Submit HK warehouse order if there are items
-      if (hkItems.length > 0) {
-        const hkItemsWithIds = hkItems.map(item => ({
-          ...item,
-          itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
-        }));
-        const hkTotal = hkItemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
-        const orderId = formatOrderId('HK', timestampDate);
-        await setDoc(doc(db, 'c&pProductOrders', orderId), {
-          id: orderId,
-          warehouse: 'HK',
-          items: hkItemsWithIds,
-          total: hkTotal,
-          submittedAt: timestamp,
-          status: 'pending',
-        });
-      }
+      await setDoc(doc(db, 'c&pProductOrders', orderId), {
+        id: orderId,
+        warehouse: 'US',
+        items: itemsWithIds,
+        total,
+        submittedAt: timestamp,
+        status: 'pending',
+      });
       
       setOrderItems([]);
       localStorage.removeItem('pendingOrder');

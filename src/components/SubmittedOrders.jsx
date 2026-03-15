@@ -56,6 +56,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           const itemsWithIds =
             data.items?.map((item) => ({
               ...item,
+              warehouse: item.warehouse || data.warehouse || 'US',
               itemId:
                 item.itemId ||
                 `${snap.id}-${item.productName || ''}-${item.productStrength || ''}-${Math.random()
@@ -67,7 +68,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
             id: snap.id,
             ...data,
             items: itemsWithIds,
-            status: data.status || 'pending'
+            status: data.status || 'pending',
+            warehouse: data.warehouse || 'US'
           });
         });
 
@@ -82,6 +84,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
         // Sync aggregate incoming list
         syncIncomingAggregates(pendingOnly);
+
       },
       (error) => {
         console.error('Error listening to orders:', error);
@@ -129,7 +132,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       (snapshot) => {
         const ordersData = [];
         snapshot.forEach((snap) => {
-          ordersData.push({ id: snap.id, ...snap.data() });
+          const data = snap.data();
+          ordersData.push({ id: snap.id, ...data, warehouse: data.warehouse || 'US' });
         });
         ordersData.sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
         setDeliveredOrders(ordersData);
@@ -303,6 +307,159 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     } catch (error) {
       console.error('Error updating order:', error);
       onError && onError('Failed to update order: ' + error.message);
+    }
+  };
+
+  const calculateItemsTotal = (items) =>
+    items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0), 0);
+
+  const normalizeItemWarehouse = (item, fallbackWarehouse = 'US') => ({
+    ...item,
+    warehouse: (item.warehouse || fallbackWarehouse || 'US').toUpperCase()
+  });
+
+  const getDayBucket = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || 'unknown-day');
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const mergeOrdersByDate = (ordersList, dateField = 'submittedAt') => {
+    const groups = new Map();
+
+    ordersList.forEach((order) => {
+      const dayKey = getDayBucket(order[dateField] || order.submittedAt || order.deliveredAt);
+      if (!groups.has(dayKey)) groups.set(dayKey, []);
+      groups.get(dayKey).push(order);
+    });
+
+    const merged = [];
+    groups.forEach((group, dayKey) => {
+      if (group.length === 1) {
+        merged.push(group[0]);
+        return;
+      }
+
+      const primary =
+        [...group].sort(
+          (a, b) =>
+            new Date(b[dateField] || b.submittedAt || b.deliveredAt || 0) -
+            new Date(a[dateField] || a.submittedAt || a.deliveredAt || 0)
+        )[0];
+
+      const itemMap = new Map();
+      group.forEach((order) => {
+        (order.items || []).forEach((item) => {
+          const normalized = normalizeItemWarehouse(item, order.warehouse || primary.warehouse || 'US');
+          itemMap.set(normalized.itemId, normalized);
+        });
+      });
+
+      const entryMap = new Map();
+      group.forEach((order) => {
+        (order.trackingEntries || []).forEach((entry) => {
+          const key = `${entry.id || ''}::${entry.carrier || ''}::${entry.number || ''}`;
+          entryMap.set(key, entry);
+        });
+      });
+
+      const mergedItems = [...itemMap.values()];
+      const mergedTrackingEntries = [...entryMap.values()];
+
+      merged.push({
+        ...primary,
+        warehouseParentId: dayKey,
+        items: mergedItems,
+        trackingEntries: mergedTrackingEntries,
+        total: calculateItemsTotal(mergedItems)
+      });
+    });
+
+    return merged.sort(
+      (a, b) =>
+        new Date(b[dateField] || b.submittedAt || b.deliveredAt || 0) -
+        new Date(a[dateField] || a.submittedAt || a.deliveredAt || 0)
+    );
+  };
+
+  const consolidateOrdersByDate = async (ordersList, collectionName, dateField = 'submittedAt') => {
+    const groups = new Map();
+
+    ordersList.forEach((order) => {
+      const dayKey = getDayBucket(order[dateField] || order.submittedAt || order.deliveredAt);
+      if (!groups.has(dayKey)) groups.set(dayKey, []);
+      groups.get(dayKey).push(order);
+    });
+
+    for (const [dayKey, group] of groups.entries()) {
+      if (group.length <= 1) continue;
+
+      const primary =
+        [...group].sort(
+          (a, b) =>
+            new Date(b[dateField] || b.submittedAt || b.deliveredAt || 0) -
+            new Date(a[dateField] || a.submittedAt || a.deliveredAt || 0)
+        )[0];
+
+      const mergedOrder = mergeOrdersByDate(group, dateField)[0];
+      await setDoc(
+        doc(db, collectionName, primary.id),
+        {
+          ...mergedOrder,
+          warehouseParentId: dayKey,
+          total: calculateItemsTotal(mergedOrder.items || [])
+        },
+        { merge: true }
+      );
+
+      const nonPrimary = group.filter((o) => o.id !== primary.id);
+      await Promise.all(nonPrimary.map((o) => deleteDoc(doc(db, collectionName, o.id))));
+    }
+  };
+
+  const getMappedWarehousePrice = (item, warehouse) => {
+    const productName = item.productName || item.product || '';
+    const productStrength = item.productStrength || item.strength || '';
+    const matchingProduct = availableProducts.find(
+      (p) => p.product === productName && p.strength === productStrength
+    );
+    const mappedWarehousePrice = matchingProduct?.warehouseCosts?.[warehouse];
+    if (typeof mappedWarehousePrice === 'number' && Number.isFinite(mappedWarehousePrice)) {
+      return mappedWarehousePrice;
+    }
+    return item.pricePerKit;
+  };
+
+  const updateItemWarehouse = async (orderId, itemId, newWarehouse) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+
+    const targetWarehouse = (newWarehouse || 'US').toUpperCase();
+    const updatedItems = order.items.map((item) => {
+      if (item.itemId !== itemId) return item;
+      return {
+        ...item,
+        warehouse: targetWarehouse,
+        pricePerKit: getMappedWarehousePrice(item, targetWarehouse)
+      };
+    });
+
+    const updatedTotal = calculateItemsTotal(updatedItems);
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, items: updatedItems, total: updatedTotal } : o))
+    );
+
+    try {
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), {
+        items: updatedItems,
+        total: updatedTotal
+      });
+    } catch (error) {
+      console.error('Error updating item warehouse:', error);
+      onError && onError('Failed to update item warehouse.');
     }
   };
 
@@ -534,6 +691,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         items: order.items,
         total: order.total,
         submittedAt: order.submittedAt,
+        warehouse: order.warehouse || 'US',
         notes: order.notes || '',
         trackingEntries: effectiveTrackingEntries(order),
         discountPercent: order.discountPercent || 0
@@ -564,6 +722,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       itemId: Date.now().toString(),
       productName: product.product,
       productStrength: product.strength,
+      warehouse,
       quantity: 1,
       pricePerKit: price,
       status: 'pending'
@@ -648,7 +807,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     const copiedNoPrice = copiedOrderId === order.id && copiedOrderType === 'no-price';
     
     const getFormattedItems = (includePrice = true) => {
-      const warehouse = order.warehouse ? `${order.warehouse} WAREHOUSE` : '';
+      const warehouse = `${order.warehouse || 'US'} WAREHOUSE`;
       const orderId = order.id || '';
       const sortedItems = [...order.items].sort((a, b) => {
         const nameA = (a.productName || a.product || '').toLowerCase();
@@ -756,15 +915,13 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
                 </label>
                 <div className="tracking-card-actions">
-                  {trackingEntries.length > 1 && (
-                    <button
-                      className="tracking-remove"
-                      onClick={() => removeTrackingEntry(order.id, originalIndex)}
-                      title="Remove tracking"
-                    >
-                      Remove
-                    </button>
-                  )}
+                  <button
+                    className="tracking-remove"
+                    onClick={() => removeTrackingEntry(order.id, originalIndex)}
+                    title="Remove this tracking card"
+                  >
+                    Remove Card
+                  </button>
                   <button
                     className="tracking-card-btn"
                     onClick={() => setTrackingCardEditing(order.id, originalIndex, false)}
@@ -894,81 +1051,78 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
     return (
       <div key={order.id} className="order-card">
-        {order.warehouse && (
-          <div className={`warehouse-header warehouse-${order.warehouse.toLowerCase()}`}>
-            <div className="warehouse-meta">
-              <span className="warehouse-name">{order.warehouse} WAREHOUSE</span>
-              <div className="warehouse-order-id-wrap">
-                <button
-                  type="button"
-                  className="warehouse-order-id"
-                  onClick={() => {
-                    copyToClipboard(order.id);
-                    setCopiedOrderMetaId(order.id);
-                    setTimeout(() => setCopiedOrderMetaId(null), 900);
-                  }}
-                  title="Click to copy Order ID"
-                >
-                  {order.id}
-                </button>
-                {copiedOrderMetaId === order.id && (
-                  <span className="warehouse-order-id-copied">Copied!</span>
-                )}
-              </div>
-              <div className="warehouse-date">
-                {isEditing ? (
-                  <input
-                    type="datetime-local"
-                    value={new Date(order.submittedAt).toISOString().slice(0, 16)}
-                    onChange={(e) => updateOrderDate(order.id, e.target.value)}
-                    className="date-input date-input-inline"
-                  />
-                ) : (
-                  <span className="order-date-inline">{submittedAtDisplay}</span>
-                )}
-              </div>
-            </div>
-            <div className="order-status-top">
-              <span className="status-label">Order Status:</span>
-              <label className="status-toggle">
-                <input
-                  type="checkbox"
-                  checked={(order.status || 'pending') === 'delivered'}
-                  onChange={(e) => {
-                    const nextStatus = e.target.checked ? 'delivered' : 'pending';
-                    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
-                    if (nextStatus === 'delivered') {
-                      markOrderDelivered(order.id);
-                    } else {
-                      updateOrderStatus(order.id, nextStatus);
-                    }
-                  }}
-                />
-                <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
-              </label>
-            </div>
-            <div className="warehouse-actions">
+        <div className={`warehouse-header warehouse-${(order.warehouse || 'US').toLowerCase()}`}>
+          <div className="warehouse-meta">
+            <div className="warehouse-order-id-wrap">
               <button
-                className="order-edit-link"
-                onClick={() => toggleEdit(order.id)}
-                title={isEditing ? 'Finish editing' : 'Edit order'}
-              >
-                {isEditing ? 'Done' : 'Edit Order'}
-              </button>
-              <button
-                className="order-delete-link"
+                type="button"
+                className="warehouse-order-id"
                 onClick={() => {
-                  if (window.confirm('Are you sure you want to permanently delete this order?')) {
-                    deleteOrder(order);
-                  }
+                  copyToClipboard(order.id);
+                  setCopiedOrderMetaId(order.id);
+                  setTimeout(() => setCopiedOrderMetaId(null), 900);
                 }}
-                title="Delete this order"
+                title="Click to copy Order ID"
               >
-                Delete
+                {order.id}
               </button>
+              {copiedOrderMetaId === order.id && (
+                <span className="warehouse-order-id-copied">Copied!</span>
+              )}
+            </div>
+            <div className="warehouse-date">
+              {isEditing ? (
+                <input
+                  type="datetime-local"
+                  value={new Date(order.submittedAt).toISOString().slice(0, 16)}
+                  onChange={(e) => updateOrderDate(order.id, e.target.value)}
+                  className="date-input date-input-inline"
+                />
+              ) : (
+                <span className="order-date-inline">{submittedAtDisplay}</span>
+              )}
             </div>
           </div>
-        )}
+          <div className="order-status-top">
+            <span className="status-label">Order Status:</span>
+            <label className="status-toggle">
+              <input
+                type="checkbox"
+                checked={(order.status || 'pending') === 'delivered'}
+                onChange={(e) => {
+                  const nextStatus = e.target.checked ? 'delivered' : 'pending';
+                  setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
+                  if (nextStatus === 'delivered') {
+                    markOrderDelivered(order.id);
+                  } else {
+                    updateOrderStatus(order.id, nextStatus);
+                  }
+                }}
+              />
+              <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+            </label>
+          </div>
+          <div className="warehouse-actions">
+            <button
+              className="order-edit-link"
+              onClick={() => toggleEdit(order.id)}
+              title={isEditing ? 'Finish editing' : 'Edit order'}
+            >
+              {isEditing ? 'Done' : 'Edit Order'}
+            </button>
+            <button
+              className="order-delete-link"
+              onClick={() => {
+                if (window.confirm('Are you sure you want to permanently delete this order?')) {
+                  deleteOrder(order);
+                }
+              }}
+              title="Delete this order"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
 
         <div className="order-body-split">
           <div className="order-col-left">
@@ -994,12 +1148,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
               </div>
             ) : (
               <div className="tracking-multi">
-                <div
-                  className={`tracking-display tracking-empty${(order.status || 'pending') !== 'delivered' ? ' waiting-no-tracking' : ''}`}
-                >
-                  <span className="carrier-text">{order.carrier || 'UPS'}</span>
-                  <span className="tracking-text">No tracking number</span>
-                </div>
                 <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>
                   + Add Tracking
                 </button>
@@ -1061,6 +1209,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
             <div className="order-items-grid">
               <div className="order-items-header">
+                <div>Warehouse</div>
                 <div>Product</div>
                 <div>Strength</div>
                 <div>Qty</div>
@@ -1072,6 +1221,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
               {[...order.items]
                 .slice()
                 .sort((a, b) => {
+                  const warehouseA = (a.warehouse || order.warehouse || 'US').toUpperCase();
+                  const warehouseB = (b.warehouse || order.warehouse || 'US').toUpperCase();
+                  if (warehouseA !== warehouseB) return warehouseA.localeCompare(warehouseB);
                   const nameA = a.productName || '';
                   const nameB = b.productName || '';
                   if (nameA === nameB) {
@@ -1079,85 +1231,108 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   }
                   return nameA.localeCompare(nameB);
                 })
-                .map((item) =>
-                  isEditing ? (
-                    <div key={item.itemId} className="order-item-grid-row">
-                      <div className="item-product-edit">{item.productName || item.product || ''}</div>
-                      <div className="item-strength-edit">{item.productStrength || item.strength || ''}</div>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => updateItemQuantity(order.id, item.itemId, e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="item-qty-input order-grid-input"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.pricePerKit}
-                        onChange={(e) => updateItemPrice(order.id, item.itemId, e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="item-price-input order-grid-input"
-                      />
-                      <div className="item-total order-grid-total">
-                        ${(item.quantity * item.pricePerKit).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2
-                        })}
+                .map((item, index, arr) => {
+                  const itemWarehouse = (item.warehouse || order.warehouse || 'US').toUpperCase();
+                  const prevWarehouse =
+                    index > 0 ? (arr[index - 1].warehouse || order.warehouse || 'US').toUpperCase() : null;
+                  const showWarehouseSection = index === 0 || itemWarehouse !== prevWarehouse;
+
+                  return [
+                    showWarehouseSection ? (
+                      <div key={`${item.itemId}-warehouse-section`} className="order-item-warehouse-divider">
+                        {itemWarehouse} WAREHOUSE
                       </div>
-                      <div className="item-delivered-edit">
-                        <label className="item-status-toggle">
-                          <input
-                            type="checkbox"
-                            checked={(item.status || 'pending') === 'delivered'}
-                            onChange={(e) => {
-                              const newStatus = e.target.checked ? 'delivered' : 'pending';
-                              updateItemStatus(order.id, item.itemId, newStatus);
-                            }}
-                          />
-                          <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
-                        </label>
+                    ) : null,
+                    isEditing ? (
+                      <div key={`${item.itemId}-row`} className="order-item-grid-row editing">
+                        <div className="item-warehouse-edit">
+                          <select
+                            className="item-warehouse-select"
+                            value={itemWarehouse}
+                            onChange={(e) => updateItemWarehouse(order.id, item.itemId, e.target.value)}
+                          >
+                            <option value="US">US</option>
+                            <option value="HK">HK</option>
+                          </select>
+                        </div>
+                        <div className="item-product-edit">{item.productName || item.product || ''}</div>
+                        <div className="item-strength-edit">{item.productStrength || item.strength || ''}</div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateItemQuantity(order.id, item.itemId, e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          className="item-qty-input order-grid-input"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.pricePerKit}
+                          onChange={(e) => updateItemPrice(order.id, item.itemId, e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          className="item-price-input order-grid-input"
+                        />
+                        <div className="item-total order-grid-total">
+                          ${(item.quantity * item.pricePerKit).toLocaleString('en-US', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          })}
+                        </div>
+                        <div className="item-delivered-edit">
+                          <label className="item-status-toggle">
+                            <input
+                              type="checkbox"
+                              checked={(item.status || 'pending') === 'delivered'}
+                              onChange={(e) => {
+                                const newStatus = e.target.checked ? 'delivered' : 'pending';
+                                updateItemStatus(order.id, item.itemId, newStatus);
+                              }}
+                            />
+                            <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
+                          </label>
+                        </div>
+                        <button
+                          onClick={() => removeItemFromOrder(order.id, item.itemId)}
+                          className="item-remove-btn order-grid-remove"
+                          title="Remove item"
+                        >
+                          ×
+                        </button>
                       </div>
-                      <button
-                        onClick={() => removeItemFromOrder(order.id, item.itemId)}
-                        className="item-remove-btn order-grid-remove"
-                        title="Remove item"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <div key={item.itemId} className="order-item-grid-row">
-                      <div className="item-product-view">{item.productName || item.product || ''}</div>
-                      <div className="item-strength-view">{item.productStrength || item.strength || ''}</div>
-                      <div className="item-qty-view">{item.quantity}</div>
-                      <div className="item-unit-view">
-                        ${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ) : (
+                      <div key={`${item.itemId}-row`} className="order-item-grid-row">
+                        <div className="item-warehouse-view">{itemWarehouse}</div>
+                        <div className="item-product-view">{item.productName || item.product || ''}</div>
+                        <div className="item-strength-view">{item.productStrength || item.strength || ''}</div>
+                        <div className="item-qty-view">{item.quantity}</div>
+                        <div className="item-unit-view">
+                          ${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div className="item-total-view">
+                          ${(item.quantity * item.pricePerKit).toLocaleString('en-US', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          })}
+                        </div>
+                        <div className="item-delivered-view">
+                          <label className="item-status-toggle">
+                            <input
+                              type="checkbox"
+                              checked={(item.status || 'pending') === 'delivered'}
+                              onChange={(e) => {
+                                const newStatus = e.target.checked ? 'delivered' : 'pending';
+                                updateItemStatus(order.id, item.itemId, newStatus);
+                              }}
+                            />
+                            <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
+                          </label>
+                        </div>
                       </div>
-                      <div className="item-total-view">
-                        ${(item.quantity * item.pricePerKit).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2
-                        })}
-                      </div>
-                      <div className="item-delivered-view">
-                        <label className="item-status-toggle">
-                          <input
-                            type="checkbox"
-                            checked={(item.status || 'pending') === 'delivered'}
-                            onChange={(e) => {
-                              const newStatus = e.target.checked ? 'delivered' : 'pending';
-                              updateItemStatus(order.id, item.itemId, newStatus);
-                            }}
-                          />
-                          <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
-                        </label>
-                      </div>
-                    </div>
-                  )
-                )}
+                    )
+                  ];
+                })}
 
               {isEditing && (
                 <div className="add-product-section">

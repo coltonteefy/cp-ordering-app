@@ -99,8 +99,14 @@
 
 @media (min-width: 900px) {
   .order-layout-2col {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 0.95fr 1.25fr;
     align-items: start;
+  }
+
+  .order-col-right {
+    position: sticky;
+    top: 0.75rem;
+    align-self: start;
   }
 }
 
@@ -114,6 +120,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  max-height: 44vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }
 
 .product-groups {
@@ -363,6 +372,8 @@
   border-radius: 0.5rem;
   border: 1px solid #E6A94A;
   overflow-x: auto;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .order-table {
@@ -579,6 +590,11 @@
 
   .product-pills {
     gap: 0.375rem;
+  }
+
+  .product-flat-list,
+  .order-table-container {
+    max-height: none;
   }
 
   .categories-grid {

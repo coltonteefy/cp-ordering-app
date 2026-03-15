@@ -8,7 +8,7 @@
 
 .order-items-header {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: 0.8fr 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.85fr;
   font-weight: 700;
   color: #a67c3c;
   background: #f7f1e7;
@@ -21,7 +21,7 @@
 
 .order-item-grid-row {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: 0.8fr 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.85fr;
   align-items: center;
   padding: 10px 6px;
   border-bottom: 1px solid #f0e6da;
@@ -29,6 +29,23 @@
   gap: 0.5rem;
   font-size: 0.85em;
   text-align: center;
+}
+
+.order-item-grid-row.editing {
+  grid-template-columns: 0.8fr 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.85fr 0.5fr;
+}
+
+.order-item-warehouse-divider {
+  grid-column: 1 / -1;
+  background: #f6efe2;
+  color: #8a6635;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.45rem;
+  border-top: 1px solid #e9dcc9;
+  border-bottom: 1px solid #efe5d7;
 }
 
 .order-item-grid-row:last-child {
@@ -42,12 +59,34 @@
 }
 .item-product-edit, .item-product-view,
 .item-strength-edit, .item-strength-view,
-.item-qty-view, .item-unit-view, .item-total-view {
+.item-warehouse-view, .item-qty-view, .item-unit-view, .item-total-view {
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   height: 100%;
+}
+
+.item-warehouse-select {
+  border: 1px solid #e6a94a;
+  border-radius: 6px;
+  background: #fff;
+  color: #5d3a1a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.2rem 0.45rem;
+  min-width: 58px;
+}
+
+.item-warehouse-select:focus {
+  outline: none;
+  border-color: #b07a2a;
+  box-shadow: 0 0 0 2px rgba(176, 122, 42, 0.16);
+}
+
+.item-warehouse-view {
+  font-weight: 700;
+  color: #7b5b2d;
 }
 .item-total-view {
   font-weight: 700;
@@ -904,6 +943,25 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.warehouse-select {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #2f2a26;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 6px;
+  padding: 0.22rem 0.45rem;
+  max-width: 180px;
+}
+
+.warehouse-select:focus {
+  outline: none;
+  border-color: #f6ddad;
+  box-shadow: 0 0 0 2px rgba(246, 221, 173, 0.35);
 }
 
 .warehouse-order-id {
