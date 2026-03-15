@@ -1703,6 +1703,35 @@
   box-shadow: 0 0 0 2px rgba(215, 79, 59, 0.1);
 }
 
+/* Minimal item-assignment styles */
+.tracking-item-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
+}
+
+.tracking-item-option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.tracking-item-option input {
+  margin: 0;
+}
+
+.tracking-item-option-text {
+  font-size: 0.82rem;
+  color: #5d3a1a;
+  overflow-wrap: anywhere;
+}
+
+.tracking-item-plain-list {
+  margin: 0;
+  padding-left: 1rem;
+  color: #5d3a1a;
+}
+
   color: #5D3A1A;
   flex: 1;
   display: flex;

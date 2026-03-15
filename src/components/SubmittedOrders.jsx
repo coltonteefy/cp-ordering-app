@@ -703,12 +703,39 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       }, 900);
     };
 
+    const orderItemsForTracking = [...(order.items || [])].sort((a, b) => {
+      const nameA = (a.productName || a.product || '').toLowerCase();
+      const nameB = (b.productName || b.product || '').toLowerCase();
+      if (nameA === nameB) {
+        return (a.productStrength || a.strength || '').localeCompare(b.productStrength || b.strength || '');
+      }
+      return nameA.localeCompare(nameB);
+    });
+
+    const formatTrackingItemLabel = (item) => {
+      const product = formatProductName(item.productName || item.product || '');
+      const strength = item.productStrength || item.strength || '';
+      const quantity = Number(item.quantity) || 0;
+      return `${product}${strength ? ` ${strength}` : ''} x ${quantity}`.trim();
+    };
+
     const renderTrackingCard = ({ entry, originalIndex }) => {
       const isDelivered = (entry.status || 'pending') === 'delivered';
       const trackingNumbers = getTrackingNumbers(entry.number);
       const hasTrackingNumbers = trackingNumbers.length > 0;
       const isWaitingNoTracking = !isDelivered && !hasTrackingNumbers;
       const isCardEditing = isTrackingCardEditing(order.id, originalIndex);
+      const selectedItemIds = Array.isArray(entry.itemIds) ? entry.itemIds : [];
+      const assignedItems = selectedItemIds
+        .map((itemId) => order.items.find((item) => item.itemId === itemId))
+        .filter(Boolean);
+
+      const toggleTrackingItem = (itemId) => {
+        const nextItemIds = selectedItemIds.includes(itemId)
+          ? selectedItemIds.filter((id) => id !== itemId)
+          : [...selectedItemIds, itemId];
+        updateTrackingEntry(order.id, originalIndex, { itemIds: nextItemIds });
+      };
 
       return (
         <div
@@ -782,6 +809,24 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   onChange={(e) => updateTrackingEntry(order.id, originalIndex, { note: e.target.value })}
                 />
               </label>
+              <div className="tracking-field tracking-item-picker">
+                <span className="tracking-field-label">Items In This Tracking</span>
+                <div className="tracking-item-list">
+                  {orderItemsForTracking.map((item) => {
+                    const checked = selectedItemIds.includes(item.itemId);
+                    return (
+                      <label key={item.itemId} className={`tracking-item-option${checked ? ' selected' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleTrackingItem(item.itemId)}
+                        />
+                        <span className="tracking-item-option-text">{formatTrackingItemLabel(item)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -805,7 +850,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
               </div>
               {entry.carrier && hasTrackingNumbers ? (
                 <div className={`tracking-display${isDelivered ? ' delivered' : ''}`}>
-                  <span className="carrier-text carrier-badge">{entry.carrier}</span>
+                  <span className="carrier-text">{entry.carrier}</span>
                   <div className="tracking-number-list">
                     {trackingNumbers.map((trackingNumber, trackingIdx) => (
                       <a
@@ -813,7 +858,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                         href={getTrackingUrl(entry.carrier, trackingNumber)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="tracking-number-link tracking-text tracking-number-chip"
+                        className="tracking-number-link tracking-text"
                       >
                         {trackingNumber}
                       </a>
@@ -824,14 +869,21 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <div
                   className={`tracking-display tracking-empty${isDelivered ? ' delivered' : ''}${isWaitingNoTracking ? ' waiting-no-tracking' : ''}`}
                 >
-                  <span className="carrier-text carrier-badge">{entry.carrier || 'UPS'}</span>
+                  <span className="carrier-text">{entry.carrier || 'UPS'}</span>
                   <span className="tracking-text">No tracking number</span>
                 </div>
               )}
               {entry.note ? (
-                <div className="tracking-note-display">
-                  <div className="tracking-note-label">Notes</div>
-                  <div className="tracking-note-content">{entry.note}</div>
+                <div className="tracking-note-display">{entry.note}</div>
+              ) : null}
+              {assignedItems.length ? (
+                <div className="tracking-note-display tracking-assigned-items">
+                  <div className="tracking-note-label">Items</div>
+                  <ul className="tracking-item-plain-list">
+                    {assignedItems.map((item) => (
+                      <li key={item.itemId}>{formatTrackingItemLabel(item)}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
             </>
