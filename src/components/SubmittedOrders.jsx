@@ -36,9 +36,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [originalOrders, setOriginalOrders] = useState({});
   const [hasShownError, setHasShownError] = useState(false);
   const [copiedOrderMetaId, setCopiedOrderMetaId] = useState(null);
-  const [activePendingDate, setActivePendingDate] = useState(null);
   const [activeDeliveredDate, setActiveDeliveredDate] = useState(null);
-  const [activePendingOrderId, setActivePendingOrderId] = useState(null); // kept for compatibility
   const [activeDeliveredOrderId, setActiveDeliveredOrderId] = useState(null); // kept for compatibility
   const [availableProducts, setAvailableProducts] = useState([]);
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
@@ -97,33 +95,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
     return () => unsubscribe();
   }, [hasShownError, onError]);
-
-  // Maintain active pending date/order without jumping away on every change
-  useEffect(() => {
-    if (!orders.length) {
-      setActivePendingDate(null);
-      setActivePendingOrderId(null);
-      return;
-    }
-    const grouped = groupOrdersByDate(orders);
-    const dateKeys = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
-    const fallbackDate = dateKeys[0] || null;
-
-    // If current active date is missing, fall back to latest
-    if (!activePendingDate || !grouped[activePendingDate]) {
-      const firstOrder = fallbackDate ? grouped[fallbackDate]?.[0]?.id || null : null;
-      setActivePendingDate(fallbackDate);
-      setActivePendingOrderId(firstOrder);
-      return;
-    }
-
-    // Ensure active order id exists for the active date
-    const currentDateOrders = grouped[activePendingDate] || [];
-    const stillExists = currentDateOrders.some((o) => o.id === activePendingOrderId);
-    if (!stillExists) {
-      setActivePendingOrderId(currentDateOrders[0]?.id || null);
-    }
-  }, [orders, activePendingDate, activePendingOrderId]);
 
   // Listen to delivered orders
   useEffect(() => {
@@ -1452,6 +1423,35 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     );
   };
 
+  const renderAllDatesView = (grouped, dateKeys) => {
+    if (!dateKeys.length) return <div className="empty-orders">No orders.</div>;
+
+    return dateKeys.map((dateKey) => {
+      const ordersForDate = grouped[dateKey] || [];
+      const dateTotal = ordersForDate.reduce((sum, ord) => sum + calculateFinalTotal(ord), 0);
+      const dateCount = ordersForDate.length;
+
+      return (
+        <div key={dateKey} className="date-group">
+          <div className="orders-total-banner">
+            <div className="orders-total-banner-label">Total for {dateKey}</div>
+            <div className="orders-total-banner-meta">
+              <span className="orders-total-banner-count">
+                {dateCount} order{dateCount === 1 ? '' : 's'}
+              </span>
+              <span className="orders-total-banner-value">
+                ${dateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+          <div className="orders-wrapper expanded">
+            <div className="orders-container">{ordersForDate.map((order) => renderOrder(order))}</div>
+          </div>
+        </div>
+      );
+    });
+  };
+
   return (
     <div className="submitted-orders-section">
       {!deliveredOnly && (
@@ -1460,11 +1460,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           {orders.length === 0 ? (
             <div className="empty-orders">No pending orders.</div>
           ) : (
-            renderOrderTabsView(
+            renderAllDatesView(
               groupOrdersByDate(orders),
-              Object.keys(groupOrdersByDate(orders)).sort((a, b) => new Date(b) - new Date(a)),
-              activePendingDate,
-              setActivePendingDate
+              Object.keys(groupOrdersByDate(orders)).sort((a, b) => new Date(b) - new Date(a))
             )
           )}
         </div>
