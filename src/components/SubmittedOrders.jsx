@@ -3,6 +3,28 @@ import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } fr
 import { db } from '../firebaseConfig';
 import './SubmittedOrders.css';
 
+const VENDOR_COLORS = {
+  TSC: '#8B6914',
+  Josh: '#5B7B5D',
+  SRY: '#5C7A99',
+  ALLEN: '#A0522D',
+};
+
+const VENDOR_PALETTE = [
+  '#7B5A7B', '#3D7A7A', '#8C7B3A', '#B87333',
+  '#6B5B73', '#8B5E3C', '#6B8E6B', '#7A6352',
+  '#4E7A6B', '#8B7355'
+];
+
+function vendorColor(name, colorMap) {
+  if (!name) return VENDOR_PALETTE[0];
+  if (colorMap && colorMap[name]) return colorMap[name];
+  if (VENDOR_COLORS[name]) return VENDOR_COLORS[name];
+  let hash = 5381;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) + hash) ^ name.charCodeAt(i);
+  return VENDOR_PALETTE[Math.abs(hash) % VENDOR_PALETTE.length];
+}
+
 // Format product name for display (GLP-2 → T[mass], GLP-3 → R[mass])
 function formatProductName(name) {
   if (!name) return '';
@@ -42,6 +64,23 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
   const [editingTrackingCards, setEditingTrackingCards] = useState({});
   const syncedIncomingOnce = useRef(false);
+  const [vendorColorMap, setVendorColorMap] = useState({});
+
+  // Load vendor colors from Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'c&pVendors'),
+      (snapshot) => {
+        const colors = {};
+        snapshot.forEach((snap) => {
+          const data = snap.data();
+          if (data.color) colors[data.name || snap.id] = data.color;
+        });
+        setVendorColorMap(colors);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   // Listen to pending orders
   useEffect(() => {
@@ -67,8 +106,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
             ...data,
             items: itemsWithIds,
             status: data.status || 'pending',
-            warehouse: data.warehouse || 'US'
+            warehouse: data.warehouse || 'US',
+            vendor: data.vendor || 'TSC'
           });
+        });
+
+        // Backfill vendor on old orders missing it
+        ordersData.forEach((order) => {
+          if (!order.vendor || order.vendor === 'TSC') {
+            const snap = snapshot.docs.find((d) => d.id === order.id);
+            if (snap && !snap.data().vendor) {
+              updateDoc(doc(db, 'c&pProductOrders', order.id), { vendor: 'TSC' }).catch(() => {});
+            }
+          }
         });
 
         ordersData.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
@@ -104,8 +154,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         const ordersData = [];
         snapshot.forEach((snap) => {
           const data = snap.data();
-          ordersData.push({ id: snap.id, ...data, warehouse: data.warehouse || 'US' });
+          ordersData.push({ id: snap.id, ...data, warehouse: data.warehouse || 'US', vendor: data.vendor || 'TSC' });
         });
+
+        // Backfill vendor on old delivered orders missing it
+        ordersData.forEach((order) => {
+          if (!order.vendor || order.vendor === 'TSC') {
+            const snap = snapshot.docs.find((d) => d.id === order.id);
+            if (snap && !snap.data().vendor) {
+              updateDoc(doc(db, 'c&pPastInventoryOrders', order.id), { vendor: 'TSC' }).catch(() => {});
+            }
+          }
+        });
+
         ordersData.sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
         setDeliveredOrders(ordersData);
 
@@ -779,6 +840,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     
     const getFormattedItems = (includePrice = true) => {
       const warehouse = `${order.warehouse || 'US'} WAREHOUSE`;
+      const vendor = order.vendor ? `Vendor: ${order.vendor}` : '';
       const orderId = order.id || '';
       const sortedItems = [...order.items].sort((a, b) => {
         const nameA = (a.productName || a.product || '').toLowerCase();
@@ -791,6 +853,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       
       const lines = [
         warehouse,
+        ...(vendor ? [vendor] : []),
         orderId,
         '═══════════════════════════',
         ...sortedItems.map((item) => {
@@ -902,20 +965,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 </div>
               </div>
               <div className="tracking-edit-grid">
-                <label className="tracking-field">
+                <div className="tracking-field">
                   <span className="tracking-field-label">Carrier</span>
-                  <select
-                    value={entry.carrier || 'UPS'}
-                    onChange={(e) => updateTrackingEntry(order.id, originalIndex, { carrier: e.target.value })}
-                    className="carrier-select"
-                  >
-                    <option value="">Select Carrier</option>
-                    <option value="USPS">USPS</option>
-                    <option value="UPS">UPS</option>
-                    <option value="FedEx">FedEx</option>
-                    <option value="DHL">DHL</option>
-                  </select>
-                </label>
+                  <div className="carrier-pills">
+                    {['UPS', 'USPS', 'FedEx', 'DHL'].map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`carrier-pill${(entry.carrier || 'UPS') === c ? ' active' : ''}`}
+                        onClick={() => updateTrackingEntry(order.id, originalIndex, { carrier: c })}
+                      >{c}</button>
+                    ))}
+                  </div>
+                </div>
                 <label className="tracking-field">
                   <span className="tracking-field-label">Tracking #</span>
                   <input
@@ -1021,8 +1083,11 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     };
 
     return (
-      <div key={order.id} className="order-card">
-        <div className={`warehouse-header warehouse-${(order.warehouse || 'US').toLowerCase()}`}>
+      <div key={order.id} className="order-card" style={{ borderLeft: `4px solid ${vendorColor(order.vendor, vendorColorMap)}` }}>
+        <div
+          className={`warehouse-header warehouse-${(order.warehouse || 'US').toLowerCase()}`}
+          style={{ background: vendorColor(order.vendor, vendorColorMap) }}
+        >
           <div className="warehouse-meta">
             <div className="warehouse-order-id-wrap">
               <button
@@ -1041,6 +1106,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <span className="warehouse-order-id-copied">Copied!</span>
               )}
             </div>
+            {order.vendor && (
+              <span className="order-vendor-badge">{order.vendor}</span>
+            )}
             <div className="warehouse-date">
               {isEditing ? (
                 <input
@@ -1385,8 +1453,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     if (!dateKeys.length) return <div className="empty-orders">No orders.</div>;
     const safeDate = activeDate && grouped[activeDate] ? activeDate : dateKeys[0];
     const ordersForDate = grouped[safeDate] || [];
-    const dateTotal = ordersForDate.reduce((sum, ord) => sum + calculateFinalTotal(ord), 0);
-    const dateCount = ordersForDate.length;
 
     return (
       <>
@@ -1403,17 +1469,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         </div>
         {ordersForDate.length > 0 && (
           <div className="date-group">
-            <div className="orders-total-banner">
-              <div className="orders-total-banner-label">Total for {safeDate}</div>
-              <div className="orders-total-banner-meta">
-                <span className="orders-total-banner-count">
-                  {dateCount} order{dateCount === 1 ? '' : 's'}
-                </span>
-                <span className="orders-total-banner-value">
-                  ${dateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
             <div className="orders-wrapper expanded">
               <div className="orders-container">{ordersForDate.map((order) => renderOrder(order))}</div>
             </div>
@@ -1428,22 +1483,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
     return dateKeys.map((dateKey) => {
       const ordersForDate = grouped[dateKey] || [];
-      const dateTotal = ordersForDate.reduce((sum, ord) => sum + calculateFinalTotal(ord), 0);
-      const dateCount = ordersForDate.length;
 
       return (
         <div key={dateKey} className="date-group">
-          <div className="orders-total-banner">
-            <div className="orders-total-banner-label">Total for {dateKey}</div>
-            <div className="orders-total-banner-meta">
-              <span className="orders-total-banner-count">
-                {dateCount} order{dateCount === 1 ? '' : 's'}
-              </span>
-              <span className="orders-total-banner-value">
-                ${dateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
-          </div>
           <div className="orders-wrapper expanded">
             <div className="orders-container">{ordersForDate.map((order) => renderOrder(order))}</div>
           </div>
@@ -1452,11 +1494,17 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     });
   };
 
+  const pendingTotal = orders.reduce((sum, o) => sum + calculateFinalTotal(o), 0);
+  const deliveredTotal = deliveredOrders.reduce((sum, o) => sum + calculateFinalTotal(o), 0);
+
   return (
     <div className="submitted-orders-section">
       {!deliveredOnly && (
         <div className="orders-group">
           <h2 className="text-glow-fuchsia">Pending Orders</h2>
+          <div className="orders-page-total">
+            <span className="orders-summary-pill">Total: ${pendingTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
           {orders.length === 0 ? (
             <div className="empty-orders">No pending orders.</div>
           ) : (
@@ -1471,6 +1519,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       {deliveredOnly && (
         <div className="orders-group delivered-section">
           <h2 className="text-glow-fuchsia">Delivered Orders</h2>
+          <div className="orders-page-total">
+            <span className="orders-summary-pill">Total: ${deliveredTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
           {deliveredOrders.length === 0 ? (
             <div className="empty-orders">No delivered orders.</div>
           ) : (

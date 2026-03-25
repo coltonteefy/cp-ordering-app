@@ -66,25 +66,7 @@
   color: var(--hero-metric-value);
 }
 
-.manager-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
 
-.manager-header h2 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #5D3A1A;
-}
-
-.header-actions {
-  display: flex;
-  gap: 0.5rem;
-}
 
 .add-product-form {
   background: #FEFAF5;
@@ -173,46 +155,59 @@
   border-left: 1px solid #E6A94A;
 }
 
-.products-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
-}
-
-.product-card {
-  background: #FEFAF5;
+.products-table-wrap {
+  overflow-x: auto;
   border: 1px solid #E6A94A;
   border-radius: 0.75rem;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  box-shadow: 0 8px 18px rgba(230, 169, 74, 0.12);
+  background: #FEFAF5;
 }
 
-.product-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
+.products-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
 }
 
-.product-card-id {
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  color: #5D3A1A;
-}
-
-.product-card-name {
-  font-size: 1.1rem;
+.products-table thead th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8B6F47;
+  border-bottom: 2px solid #E6A94A;
+  white-space: nowrap;
+  background: #FFF8F0;
+}
+
+.products-table tbody tr {
+  border-bottom: 1px solid #f0e8dc;
+  transition: background 0.15s;
+}
+
+.products-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.products-table tbody tr:hover {
+  background: #FFF8F0;
+}
+
+.products-table td {
+  padding: 0.6rem 1rem;
+  vertical-align: middle;
+  white-space: nowrap;
   color: #5D3A1A;
 }
 
-.product-card-meta {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
+.product-table-name {
+  font-weight: 700;
+}
+
+.product-table-cost {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .pill {
@@ -225,6 +220,408 @@
   font-size: 0.8rem;
   color: #8B6F47;
   font-weight: 700;
+}
+
+.vendor-pill {
+  background: #EDE7F6;
+  border-color: #9575CD;
+  color: #5E35B1;
+}
+
+
+
+/* Vendor Profiles Section */
+.vendor-profiles-section {
+  margin-top: 0;
+}
+
+.vendor-profiles-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.vendor-profile-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.vendor-profile-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1.5px solid #e0d4c4;
+  background: #fdfbf8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #5D3A1A;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.vendor-profile-tab:hover {
+  border-color: #c5b9aa;
+  background: #f8f2ea;
+}
+
+.vendor-profile-tab.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.vendor-profile-tab-count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(0,0,0,0.12);
+  border-radius: 999px;
+  padding: 0.08rem 0.4rem;
+  min-width: 1.1rem;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.vendor-profile-tab.active .vendor-profile-tab-count {
+  background: rgba(255,255,255,0.25);
+}
+
+.vendor-profile-card {
+  background: #FEFAF5;
+  border: 1px solid #d5c4f7;
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow: 0 4px 16px rgba(149, 117, 205, 0.08);
+}
+
+.vendor-profile-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.vendor-profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vendor-color-dot-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  padding: 0;
+  outline: none;
+}
+
+.vendor-color-dot-btn:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.08);
+}
+
+.vendor-color-editor {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.5rem;
+  background: #fff;
+  border: 1px solid #eddac5;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.vendor-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+  padding: 0;
+  outline: none;
+}
+
+.vendor-color-swatch:hover {
+  transform: scale(1.2);
+}
+
+.vendor-color-swatch.active {
+  border-color: #2f2a26;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2f2a26;
+}
+
+.vendor-color-custom {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #eddac5;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+}
+
+.vendor-profile-name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #9575CD;
+}
+
+.vendor-profile-stat {
+  font-size: 0.85rem;
+  color: #8B6F47;
+  background: #fff;
+  border: 1px solid #eddac5;
+  border-radius: 20px;
+  padding: 0.2rem 0.65rem;
+}
+
+.vendor-profile-table-wrap {
+  overflow-x: auto;
+}
+
+.vendor-profile-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.vendor-profile-table th {
+  text-align: left;
+  font-weight: 700;
+  color: #5D3A1A;
+  border-bottom: 2px solid #eddac5;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.vendor-profile-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f3e8d6;
+  color: #5D3A1A;
+}
+
+.vendor-profile-table tr:hover td {
+  background: rgba(149, 117, 205, 0.04);
+}
+
+.vendor-profile-price {
+  font-weight: 700;
+  color: #9575CD;
+}
+
+.vendor-profile-date {
+  color: #8B6F47;
+  font-size: 0.82rem;
+}
+
+.vendor-profile-empty {
+  color: #8B6F47;
+  font-style: italic;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* Crypto Wallets in Vendor Profile */
+.vendor-wallets-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #eddac5;
+}
+
+.vendor-wallets-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #5D3A1A;
+  margin: 0 0 0.75rem 0;
+}
+
+.vendor-wallets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.vendor-wallet-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: #fdfbf8;
+  border: 1px solid #f0e8dc;
+  border-left: 3px solid #c5b9aa;
+  border-radius: 8px;
+}
+
+.vendor-wallet-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.vendor-wallet-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #7b7366;
+}
+
+.vendor-wallet-address {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #4a3a2b;
+  word-break: break-all;
+}
+
+.vendor-wallet-remove {
+  background: none;
+  border: none;
+  color: #b1432d;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.vendor-wallet-card:hover .vendor-wallet-remove {
+  opacity: 1;
+}
+
+.vendor-wallet-remove:hover {
+  background: #fef2f0;
+  text-decoration: underline;
+}
+
+.vendor-wallet-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vendor-wallet-input {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #e6d7c4;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #2f2a26;
+  background: #fff;
+  outline: none;
+  min-width: 0;
+}
+
+.vendor-wallet-input:focus {
+  border-color: #b1432d;
+  box-shadow: 0 0 0 2px rgba(177, 67, 45, 0.1);
+}
+
+.vendor-wallet-input-address {
+  flex: 1;
+  font-family: monospace;
+}
+
+.vendor-wallet-add-btn {
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.vendor-wallet-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vendor-wallet-add-btn:not(:disabled):hover {
+  opacity: 0.85;
+}
+
+/* Payment History in Vendor Profile */
+.vendor-payment-history {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #eddac5;
+}
+
+.vendor-payment-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #5D3A1A;
+  margin: 0 0 0.75rem 0;
+}
+
+.vendor-profile-stat-payments {
+  border-color: #d5c4f7;
+  background: #f5f0ff;
+  color: #7E57C2;
+}
+
+.payment-method-pill {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.method-crypto {
+  background: #FFF8E1;
+  border-color: #FFB300;
+  color: #E65100;
+}
+
+.method-wire {
+  background: #E3F2FD;
+  border-color: #64B5F6;
+  color: #1565C0;
+}
+
+.method-paypal {
+  background: #E8EAF6;
+  border-color: #7986CB;
+  color: #283593;
+}
+
+.method-alibaba {
+  background: #FFF3E0;
+  border-color: #FFB74D;
+  color: #E65100;
+}
+
+.vendor-payment-details {
+  font-size: 0.82rem;
+  color: #8B6F47;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.vendor-payment-txid {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #9575CD;
 }
 
 .product-card-costs {
@@ -258,23 +655,6 @@
     margin-top: 1rem;
   }
 
-  .manager-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .manager-header h2 {
-    font-size: 1.25rem;
-  }
-
-  .header-actions {
-    width: 100%;
-  }
-
-  .header-actions button {
-    flex: 1;
-  }
-
   .add-product-form {
     padding: 1rem;
   }
@@ -287,8 +667,13 @@
     grid-template-columns: 1fr;
   }
 
-  .products-card-grid {
-    grid-template-columns: 1fr;
+  .products-table {
+    font-size: 0.8rem;
+  }
+
+  .products-table td,
+  .products-table thead th {
+    padding: 0.5rem 0.65rem;
   }
 }
 

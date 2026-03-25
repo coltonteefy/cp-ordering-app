@@ -238,6 +238,10 @@
   font-size: 0.85rem;
 }
 
+.orders-page-total {
+  margin: 0.25rem 0 1rem;
+}
+
 .orders-summary-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -938,6 +942,19 @@
   text-align: left;
 }
 
+.order-vendor-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.04em;
+  width: fit-content;
+}
+
 .warehouse-name {
   font-size: 0.875rem;
   font-weight: 700;
@@ -1366,7 +1383,6 @@
   resize: vertical;
 }
 
-.carrier-select,
 .tracking-input,
 .tracking-note {
   min-width: 0;
@@ -1517,25 +1533,32 @@
   color: #3c8c4a;
 }
 
-.carrier-select {
-  background: #FFFFFF;
-  border: 1px solid #E6A94A;
-  border-radius: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  color: #5D3A1A;
-  font-size: 0.75rem;
+.carrier-pills {
+  display: flex;
+  gap: 0.3rem;
 }
 
-.carrier-select:focus {
-  outline: none;
-  border-color: #D74F3B;
-  box-shadow: 0 0 0 2px rgba(215, 79, 59, 0.1);
+.carrier-pill {
+  background: #fdfbf8;
+  border: 1px solid #e6d7c4;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #7b7366;
+  cursor: pointer;
+  transition: all 0.12s ease;
 }
 
-.carrier-select:disabled {
-  background: #F5F5F0;
-  cursor: default;
-  opacity: 0.9;
+.carrier-pill:hover {
+  background: #f4efe8;
+  color: #4a3a2b;
+}
+
+.carrier-pill.active {
+  background: #4a3a2b;
+  color: #ffffff;
+  border-color: #4a3a2b;
 }
 
 .tracking-input {

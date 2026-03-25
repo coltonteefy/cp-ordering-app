@@ -16,7 +16,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
-  const validPages = ['orders', 'products', 'promo', 'lotid', 'incoming'];
+  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -109,8 +109,8 @@ function App() {
             </button>
             <div className={`nav-menu ${mobileMenuOpen ? 'mobile-open' : ''}`}>
               <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
-              <button onClick={() => goToPage('incoming')} className={`nav-link ${activePage === 'incoming' ? 'active' : ''}`}>Incoming Products</button>
-              <button onClick={() => goToPage('products')} className={`nav-link ${activePage === 'products' ? 'active' : ''}`}>Products</button>
+              <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
+              <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
               <button onClick={() => goToPage('promo')} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
               <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
             </div>
@@ -141,11 +141,12 @@ function App() {
         {/* Main Content */}
           <div className="main-content">
             <div className="page-transition" key={activePage}>
-            {activePage === 'incoming' ? (
-              <IncomingProducts 
+            {activePage === 'payments' ? (
+              <PaymentTracker
+                onSuccess={showModal}
                 onError={showModal}
               />
-            ) : activePage === 'products' ? (
+            ) : activePage === 'vendors' ? (
               <ProductManager 
                 onSuccess={showModal}
                 onError={showModal}
