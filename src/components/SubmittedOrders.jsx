@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './SubmittedOrders.css';
@@ -65,6 +66,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [editingTrackingCards, setEditingTrackingCards] = useState({});
   const syncedIncomingOnce = useRef(false);
   const [vendorColorMap, setVendorColorMap] = useState({});
+  const [selectedVendorFilter, setSelectedVendorFilter] = useState('all');
+  const [showUndeliveredModal, setShowUndeliveredModal] = useState(false);
 
   // Load vendor colors from Firestore
   useEffect(() => {
@@ -1497,6 +1500,49 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const pendingTotal = orders.reduce((sum, o) => sum + calculateFinalTotal(o), 0);
   const deliveredTotal = deliveredOrders.reduce((sum, o) => sum + calculateFinalTotal(o), 0);
 
+  const pendingVendors = [...new Set(orders.map(o => o.vendor || 'TSC'))].sort((a, b) => {
+    if (a === 'TSC') return -1;
+    if (b === 'TSC') return 1;
+    return a.localeCompare(b);
+  });
+  const effectiveVendorFilter = selectedVendorFilter === 'all' || pendingVendors.includes(selectedVendorFilter)
+    ? selectedVendorFilter
+    : 'all';
+  const filteredPendingOrders = effectiveVendorFilter === 'all'
+    ? orders
+    : orders.filter(o => (o.vendor || 'TSC') === effectiveVendorFilter);
+
+  const undeliveredTotal = filteredPendingOrders.reduce((sum, o) => {
+    const discount = o.discountPercent || 0;
+    const itemsTotal = (o.items || [])
+      .filter(item => (item.status || 'pending') !== 'delivered')
+      .reduce((s, item) => s + (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0), 0);
+    return sum + itemsTotal - itemsTotal * (discount / 100);
+  }, 0);
+
+  // Build grouped undelivered items for the modal
+  const undeliveredItemsByVendor = filteredPendingOrders.reduce((acc, o) => {
+    const vendor = o.vendor || 'TSC';
+    const discount = o.discountPercent || 0;
+    (o.items || [])
+      .filter(item => (item.status || 'pending') !== 'delivered')
+      .forEach(item => {
+        if (!acc[vendor]) acc[vendor] = [];
+        const qty = Number(item.quantity) || 0;
+        const price = Number(item.pricePerKit) || 0;
+        const lineTotal = (qty * price) * (1 - discount / 100);
+        acc[vendor].push({
+          productName: item.productName || item.product || '',
+          productStrength: item.productStrength || item.strength || '',
+          warehouse: (item.warehouse || o.warehouse || 'US').toUpperCase(),
+          quantity: qty,
+          pricePerKit: price,
+          lineTotal,
+        });
+      });
+    return acc;
+  }, {});
+
   return (
     <div className="submitted-orders-section">
       {!deliveredOnly && (
@@ -1504,13 +1550,40 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           <h2 className="text-glow-fuchsia">Pending Orders</h2>
           <div className="orders-page-total">
             <span className="orders-summary-pill">Total: ${pendingTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            {undeliveredTotal > 0 && (
+              <button
+                className="orders-summary-pill orders-summary-pill--undelivered orders-summary-pill--btn"
+                onClick={() => setShowUndeliveredModal(true)}
+              >
+                Not Delivered: ${undeliveredTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} →
+              </button>
+            )}
           </div>
-          {orders.length === 0 ? (
+          {pendingVendors.length > 1 && (
+            <div className="vendor-tab-bar">
+              <button
+                className={`vendor-tab-btn${effectiveVendorFilter === 'all' ? ' active' : ''}`}
+                onClick={() => setSelectedVendorFilter('all')}
+              >
+                All
+              </button>
+              {pendingVendors.map(vendor => (
+                <button
+                  key={vendor}
+                  className={`vendor-tab-btn${effectiveVendorFilter === vendor ? ' active' : ''}`}
+                  onClick={() => setSelectedVendorFilter(vendor)}
+                >
+                  {vendor}
+                </button>
+              ))}
+            </div>
+          )}
+          {filteredPendingOrders.length === 0 ? (
             <div className="empty-orders">No pending orders.</div>
           ) : (
             renderAllDatesView(
-              groupOrdersByDate(orders),
-              Object.keys(groupOrdersByDate(orders)).sort((a, b) => new Date(b) - new Date(a))
+              groupOrdersByDate(filteredPendingOrders),
+              Object.keys(groupOrdersByDate(filteredPendingOrders)).sort((a, b) => new Date(b) - new Date(a))
             )
           )}
         </div>
@@ -1534,6 +1607,59 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           )}
         </div>
       )}
+
+      {showUndeliveredModal && createPortal(
+        <>
+          <div className="modal-backdrop is-open" onClick={() => setShowUndeliveredModal(false)} />
+          <div className="modal-main is-open undelivered-modal">
+            <div className="undelivered-modal-header">
+              <h2 className="undelivered-modal-title">Items Not Received</h2>
+              <button className="undelivered-modal-close" onClick={() => setShowUndeliveredModal(false)}>✕</button>
+            </div>
+            <div className="undelivered-modal-body">
+              {Object.keys(undeliveredItemsByVendor).sort((a, b) => {
+                if (a === 'TSC') return -1;
+                if (b === 'TSC') return 1;
+                return a.localeCompare(b);
+              }).map(vendor => {
+                const items = undeliveredItemsByVendor[vendor];
+                const vendorSubtotal = items.reduce((s, i) => s + i.lineTotal, 0);
+                return (
+                  <div key={vendor} className="undelivered-vendor-group">
+                    <div className="undelivered-vendor-label" style={{ borderColor: vendorColor(vendor, vendorColorMap), color: vendorColor(vendor, vendorColorMap) }}>
+                      {vendor}
+                    </div>
+                    <div className="undelivered-items-grid">
+                      <div className="undelivered-grid-header">
+                        <span>Warehouse</span><span>Product</span><span>Strength</span><span>Qty</span><span>Unit</span><span>Total</span>
+                      </div>
+                      {items.map((item, idx) => (
+                        <div key={idx} className="undelivered-grid-row">
+                          <span className="uitem-warehouse">{item.warehouse}</span>
+                          <span className="uitem-product">{item.productName}</span>
+                          <span className="uitem-strength">{item.productStrength}</span>
+                          <span className="uitem-qty">{item.quantity}</span>
+                          <span className="uitem-unit">${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className="uitem-total">${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="undelivered-vendor-subtotal">
+                      Vendor Total: ${vendorSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="undelivered-modal-footer">
+              <span className="undelivered-grand-total">
+                Grand Total: ${undeliveredTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <button className="undelivered-modal-close-btn" onClick={() => setShowUndeliveredModal(false)}>Close</button>
+            </div>
+          </div>
+        </>
+      , document.body)}
     </div>
   );
 };

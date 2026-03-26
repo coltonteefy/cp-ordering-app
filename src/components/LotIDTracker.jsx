@@ -91,6 +91,7 @@ const classifySidebarGroup = (p) => {
 const LotIDTracker = () => {
   const [products, setProducts] = useState([]);
   const [productData, setProductData] = useState({});
+  const [vendors, setVendors] = useState([]);
   const todayChunk = new Date().toISOString().slice(2, 10).replace(/-/g, "");
   const [editingSections, setEditingSections] = useState({});
   const [lotEditMode, setLotEditMode] = useState({});
@@ -100,6 +101,8 @@ const LotIDTracker = () => {
     lot: "",
     capColor: "",
     kits: "",
+    vendor: "",
+    note: "",
   });
   const productRefs = useRef({});
   const [visibleProductId, setVisibleProductId] = useState(null);
@@ -184,6 +187,27 @@ const LotIDTracker = () => {
         console.error("Clipboard copy failed", err);
       });
   };
+
+  // Load vendor profiles
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "c&pVendors"),
+      (snapshot) => {
+        const list = [];
+        snapshot.forEach((snap) => {
+          list.push({ id: snap.id, name: snap.data().name || snap.id });
+        });
+        list.sort((a, b) => {
+          if (a.name === "TSC") return -1;
+          if (b.name === "TSC") return 1;
+          return a.name.localeCompare(b.name);
+        });
+        setVendors(list);
+      },
+      (err) => console.error("Error loading vendors for LotIDTracker:", err)
+    );
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -357,24 +381,48 @@ const LotIDTracker = () => {
     });
   };
 
+  const handleUpdateLotVendor = (key, index, value) => {
+    setProductData((prev) => {
+      const currentList = [...(prev[key]?.coaList || [])];
+      if (!currentList[index]) return prev;
+      currentList[index] = { ...currentList[index], vendor: value };
+      handleSaveCoaList(key, currentList);
+      return { ...prev, [key]: { ...(prev[key] || {}), coaList: currentList } };
+    });
+  };
+
+  const handleUpdateLotNote = (key, index, value) => {
+    setProductData((prev) => {
+      const currentList = [...(prev[key]?.coaList || [])];
+      if (!currentList[index]) return prev;
+      currentList[index] = { ...currentList[index], note: value };
+      handleSaveCoaList(key, currentList);
+      return { ...prev, [key]: { ...(prev[key] || {}), coaList: currentList } };
+    });
+  };
+
   const openLotModal = (key, nextLotId) => {
     const capSeed =
       productData[key]?.capColor ||
       productData[key]?.currentCOA?.capColor ||
       "";
+    const lastEntry = (productData[key]?.coaList || [])[0];
+    const vendorSeed = lastEntry?.vendor || "";
     setLotModalConfig({
       productKey: key,
       lot: nextLotId,
       capColor: capSeed,
       kits: "",
+      vendor: vendorSeed,
+      note: "",
     });
   };
 
   const closeLotModal = () =>
-    setLotModalConfig({ productKey: null, lot: "", capColor: "", kits: "" });
+    setLotModalConfig({ productKey: null, lot: "", capColor: "", kits: "", vendor: "", note: "" });
 
   const confirmLotModal = async () => {
-    const { productKey, lot, capColor, kits } = lotModalConfig;
+    const { productKey, lot, capColor, kits, vendor, note } = lotModalConfig;
     if (!productKey || !lot) return;
     const entry = productData[productKey] || {
       currentCOA: createEmptyCOA(),
@@ -386,6 +434,8 @@ const LotIDTracker = () => {
         url: buildCoaUrl(lot),
         capColor: capColor || "",
         kits: Number(kits) || 0,
+        vendor: vendor || "",
+        note: note || "",
       },
       ...(entry.coaList || []),
     ];
@@ -530,36 +580,51 @@ const LotIDTracker = () => {
                               <span className="lot-id-capchip-text">
                                 {coa.capColor || "Cap color"}
                               </span>
-                        </span>
-                        {lotEditMode[key] && (
-                          <input
-                            type="text"
-                            className="lot-id-capchip-input"
-                            placeholder="Cap color"
-                            value={coa.capColor || ""}
-                            onChange={(e) => handleUpdateCoaCap(key, i, e.target.value)}
-                          />
-                        )}
-                      </div>
-                      {lotEditMode[key] ? (
-                        <input
-                          type="number"
-                          className="lot-id-kits-input"
-                          placeholder="Kits in batch"
-                          value={coa.kits ?? ""}
-                          onChange={(e) => handleUpdateLotKits(key, i, e.target.value)}
-                          min="0"
-                        />
-                      ) : (
-                        <div className="lot-id-kits-display">
-                          Kits: {typeof coa.kits === "number" ? coa.kits : "—"}
-                        </div>
-                      )}
-                      {lotEditMode[key] ? (
-                        <input
-                          type="text"
-                          className="lot-id-edit-lot-input"
-                          value={coa.lot || ""}
+                            </span>
+                            {coa.vendor && !lotEditMode[key] && (
+                              <span className="lot-id-vendor-badge">{coa.vendor}</span>
+                            )}
+                            {lotEditMode[key] && (
+                              <input
+                                type="text"
+                                className="lot-id-capchip-input"
+                                placeholder="Cap color"
+                                value={coa.capColor || ""}
+                                onChange={(e) => handleUpdateCoaCap(key, i, e.target.value)}
+                              />
+                            )}
+                          </div>
+                          {lotEditMode[key] ? (
+                            <input
+                              type="number"
+                              className="lot-id-kits-input"
+                              placeholder="Kits in batch"
+                              value={coa.kits ?? ""}
+                              onChange={(e) => handleUpdateLotKits(key, i, e.target.value)}
+                              min="0"
+                            />
+                          ) : (
+                            <div className="lot-id-kits-display">
+                              Kits: {typeof coa.kits === "number" ? coa.kits : "—"}
+                            </div>
+                          )}
+                          {lotEditMode[key] && (
+                            <select
+                              className="lot-id-vendor-select"
+                              value={coa.vendor || ""}
+                              onChange={(e) => handleUpdateLotVendor(key, i, e.target.value)}
+                            >
+                              <option value="">— No vendor —</option>
+                              {vendors.map((v) => (
+                                <option key={v.id} value={v.name}>{v.name}</option>
+                              ))}
+                            </select>
+                          )}
+                          {lotEditMode[key] ? (
+                            <input
+                              type="text"
+                              className="lot-id-edit-lot-input"
+                              value={coa.lot || ""}
                               onChange={(e) => handleUpdateLotValue(key, i, e.target.value)}
                               placeholder="Lot ID"
                             />
@@ -576,6 +641,17 @@ const LotIDTracker = () => {
                           {copyFlash[`${key}-lot-${i}`] && (
                             <span className="lot-id-copied">Copied</span>
                           )}
+                          {lotEditMode[key] ? (
+                            <textarea
+                              className="lot-id-note-input"
+                              placeholder="Note (optional)"
+                              rows={2}
+                              value={coa.note || ""}
+                              onChange={(e) => handleUpdateLotNote(key, i, e.target.value)}
+                            />
+                          ) : coa.note ? (
+                            <div className="lot-id-note-display">{coa.note}</div>
+                          ) : null}
                         </li>
                       ))
                     ) : (
@@ -626,6 +702,31 @@ const LotIDTracker = () => {
                   setLotModalConfig((prev) => ({ ...prev, kits: e.target.value }))
                 }
                 className="lot-modal-input"
+              />
+
+              <label className="lot-modal-label">Vendor</label>
+              <select
+                className="lot-modal-input"
+                value={lotModalConfig.vendor}
+                onChange={(e) =>
+                  setLotModalConfig((prev) => ({ ...prev, vendor: e.target.value }))
+                }
+              >
+                <option value="">— No vendor —</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.name}>{v.name}</option>
+                ))}
+              </select>
+
+              <label className="lot-modal-label">Note <span className="lot-modal-label-optional">(optional)</span></label>
+              <textarea
+                className="lot-modal-input lot-modal-textarea"
+                placeholder="Add a note about this lot..."
+                rows={2}
+                value={lotModalConfig.note}
+                onChange={(e) =>
+                  setLotModalConfig((prev) => ({ ...prev, note: e.target.value }))
+                }
               />
 
               <div className="lot-modal-actions">

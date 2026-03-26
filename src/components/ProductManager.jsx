@@ -20,6 +20,14 @@ const VENDOR_PALETTE = [
   '#4E7A6B', '#8B7355'
 ];
 
+const WALLET_LABEL_PRESETS = [
+  'USDC (Base)',
+  'USDC(Eth)',
+  'Bitcoin',
+  'Ethereum',
+  'Solana'
+];
+
 function vendorColor(name) {
   if (!name) return VENDOR_PALETTE[0];
   if (VENDOR_COLORS[name]) return VENDOR_COLORS[name];
@@ -41,6 +49,12 @@ const ProductManager = ({ onSuccess, onError }) => {
   const [tscSynced, setTscSynced] = useState(false);
   const [editingColor, setEditingColor] = useState(false);
   const [newWallet, setNewWallet] = useState({ label: '', address: '' });
+  const [showWalletComposer, setShowWalletComposer] = useState(false);
+  const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
+  const [copiedWalletId, setCopiedWalletId] = useState(null);
+  const [editingWalletId, setEditingWalletId] = useState(null);
+  const [walletEditForm, setWalletEditForm] = useState({ label: '', address: '' });
+  const [selectedWalletLabelPreset, setSelectedWalletLabelPreset] = useState('USDC');
 
   const saveAllToFirestore = useCallback(async () => {
     try {
@@ -252,15 +266,66 @@ const ProductManager = ({ onSuccess, onError }) => {
 
   const addWallet = async () => {
     if (!activeProfile || !newWallet.address.trim()) return;
-    const wallets = [...vendorWallets, { id: Date.now().toString(), label: newWallet.label.trim(), address: newWallet.address.trim() }];
+    const resolvedLabel = selectedWalletLabelPreset === '__custom__'
+      ? newWallet.label.trim()
+      : selectedWalletLabelPreset;
+    const wallets = [...vendorWallets, { id: Date.now().toString(), label: resolvedLabel, address: newWallet.address.trim() }];
     await setDoc(doc(db, 'c&pVendors', activeProfile.id), { wallets }, { merge: true });
     setNewWallet({ label: '', address: '' });
+    setShowWalletComposer(false);
+    setSelectedWalletLabelPreset('USDC');
   };
 
   const removeWallet = async (walletId) => {
     if (!activeProfile) return;
     const wallets = vendorWallets.filter(w => w.id !== walletId);
     await setDoc(doc(db, 'c&pVendors', activeProfile.id), { wallets }, { merge: true });
+    if (editingWalletId === walletId) {
+      setEditingWalletId(null);
+      setWalletEditForm({ label: '', address: '' });
+    }
+  };
+
+  const startWalletEdit = (wallet) => {
+    setEditingWalletId(wallet.id);
+    setWalletEditForm({
+      label: wallet.label || '',
+      address: wallet.address || '',
+    });
+  };
+
+  const cancelWalletEdit = () => {
+    setEditingWalletId(null);
+    setWalletEditForm({ label: '', address: '' });
+  };
+
+  const saveWalletEdit = async (walletId) => {
+    if (!activeProfile || !walletEditForm.address.trim()) return;
+    const wallets = vendorWallets.map((wallet) =>
+      wallet.id === walletId
+        ? {
+            ...wallet,
+            label: walletEditForm.label.trim(),
+            address: walletEditForm.address.trim(),
+          }
+        : wallet
+    );
+    await setDoc(doc(db, 'c&pVendors', activeProfile.id), { wallets }, { merge: true });
+    setEditingWalletId(null);
+    setWalletEditForm({ label: '', address: '' });
+  };
+
+  const copyWalletAddress = async (walletId, address) => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedWalletId(walletId);
+      window.setTimeout(() => {
+        setCopiedWalletId((current) => (current === walletId ? null : current));
+      }, 1100);
+    } catch (error) {
+      onError && onError('Failed to copy wallet address.', 'Error');
+    }
   };
 
   const profileProducts = useMemo(() => {
@@ -528,6 +593,13 @@ const ProductManager = ({ onSuccess, onError }) => {
           <button onClick={() => setShowAddForm(!showAddForm)} className="btn-neon-cyan">
             {showAddForm ? 'Cancel' : 'Add Product'}
           </button>
+          <button
+            className="vendor-wallet-toggle-btn"
+            onClick={() => setShowWalletComposer(true)}
+            style={{ borderColor: profileColor + '40', color: profileColor }}
+          >
+            + Add Wallet
+          </button>
         </div>
 
         {showAddForm && (
@@ -624,11 +696,185 @@ const ProductManager = ({ onSuccess, onError }) => {
                 {profileProducts.length} product{profileProducts.length !== 1 ? 's' : ''} on file
               </span>
               {vendorPayments.length > 0 && (
-                <span className="vendor-profile-stat vendor-profile-stat-payments" style={{ borderColor: profileColor + '40', background: profileColor + '0D', color: profileColor }}>
+                <button
+                  className="vendor-profile-stat vendor-profile-stat-payments vendor-profile-stat-payments-btn"
+                  style={{ borderColor: profileColor + '40', background: profileColor + '0D', color: profileColor }}
+                  onClick={() => setShowPaymentHistoryModal(true)}
+                >
                   ${vendorTotalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} paid ({vendorPayments.length} payment{vendorPayments.length !== 1 ? 's' : ''})
-                </span>
+                </button>
               )}
+              <div className="vendor-profile-wallets-inline">
+                {vendorWallets.length > 0 && (
+                  <div className="vendor-wallets-list vendor-wallets-list-inline">
+                    {vendorWallets.map((w) => (
+                      <div key={w.id} className={`vendor-wallet-card vendor-wallet-card-inline${editingWalletId === w.id ? ' is-editing' : ''}`} style={{ borderLeftColor: profileColor }}>
+                        {copiedWalletId === w.id && (
+                          <span className="vendor-wallet-toast" aria-hidden="true">Copied</span>
+                        )}
+                        <div className="vendor-wallet-info">
+                          {editingWalletId === w.id ? (
+                            <>
+                              <div className="vendor-wallet-meta-row vendor-wallet-meta-row-editing">
+                                <input
+                                  type="text"
+                                  value={walletEditForm.label}
+                                  onChange={(e) => setWalletEditForm((prev) => ({ ...prev, label: e.target.value }))}
+                                  className="vendor-wallet-input vendor-wallet-input-card-label"
+                                  placeholder="Label"
+                                />
+                                <button
+                                  className="vendor-wallet-remove"
+                                  onClick={() => removeWallet(w.id)}
+                                >Remove</button>
+                              </div>
+                              <input
+                                type="text"
+                                value={walletEditForm.address}
+                                onChange={(e) => setWalletEditForm((prev) => ({ ...prev, address: e.target.value }))}
+                                className="vendor-wallet-input vendor-wallet-input-card-address"
+                                placeholder="Wallet address"
+                              />
+                              <div className="vendor-wallet-edit-actions">
+                                <button
+                                  className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary"
+                                  onClick={cancelWalletEdit}
+                                >Cancel</button>
+                                <button
+                                  className="vendor-wallet-add-btn"
+                                  onClick={() => saveWalletEdit(w.id)}
+                                  disabled={!walletEditForm.address.trim()}
+                                  style={{ background: profileColor }}
+                                >Save</button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="vendor-wallet-meta-row">
+                                {w.label && <span className="vendor-wallet-label">{w.label}</span>}
+                                <button
+                                  className="vendor-wallet-edit-btn"
+                                  onClick={() => startWalletEdit(w)}
+                                >Edit</button>
+                              </div>
+                              <button
+                                type="button"
+                                className={`vendor-wallet-address${copiedWalletId === w.id ? ' copied' : ''}`}
+                                title={copiedWalletId === w.id ? 'Copied' : 'Click to copy wallet address'}
+                                onClick={() => copyWalletAddress(w.id, w.address)}
+                              >
+                                <span className="vendor-wallet-address-text">{w.address}</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+
+            {showWalletComposer && ReactDOM.createPortal(
+              <div
+                className="vendor-wallet-modal-backdrop"
+                onClick={() => {
+                  setShowWalletComposer(false);
+                  setNewWallet({ label: '', address: '' });
+                }}
+              >
+                <div
+                  className="vendor-wallet-modal"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ borderColor: profileColor + '30' }}
+                >
+                  <div className="vendor-wallet-modal-header">
+                    <div>
+                      <h3 className="vendor-wallet-modal-title">Add Wallet</h3>
+                      <p className="vendor-wallet-modal-subtitle">Save a crypto wallet for {activeProfile.name}.</p>
+                    </div>
+                    <button
+                      className="vendor-wallet-modal-close"
+                      onClick={() => {
+                        setShowWalletComposer(false);
+                        setNewWallet({ label: '', address: '' });
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <div className="vendor-wallet-modal-body">
+                    <div className="vendor-wallet-label-picker">
+                      <div className="vendor-wallet-field-label">Label</div>
+                      <div className="vendor-wallet-label-pills">
+                        {WALLET_LABEL_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            className={`vendor-wallet-label-pill${selectedWalletLabelPreset === preset ? ' active' : ''}`}
+                            onClick={() => {
+                              setSelectedWalletLabelPreset(preset);
+                              setNewWallet((prev) => ({ ...prev, label: preset }));
+                            }}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className={`vendor-wallet-label-pill${selectedWalletLabelPreset === '__custom__' ? ' active' : ''}`}
+                          onClick={() => {
+                            setSelectedWalletLabelPreset('__custom__');
+                            setNewWallet((prev) => ({ ...prev, label: '' }));
+                          }}
+                        >
+                          Custom
+                        </button>
+                      </div>
+                      {selectedWalletLabelPreset === '__custom__' && (
+                        <input
+                          type="text"
+                          placeholder="Custom label"
+                          value={newWallet.label}
+                          onChange={(e) => setNewWallet(prev => ({ ...prev, label: e.target.value }))}
+                          className="vendor-wallet-input vendor-wallet-modal-input"
+                        />
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Wallet address"
+                      value={newWallet.address}
+                      onChange={(e) => setNewWallet(prev => ({ ...prev, address: e.target.value }))}
+                      className="vendor-wallet-input vendor-wallet-input-address vendor-wallet-modal-input"
+                      onKeyDown={(e) => e.key === 'Enter' && addWallet()}
+                    />
+                  </div>
+
+                  <div className="vendor-wallet-modal-actions">
+                    <button
+                      className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary"
+                      onClick={() => {
+                        setShowWalletComposer(false);
+                        setNewWallet({ label: '', address: '' });
+                      }}
+                    >
+                      Close
+                    </button>
+                    <button
+                      className="vendor-wallet-add-btn"
+                      onClick={addWallet}
+                      disabled={!newWallet.address.trim()}
+                      style={{ background: profileColor }}
+                    >
+                      Save Wallet
+                    </button>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
 
             {profileProducts.length > 0 ? (
               <div className="vendor-profile-table-wrap">
@@ -667,92 +913,67 @@ const ProductManager = ({ onSuccess, onError }) => {
               <p className="vendor-profile-empty">No pricing data yet. Prices are saved when you submit orders for this vendor.</p>
             )}
 
-            {/* Crypto Wallets */}
-            <div className="vendor-wallets-section" style={{ borderTopColor: profileColor + '30' }}>
-              <h3 className="vendor-wallets-heading" style={{ color: profileColor }}>Crypto Wallets</h3>
-              {vendorWallets.length > 0 && (
-                <div className="vendor-wallets-list">
-                  {vendorWallets.map((w) => (
-                    <div key={w.id} className="vendor-wallet-card" style={{ borderLeftColor: profileColor }}>
-                      <div className="vendor-wallet-info">
-                        {w.label && <span className="vendor-wallet-label">{w.label}</span>}
-                        <span className="vendor-wallet-address" title={w.address}>{w.address}</span>
-                      </div>
-                      <button
-                        className="vendor-wallet-remove"
-                        onClick={() => removeWallet(w.id)}
-                      >Remove</button>
+            {showPaymentHistoryModal && ReactDOM.createPortal(
+              <div
+                className="vendor-wallet-modal-backdrop"
+                onClick={() => setShowPaymentHistoryModal(false)}
+              >
+                <div
+                  className="vendor-wallet-modal vendor-payment-history-modal"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ borderColor: profileColor + '30' }}
+                >
+                  <div className="vendor-wallet-modal-header">
+                    <div>
+                      <h3 className="vendor-wallet-modal-title">Payment History</h3>
+                      <p className="vendor-wallet-modal-subtitle" style={{ color: profileColor }}>
+                        {activeProfile?.name} · ${vendorTotalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                      </p>
                     </div>
-                  ))}
+                    <button className="vendor-wallet-modal-close" onClick={() => setShowPaymentHistoryModal(false)}>✕</button>
+                  </div>
+                  <div className="vendor-wallet-modal-body">
+                    <div className="vendor-profile-table-wrap">
+                      <table className="vendor-profile-table">
+                        <thead>
+                          <tr>
+                            <th style={{ borderBottomColor: profileColor + '40' }}>Date</th>
+                            <th style={{ borderBottomColor: profileColor + '40' }}>Amount</th>
+                            <th style={{ borderBottomColor: profileColor + '40' }}>Method</th>
+                            <th style={{ borderBottomColor: profileColor + '40' }}>Details</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vendorPayments.map((pmt) => (
+                            <tr key={pmt.id}>
+                              <td className="vendor-profile-date">
+                                {pmt.date ? new Date(pmt.date + 'T00:00:00').toLocaleDateString() : '—'}
+                              </td>
+                              <td className="vendor-profile-price" style={{ color: profileColor }}>
+                                ${(pmt.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td>
+                                <span className={`pill payment-method-pill method-${(pmt.method || '').toLowerCase()}`}>{pmt.method || '—'}</span>
+                              </td>
+                              <td className="vendor-payment-details">
+                                {pmt.method === 'Crypto' ? (
+                                  <>
+                                    {pmt.cryptoPaidBy && <span>Paid by {pmt.cryptoPaidBy}</span>}
+                                    {pmt.cryptoTransactionId && <span className="vendor-payment-txid" title={pmt.cryptoTransactionId}>TX: {pmt.cryptoTransactionId.slice(0, 12)}…</span>}
+                                  </>
+                                ) : (
+                                  pmt.note || '—'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
-              )}
-              <div className="vendor-wallet-add">
-                <input
-                  type="text"
-                  placeholder="Label (e.g. USDT TRC20)"
-                  value={newWallet.label}
-                  onChange={(e) => setNewWallet(prev => ({ ...prev, label: e.target.value }))}
-                  className="vendor-wallet-input"
-                />
-                <input
-                  type="text"
-                  placeholder="Wallet address"
-                  value={newWallet.address}
-                  onChange={(e) => setNewWallet(prev => ({ ...prev, address: e.target.value }))}
-                  className="vendor-wallet-input vendor-wallet-input-address"
-                  onKeyDown={(e) => e.key === 'Enter' && addWallet()}
-                />
-                <button
-                  className="vendor-wallet-add-btn"
-                  onClick={addWallet}
-                  disabled={!newWallet.address.trim()}
-                  style={{ background: profileColor }}
-                >Add</button>
-              </div>
-            </div>
-
-            {/* Payment History */}
-            {vendorPayments.length > 0 && (
-              <div className="vendor-payment-history" style={{ borderTopColor: profileColor + '30' }}>
-                <h3 className="vendor-payment-heading" style={{ color: profileColor }}>Payment History</h3>
-                <div className="vendor-profile-table-wrap">
-                  <table className="vendor-profile-table">
-                    <thead>
-                      <tr>
-                        <th style={{ borderBottomColor: profileColor + '40' }}>Date</th>
-                        <th style={{ borderBottomColor: profileColor + '40' }}>Amount</th>
-                        <th style={{ borderBottomColor: profileColor + '40' }}>Method</th>
-                        <th style={{ borderBottomColor: profileColor + '40' }}>Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vendorPayments.map((pmt) => (
-                        <tr key={pmt.id}>
-                          <td className="vendor-profile-date">
-                            {pmt.date ? new Date(pmt.date + 'T00:00:00').toLocaleDateString() : '—'}
-                          </td>
-                          <td className="vendor-profile-price" style={{ color: profileColor }}>
-                            ${(pmt.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td>
-                            <span className={`pill payment-method-pill method-${(pmt.method || '').toLowerCase()}`}>{pmt.method || '—'}</span>
-                          </td>
-                          <td className="vendor-payment-details">
-                            {pmt.method === 'Crypto' ? (
-                              <>
-                                {pmt.cryptoPaidBy && <span>Paid by {pmt.cryptoPaidBy}</span>}
-                                {pmt.cryptoTransactionId && <span className="vendor-payment-txid" title={pmt.cryptoTransactionId}>TX: {pmt.cryptoTransactionId.slice(0, 12)}…</span>}
-                              </>
-                            ) : (
-                              pmt.note || '—'
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         )}

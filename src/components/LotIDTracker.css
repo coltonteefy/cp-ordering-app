@@ -6,6 +6,74 @@
   width: 100%;
 }
 
+/* Vendor badge on lot list items */
+.lot-id-vendor-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #f4ede1;
+  border: 1px solid #e0ceb5;
+  color: #5c3f1d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  margin-left: 0.25rem;
+  text-transform: uppercase;
+}
+
+/* Vendor select in edit mode */
+.lot-id-vendor-select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e3d6c2;
+  background: #fff;
+  font-size: 0.88rem;
+  color: #3b2c1e;
+  margin-top: 4px;
+}
+
+/* Note display (read-only, only shown when note exists) */
+.lot-id-note-display {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: #6a5946;
+  background: #faf5ec;
+  border-left: 3px solid #d9c49a;
+  border-radius: 0 6px 6px 0;
+  padding: 5px 10px;
+  white-space: pre-wrap;
+}
+
+/* Note textarea in edit mode */
+.lot-id-note-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e3d6c2;
+  background: #fff;
+  font-size: 0.85rem;
+  color: #3b2c1e;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+/* Modal enhancements */
+.lot-modal-label-optional {
+  font-weight: 400;
+  color: #9a856d;
+  font-size: 0.82rem;
+}
+
+.lot-modal-textarea {
+  resize: vertical;
+  font-family: inherit;
+  min-height: 60px;
+}
+
 .lot-id-hero {
   width: min(1600px, 100%);
   margin: 0 auto 1.25rem auto;
