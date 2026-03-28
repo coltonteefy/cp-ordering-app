@@ -59,14 +59,13 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [originalOrders, setOriginalOrders] = useState({});
   const [hasShownError, setHasShownError] = useState(false);
   const [copiedOrderMetaId, setCopiedOrderMetaId] = useState(null);
-  const [activeDeliveredDate, setActiveDeliveredDate] = useState(null);
-  const [activeDeliveredOrderId, setActiveDeliveredOrderId] = useState(null); // kept for compatibility
   const [availableProducts, setAvailableProducts] = useState([]);
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
   const [editingTrackingCards, setEditingTrackingCards] = useState({});
   const syncedIncomingOnce = useRef(false);
   const [vendorColorMap, setVendorColorMap] = useState({});
   const [selectedVendorFilter, setSelectedVendorFilter] = useState('all');
+  const [selectedDeliveredVendorFilter, setSelectedDeliveredVendorFilter] = useState('all');
   const [showUndeliveredModal, setShowUndeliveredModal] = useState(false);
 
   // Load vendor colors from Firestore
@@ -172,22 +171,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
         ordersData.sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
         setDeliveredOrders(ordersData);
-
-        const grouped = groupOrdersByDate(ordersData);
-        const dateKeys = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
-        const fallbackDate = dateKeys[0] || null;
-
-        if (!activeDeliveredDate || !grouped[activeDeliveredDate]) {
-          const firstOrder = fallbackDate ? grouped[fallbackDate]?.[0]?.id || null : null;
-          setActiveDeliveredDate(fallbackDate);
-          setActiveDeliveredOrderId(firstOrder);
-        } else {
-          const currentDateOrders = grouped[activeDeliveredDate] || [];
-          const exists = currentDateOrders.some((o) => o.id === activeDeliveredOrderId);
-          if (!exists) {
-            setActiveDeliveredOrderId(currentDateOrders[0]?.id || null);
-          }
-        }
       },
       (error) => {
         console.error('Error listening to delivered orders:', error);
@@ -542,6 +525,41 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     } catch (error) {
       console.error('Error marking delivered:', error);
       onError && onError('Failed to mark order as delivered. Please try again.');
+    }
+  };
+
+  const restoreDeliveredOrder = async (orderId) => {
+    try {
+      const order = deliveredOrders.find((o) => o.id === orderId);
+      if (!order) return;
+
+      const restoredItems = (order.items || []).map((item) => {
+        const nextItem = { ...item };
+        if (nextItem.status === 'delivered') {
+          nextItem.status = 'pending';
+        }
+        delete nextItem.deliveredAt;
+        return nextItem;
+      });
+
+      const pendingOrderData = {
+        ...order,
+        items: restoredItems,
+        status: 'pending',
+        total: calculateItemsTotal(restoredItems),
+        restoredFromDeliveredAt: order.deliveredAt || null
+      };
+
+      delete pendingOrderData.deliveredAt;
+      delete pendingOrderData.originalOrderId;
+      delete pendingOrderData.warehouseParentId;
+      delete pendingOrderData.id;
+
+      await setDoc(doc(db, 'c&pProductOrders', orderId), pendingOrderData);
+      await deleteDoc(doc(db, 'c&pPastInventoryOrders', orderId));
+    } catch (error) {
+      console.error('Error restoring delivered order:', error);
+      onError && onError('Failed to move order back to pending. Please try again.');
     }
   };
 
@@ -1133,11 +1151,20 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 checked={(order.status || 'pending') === 'delivered'}
                 onChange={(e) => {
                   const nextStatus = e.target.checked ? 'delivered' : 'pending';
-                  setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
-                  if (nextStatus === 'delivered') {
-                    markOrderDelivered(order.id);
+                  if (order.deliveredAt) {
+                    setDeliveredOrders((prev) =>
+                      prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o))
+                    );
+                    if (nextStatus === 'pending') {
+                      restoreDeliveredOrder(order.id);
+                    }
                   } else {
-                    updateOrderStatus(order.id, nextStatus);
+                    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
+                    if (nextStatus === 'delivered') {
+                      markOrderDelivered(order.id);
+                    } else {
+                      updateOrderStatus(order.id, nextStatus);
+                    }
                   }
                 }}
               />
@@ -1512,6 +1539,58 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     ? orders
     : orders.filter(o => (o.vendor || 'TSC') === effectiveVendorFilter);
 
+  const deliveredVendors = [...new Set(deliveredOrders.map(o => o.vendor || 'TSC'))].sort((a, b) => {
+    if (a === 'TSC') return -1;
+    if (b === 'TSC') return 1;
+    return a.localeCompare(b);
+  });
+  const effectiveDeliveredVendorFilter =
+    selectedDeliveredVendorFilter === 'all' || deliveredVendors.includes(selectedDeliveredVendorFilter)
+      ? selectedDeliveredVendorFilter
+      : 'all';
+  const filteredDeliveredOrders = effectiveDeliveredVendorFilter === 'all'
+    ? deliveredOrders
+    : deliveredOrders.filter(o => (o.vendor || 'TSC') === effectiveDeliveredVendorFilter);
+
+  const parseTrackingNumbers = (rawNumber) => {
+    if (!rawNumber) return [];
+    return String(rawNumber)
+      .replace(/\r/g, '\n')
+      .split(/[\n,;\t\s]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+  };
+
+  const getUndeliveredTracking = (order, item) => {
+    const pendingEntries = (order.trackingEntries || []).filter(
+      (entry) => (entry.status || 'pending') !== 'delivered'
+    );
+    const itemEntries = pendingEntries.filter(
+      (entry) => Array.isArray(entry.itemIds) && item.itemId && entry.itemIds.includes(item.itemId)
+    );
+    const preferredEntries = itemEntries.length ? itemEntries : pendingEntries;
+
+    for (const entry of preferredEntries) {
+      const numbers = parseTrackingNumbers(entry.number);
+      if (numbers.length > 0) {
+        const carrier = entry.carrier || 'Carrier';
+        const preview = numbers[0];
+        const suffix = numbers.length > 1 ? ` (+${numbers.length - 1})` : '';
+        return { hasTracking: true, trackingLabel: `${carrier} ${preview}${suffix}` };
+      }
+    }
+
+    const legacyNumbers = parseTrackingNumbers(order.trackingNumber);
+    if (legacyNumbers.length > 0) {
+      const carrier = order.carrier || 'Carrier';
+      const preview = legacyNumbers[0];
+      const suffix = legacyNumbers.length > 1 ? ` (+${legacyNumbers.length - 1})` : '';
+      return { hasTracking: true, trackingLabel: `${carrier} ${preview}${suffix}` };
+    }
+
+    return { hasTracking: false, trackingLabel: '' };
+  };
+
   const undeliveredTotal = filteredPendingOrders.reduce((sum, o) => {
     const discount = o.discountPercent || 0;
     const itemsTotal = (o.items || [])
@@ -1531,6 +1610,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         const qty = Number(item.quantity) || 0;
         const price = Number(item.pricePerKit) || 0;
         const lineTotal = (qty * price) * (1 - discount / 100);
+        const tracking = getUndeliveredTracking(o, item);
         acc[vendor].push({
           productName: item.productName || item.product || '',
           productStrength: item.productStrength || item.strength || '',
@@ -1538,6 +1618,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           quantity: qty,
           pricePerKit: price,
           lineTotal,
+          orderId: o.id,
+          hasTracking: tracking.hasTracking,
+          trackingLabel: tracking.trackingLabel,
         });
       });
     return acc;
@@ -1595,14 +1678,31 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           <div className="orders-page-total">
             <span className="orders-summary-pill">Total: ${deliveredTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
-          {deliveredOrders.length === 0 ? (
+          {deliveredVendors.length > 1 && (
+            <div className="vendor-tab-bar">
+              <button
+                className={`vendor-tab-btn${effectiveDeliveredVendorFilter === 'all' ? ' active' : ''}`}
+                onClick={() => setSelectedDeliveredVendorFilter('all')}
+              >
+                All
+              </button>
+              {deliveredVendors.map(vendor => (
+                <button
+                  key={vendor}
+                  className={`vendor-tab-btn${effectiveDeliveredVendorFilter === vendor ? ' active' : ''}`}
+                  onClick={() => setSelectedDeliveredVendorFilter(vendor)}
+                >
+                  {vendor}
+                </button>
+              ))}
+            </div>
+          )}
+          {filteredDeliveredOrders.length === 0 ? (
             <div className="empty-orders">No delivered orders.</div>
           ) : (
-            renderOrderTabsView(
-              groupOrdersByDate(deliveredOrders),
-              Object.keys(groupOrdersByDate(deliveredOrders)).sort((a, b) => new Date(b) - new Date(a)),
-              activeDeliveredDate,
-              setActiveDeliveredDate
+            renderAllDatesView(
+              groupOrdersByDate(filteredDeliveredOrders),
+              Object.keys(groupOrdersByDate(filteredDeliveredOrders)).sort((a, b) => new Date(b) - new Date(a))
             )
           )}
         </div>
@@ -1626,26 +1726,39 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 const vendorSubtotal = items.reduce((s, i) => s + i.lineTotal, 0);
                 return (
                   <div key={vendor} className="undelivered-vendor-group">
-                    <div className="undelivered-vendor-label" style={{ borderColor: vendorColor(vendor, vendorColorMap), color: vendorColor(vendor, vendorColorMap) }}>
-                      {vendor}
+                    <div className="undelivered-vendor-head">
+                      <div className="undelivered-vendor-label" style={{ borderColor: vendorColor(vendor, vendorColorMap), color: vendorColor(vendor, vendorColorMap) }}>
+                        {vendor}
+                      </div>
+                      <div className="undelivered-vendor-subtotal">
+                        Vendor Total: ${vendorSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
                     </div>
                     <div className="undelivered-items-grid">
                       <div className="undelivered-grid-header">
-                        <span>Warehouse</span><span>Product</span><span>Strength</span><span>Qty</span><span>Unit</span><span>Total</span>
+                        <span>Warehouse</span>
+                        <span>Product</span>
+                        <span>Strength</span>
+                        <span>Qty</span>
+                        <span>Unit</span>
+                        <span>Total</span>
+                        <span>Order</span>
+                        <span>Tracking</span>
                       </div>
                       {items.map((item, idx) => (
                         <div key={idx} className="undelivered-grid-row">
                           <span className="uitem-warehouse">{item.warehouse}</span>
                           <span className="uitem-product">{item.productName}</span>
-                          <span className="uitem-strength">{item.productStrength}</span>
+                          <span className="uitem-strength">{item.productStrength || '—'}</span>
                           <span className="uitem-qty">{item.quantity}</span>
                           <span className="uitem-unit">${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           <span className="uitem-total">${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className="uitem-order">{item.orderId}</span>
+                          <span className={`uitem-tracking ${item.hasTracking ? 'has-tracking' : 'no-tracking'}`}>
+                            {item.hasTracking ? item.trackingLabel : 'No Tracking'}
+                          </span>
                         </div>
                       ))}
-                    </div>
-                    <div className="undelivered-vendor-subtotal">
-                      Vendor Total: ${vendorSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
                 );

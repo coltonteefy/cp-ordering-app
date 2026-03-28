@@ -284,6 +284,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 1.25rem 1.5rem 1rem;
   border-bottom: 1px solid #e6d7c4;
 }
@@ -295,16 +296,22 @@
   margin: 0;
 }
 
-.undelivered-modal-close {
+.undelivered-modal .undelivered-modal-close {
   background: transparent;
   border: none;
   font-size: 1.1rem;
   color: #8b6f47;
   cursor: pointer;
-  padding: 0.2rem 0.4rem;
+  padding: 0;
   border-radius: 6px;
   transition: background 0.15s;
-  width: auto;
+  width: 32px !important;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex: 0 0 auto;
 }
 
 .undelivered-modal-close:hover {
@@ -324,6 +331,17 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  border: 1px solid #eadfce;
+  border-radius: 12px;
+  background: #fffaf3;
+  padding: 0.6rem 0.75rem;
+}
+
+.undelivered-vendor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .undelivered-vendor-label {
@@ -331,60 +349,110 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 0.2rem 0;
-  border-bottom: 2px solid currentColor;
+  padding: 0.14rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
 }
 
 .undelivered-items-grid {
-  display: grid;
-  grid-template-columns: 70px 1fr 80px 45px 80px 90px;
-  gap: 0;
-  font-size: 0.83rem;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.82rem;
+  border: 1px solid #eadfce;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
 }
 
-.undelivered-grid-header {
-  display: contents;
+.undelivered-grid-header,
+.undelivered-grid-row {
+  display: grid;
+  grid-template-columns: 84px minmax(180px, 1.2fr) 94px 64px 100px 118px 190px minmax(190px, 1fr);
 }
 
 .undelivered-grid-header span {
+  padding: 0.32rem 0.45rem;
   font-weight: 700;
   color: #7b6c5d;
-  padding: 0.3rem 0.4rem;
-  border-bottom: 1px solid #e6d7c4;
-  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.undelivered-grid-row {
-  display: contents;
+  font-size: 0.74rem;
+  border-bottom: 1px solid #e8dbc8;
+  background: #faf3ea;
 }
 
 .undelivered-grid-row span {
-  padding: 0.45rem 0.4rem;
-  border-bottom: 1px solid #f0e8dc;
+  padding: 0.34rem 0.45rem;
+  border-bottom: 1px solid #f1e8db;
   color: #2f2a26;
   display: flex;
   align-items: center;
 }
 
+.undelivered-grid-row:last-child span {
+  border-bottom: none;
+}
+
+.undelivered-grid-header span:not(:first-child),
+.undelivered-grid-row span:not(:first-child) {
+  border-left: 1px solid #f2e8da;
+}
+
 .uitem-warehouse {
   font-weight: 700;
-  font-size: 0.78rem;
-  color: #7b6c5d !important;
+  color: #6f5d49;
+  justify-content: center;
+}
+
+.uitem-product {
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uitem-strength,
+.uitem-qty,
+.uitem-unit,
+.uitem-total {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.uitem-order {
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 0.75rem;
+  color: #5e4c38;
+}
+
+.uitem-tracking {
+  font-size: 0.76rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uitem-tracking.has-tracking {
+  color: #245f38;
+}
+
+.uitem-tracking.no-tracking {
+  color: #8a5f2c;
 }
 
 .uitem-total {
-  font-weight: 700;
+  font-weight: 800;
   color: #c07722 !important;
 }
 
 .undelivered-vendor-subtotal {
   text-align: right;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: #7b5a2a;
-  padding: 0.25rem 0.4rem 0;
+  white-space: nowrap;
 }
 
 .undelivered-modal-footer {
@@ -402,7 +470,7 @@
   color: #3d2b1a;
 }
 
-.undelivered-modal-close-btn {
+.undelivered-modal .undelivered-modal-close-btn {
   background: #4a3a2b;
   color: #fff;
   border: none;
@@ -412,11 +480,21 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
-  width: auto;
+  width: auto !important;
 }
 
 .undelivered-modal-close-btn:hover {
   background: #2f2520;
+}
+
+@media (max-width: 1100px) {
+  .undelivered-vendor-group {
+    overflow-x: auto;
+  }
+
+  .undelivered-items-grid {
+    min-width: 1050px;
+  }
 }
 
 .orders-summary-columns {

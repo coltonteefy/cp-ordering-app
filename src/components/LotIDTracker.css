@@ -74,6 +74,37 @@
   min-height: 60px;
 }
 
+.lot-modal-vendor-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.lot-modal-vendor-pill {
+  appearance: none;
+  border: 1px solid #e4d4be;
+  background: #fff;
+  color: #6f5330;
+  border-radius: 999px;
+  padding: 0.38rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.lot-modal-vendor-pill:hover {
+  background: #faf2e6;
+  border-color: #d9c2a5;
+}
+
+.lot-modal-vendor-pill.active {
+  background: #4a3a2b;
+  border-color: #4a3a2b;
+  color: #fff;
+}
+
 .lot-id-hero {
   width: min(1600px, 100%);
   margin: 0 auto 1.25rem auto;
@@ -257,6 +288,45 @@
   margin: 0 auto;
 }
 
+/* Product pill selector bar */
+.lot-id-pill-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: min(1600px, 100%);
+  margin: 0 auto 1.25rem auto;
+}
+
+.lot-id-product-pill {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1.5px solid #e0ceb5;
+  background: #fdfaf6;
+  color: #5c3f1d;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.lot-id-product-pill:hover {
+  background: #f3e8d8;
+  border-color: #c8a97e;
+}
+
+.lot-id-product-pill.active {
+  background: #c8a97e;
+  border-color: #c8a97e;
+  color: #fff;
+}
+
+/* Single product view */
+.lot-id-single-view {
+  width: 100%;
+  margin: 0 auto;
+}
+
 .lot-id-sidebar {
   position: sticky;
   top: 90px;
@@ -326,7 +396,6 @@
 
 .lot-id-card {
   width: 100%;
-  max-width: 520px;
   background: #ffffff;
   border-radius: 14px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
@@ -723,19 +792,61 @@
 .lot-id-list-item {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
   background: #fffdf9;
   border: 1px solid #e8d8c5;
-  border-radius: 10px;
-  padding: 0.3rem 0.5rem;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.05);
 }
 
-.lot-id-list-top {
+.lot-id-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.lot-id-card-id {
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #2b1a0f;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  letter-spacing: 0.02em;
+}
+
+.lot-id-card-id:hover .lot-id-card-copy-icon {
+  opacity: 1;
+}
+
+.lot-id-card-copy-icon {
+  font-size: 0.85rem;
+  opacity: 0.35;
+  transition: opacity 0.15s;
+}
+
+.lot-id-card-meta {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.lot-id-meta-stat {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #7a6550;
+  background: #f3ece1;
+  border: 1px solid #e5d4bf;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
 }
 
 .lot-id-pill {
@@ -857,6 +968,13 @@
   gap: 0.5rem;
 }
 
+.lot-id-main-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
 .lot-id-template-frame {
   position: relative;
   width: 100%;
@@ -879,6 +997,11 @@
   font-size: 0.95rem;
   color: #c24f38;
   text-decoration: underline;
+}
+
+.lot-id-main-split .lot-id-section {
+  margin-bottom: 0;
+  height: 100%;
 }
 
 @media (max-width: 600px) {
@@ -916,6 +1039,10 @@
 
 @media (max-width: 780px) {
   .lot-id-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lot-id-main-split {
     grid-template-columns: 1fr;
   }
 }

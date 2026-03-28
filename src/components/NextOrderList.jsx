@@ -7,6 +7,13 @@ const formatPrice = (price) => {
   return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+const normalizeVendorId = (vendor) => (vendor || 'TSC').toString();
+
+const buildOrderItemKey = (item) => {
+  const vendor = normalizeVendorId(item.vendor);
+  return `${vendor}::${item.productName}::${item.productStrength}::${item.warehouse}`;
+};
+
 const NextOrderList = ({ onSuccess, onError }) => {
   const [orderItems, setOrderItems] = useState(() => {
     const savedOrder = localStorage.getItem('pendingOrder');
@@ -86,13 +93,14 @@ const NextOrderList = ({ onSuccess, onError }) => {
   const activeVendorProfile = vendors.find(v => v.id === selectedVendor);
 
   // Get the vendor-specific price for a product
-  const getVendorPrice = (product) => {
-    if (isTSC) {
-      return product.warehouseCosts?.[activeWarehouse] || 0;
+  const getVendorPriceFor = (product, vendorId, warehouse) => {
+    if (normalizeVendorId(vendorId) === 'TSC') {
+      return product.warehouseCosts?.[warehouse] || 0;
     }
-    if (activeVendorProfile?.products) {
+    const vendorProfile = vendors.find(v => v.id === vendorId);
+    if (vendorProfile?.products) {
       const key = `${product.product}__${product.strength}`;
-      const vendorProduct = activeVendorProfile.products[key];
+      const vendorProduct = vendorProfile.products[key];
       if (vendorProduct && typeof vendorProduct.price === 'number') {
         return vendorProduct.price;
       }
@@ -100,8 +108,36 @@ const NextOrderList = ({ onSuccess, onError }) => {
     return 0;
   };
 
+  const getVendorPrice = (product) => getVendorPriceFor(product, selectedVendor, activeWarehouse);
+
+  const handleVendorSwitch = (vendorId) => {
+    setSelectedVendor(vendorId);
+    setRecentlyAddedKey(null);
+    setOrderItems((prev) =>
+      prev.map((item) => {
+        const matchedProduct = products.find(
+          (p) => p.product === item.productName && p.strength === item.productStrength
+        );
+        if (!matchedProduct) {
+          return { ...item, vendor: vendorId };
+        }
+        const nextPrice = getVendorPriceFor(
+          matchedProduct,
+          vendorId,
+          item.warehouse || activeWarehouse
+        );
+        return {
+          ...item,
+          vendor: vendorId,
+          pricePerKit: nextPrice,
+        };
+      })
+    );
+  };
+
   const handleProductClick = (product) => {
     const alreadyInOrder = orderItems.find(item =>
+      normalizeVendorId(item.vendor) === normalizeVendorId(selectedVendor) &&
       item.productName === product.product &&
       item.productStrength === product.strength &&
       item.warehouse === activeWarehouse
@@ -119,7 +155,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
       warehouse: activeWarehouse,
       vendor: selectedVendor,
     };
-    const itemKey = `${newItem.productName} ${newItem.productStrength} ${newItem.warehouse}`;
+    const itemKey = buildOrderItemKey(newItem);
     setOrderItems([...orderItems, newItem]);
     setRecentlyAddedKey(itemKey);
     setTimeout(() => setRecentlyAddedKey(null), 900);
@@ -128,6 +164,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
   const removeItem = (targetItem) => {
     setOrderItems(orderItems.filter(item =>
       !(
+        normalizeVendorId(item.vendor) === normalizeVendorId(targetItem.vendor) &&
         item.productName === targetItem.productName &&
         item.productStrength === targetItem.productStrength &&
         item.warehouse === targetItem.warehouse
@@ -137,7 +174,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
 
   const updateItem = (itemKey, field, value) => {
     setOrderItems(orderItems.map(item => {
-      const key = `${item.productName} ${item.productStrength} ${item.warehouse}`;
+      const key = buildOrderItemKey(item);
       if (key === itemKey) {
         if (field === 'quantity') {
           return { ...item, quantity: Math.max(1, parseInt(value) || 1) };
@@ -235,41 +272,62 @@ const NextOrderList = ({ onSuccess, onError }) => {
         itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
       }));
       const total = itemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
-      const orderId = formatOrderId(timestampDate);
+      const itemsByVendor = itemsWithIds.reduce((acc, item) => {
+        const vendorId = normalizeVendorId(item.vendor);
+        if (!acc[vendorId]) acc[vendorId] = [];
+        acc[vendorId].push(item);
+        return acc;
+      }, {});
 
-      await setDoc(doc(db, 'c&pProductOrders', orderId), {
-        id: orderId,
-        warehouse: 'US',
-        vendor: selectedVendor,
-        items: itemsWithIds,
-        total,
-        submittedAt: timestamp,
-        status: 'pending',
-      });
-
-      // Save product prices to vendor profile (skip for TSC)
-      if (!isTSC) {
-        const vendorDocId = selectedVendor;
-        const existingProfile = activeVendorProfile || {};
-        const existingProducts = existingProfile.products || {};
-        const updatedProducts = { ...existingProducts };
-
-        orderItems.forEach(item => {
-          const key = `${item.productName}__${item.productStrength}`;
-          updatedProducts[key] = {
-            product: item.productName,
-            strength: item.productStrength,
-            price: item.pricePerKit,
-            lastOrdered: timestamp,
-          };
+      const vendorIds = Object.keys(itemsByVendor);
+      const orderWrites = vendorIds.map((vendorId, idx) => {
+        const vendorItems = itemsByVendor[vendorId];
+        const vendorTotal = vendorItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+        const vendorWarehouses = [...new Set(vendorItems.map(item => item.warehouse || 'US'))];
+        const warehouseValue = vendorWarehouses.length === 1 ? vendorWarehouses[0] : 'Mixed';
+        const orderId = `${formatOrderId(timestampDate)}-${idx + 1}`;
+        return setDoc(doc(db, 'c&pProductOrders', orderId), {
+          id: orderId,
+          warehouse: warehouseValue,
+          vendor: vendorId,
+          items: vendorItems,
+          total: vendorTotal,
+          submittedAt: timestamp,
+          status: 'pending',
         });
+      });
+      await Promise.all(orderWrites);
 
-        await setDoc(doc(db, 'c&pVendors', vendorDocId), {
-          name: existingProfile.name || vendorDocId,
-          products: updatedProducts,
-          updatedAt: timestamp,
-        }, { merge: true });
-      }
+      // Save product prices back to each vendor profile (skip TSC)
+      const vendorProfilesById = vendors.reduce((acc, vendor) => {
+        acc[vendor.id] = vendor;
+        return acc;
+      }, {});
+
+      const vendorPriceWrites = vendorIds
+        .filter((vendorId) => vendorId !== 'TSC')
+        .map((vendorId) => {
+          const existingProfile = vendorProfilesById[vendorId] || {};
+          const existingProducts = existingProfile.products || {};
+          const updatedProducts = { ...existingProducts };
+
+          itemsByVendor[vendorId].forEach(item => {
+            const key = `${item.productName}__${item.productStrength}`;
+            updatedProducts[key] = {
+              product: item.productName,
+              strength: item.productStrength,
+              price: item.pricePerKit,
+              lastOrdered: timestamp,
+            };
+          });
+
+          return setDoc(doc(db, 'c&pVendors', vendorId), {
+            name: existingProfile.name || vendorId,
+            products: updatedProducts,
+            updatedAt: timestamp,
+          }, { merge: true });
+        });
+      await Promise.all(vendorPriceWrites);
       
       setOrderItems([]);
       localStorage.removeItem('pendingOrder');
@@ -298,7 +356,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
         products: {},
         createdAt: new Date().toISOString(),
       });
-      setSelectedVendor(vendorId);
+      handleVendorSwitch(vendorId);
       setNewVendorName('');
       setShowNewVendor(false);
       onSuccess && onSuccess(`Vendor "${name}" created!`, 'Success');
@@ -327,7 +385,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
           <button
             key={v.id}
             className={`vendor-tab-btn ${selectedVendor === v.id ? 'active' : ''}`}
-            onClick={() => { setSelectedVendor(v.id); setOrderItems([]); }}
+            onClick={() => { handleVendorSwitch(v.id); }}
           >
             {v.name || v.id}
           </button>
@@ -392,6 +450,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
             .sort((a, b) => (a.id || '').localeCompare(b.id || ''))
             .map((product, index) => {
               const isInOrder = orderItems.some(item =>
+                normalizeVendorId(item.vendor) === normalizeVendorId(selectedVendor) &&
                 item.productName === product.product &&
                 item.productStrength === product.strength &&
                 item.warehouse === activeWarehouse
@@ -420,6 +479,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
                 <tr>
                   <th>Product</th>
                   <th>Strength</th>
+                  <th>Vendor</th>
                   <th>Warehouse</th>
                   <th>Quantity</th>
                   <th>Price per Kit</th>
@@ -430,18 +490,19 @@ const NextOrderList = ({ onSuccess, onError }) => {
               <tbody>
                 {orderItems.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="empty-row">
+                    <td colSpan="8" className="empty-row">
                       No items in order list. Use the form above to add items.
                     </td>
                   </tr>
                 ) : (
               orderItems.map((item) => {
-                const itemKey = `${item.productName} ${item.productStrength} ${item.warehouse}`;
+                const itemKey = buildOrderItemKey(item);
                 const highlight = recentlyAddedKey === itemKey;
                 return (
                   <tr key={itemKey} className={highlight ? 'order-row-new' : ''}>
                     <td className="item-product-view" style={{verticalAlign: 'middle'}}>{item.productName}</td>
                     <td className="item-strength-view" style={{verticalAlign: 'middle'}}>{item.productStrength}</td>
+                    <td>{item.vendor || 'TSC'}</td>
                     <td>
                       <span className="warehouse-badge">{item.warehouse}</span>
                     </td>
