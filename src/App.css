@@ -279,6 +279,88 @@ body {
   color: #C85A3F;
 }
 
+.orders-page-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.orders-next-order-btn {
+  border: 1px solid #d5b28a;
+  background: #fff7ec;
+  color: #8a4a1d;
+  padding: 0.55rem 0.95rem;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.orders-next-order-btn:hover {
+  background: #f4dfc7;
+  border-color: #c98f5c;
+}
+
+.next-order-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 12, 9, 0.55);
+  z-index: 9999;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.next-order-modal {
+  width: 100vw;
+  height: 100vh;
+  background: #f5f5f0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.next-order-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid #e3d4bf;
+  background: #fffaf3;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.next-order-modal-header h3 {
+  margin: 0;
+  color: #3f2e1d;
+  font-size: 1.05rem;
+}
+
+.next-order-modal-close {
+  border: 1px solid #dcc3a4;
+  background: #fff;
+  color: #8a4a1d;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.next-order-modal-close:hover {
+  background: #f8ecdd;
+}
+
+.next-order-modal-body {
+  overflow: auto;
+  padding: 1rem;
+  flex: 1;
+}
+
 @media (max-width: 1024px) {
   .hero-title {
     font-size: 2.75rem;
@@ -352,6 +434,14 @@ body {
   .hero-features {
     flex-direction: column;
     gap: 1rem;
+  }
+
+  .orders-page-actions {
+    justify-content: flex-start;
+  }
+
+  .next-order-modal-body {
+    padding: 0.75rem;
   }
 }
 
@@ -557,4 +647,27 @@ body {
 
 .h-5 {
   height: 1.25rem;
+}
+
+/* Toast notification */
+.app-toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2d6a4f;
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  z-index: 9999;
+  animation: toast-in 0.25s ease;
+  white-space: nowrap;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }

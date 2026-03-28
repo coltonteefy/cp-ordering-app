@@ -228,6 +228,7 @@ const OrdersIncoming = () => {
                           setEditingValues((prev) => ({ ...prev, [key]: val }));
                           if (key === activeKey) setEditing({ key, value: val });
                         }}
+                        onFocus={(e) => e.target.select()}
                         onBlur={(e) => {
                           const container = containerRef.current;
                           if (!container || !container.contains(e.relatedTarget)) {

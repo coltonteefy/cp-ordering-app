@@ -435,6 +435,7 @@ const PaymentTracker = ({ onError, onSuccess }) => {
                         amount: e.target.value,
                       }))
                     }
+                    onFocus={(e) => e.target.select()}
                     placeholder="0.00"
                     required
                   />
@@ -486,6 +487,7 @@ const PaymentTracker = ({ onError, onSuccess }) => {
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, amount: e.target.value }))
                     }
+                    onFocus={(e) => e.target.select()}
                     placeholder="0.00"
                     required
                   />

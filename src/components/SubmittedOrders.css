@@ -2141,27 +2141,77 @@
 }
 
 .order-total {
-  padding: 1.5rem;
+  padding: 1.35rem 1.5rem;
   background: #FEF9F3;
   border-top: 2px solid #E6A94A;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 0;
   font-size: 1.125rem;
   font-weight: 600;
 }
 
 .order-total > span {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: #5D3A1A;
+  display: inline-flex;
+  align-items: center;
+}
+
+.order-total-values {
+  min-width: 280px;
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .total-amount {
-  font-size: 1.5rem;
+  font-size: 2.35rem;
+  line-height: 1.05;
   font-weight: 700;
-  color: #3A3A3A;
+  color: #343434;
   text-align: right;
+  margin-top: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-total-breakdown {
+  margin-bottom: 0.15rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(139, 111, 71, 0.2);
+}
+
+.order-total-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  color: #786650;
+  font-weight: 600;
+}
+
+.order-total-line.shipping-line {
+  color: #8B6F47;
+  font-weight: 600;
+}
+
+.order-total-line.total-line {
+  margin-top: 0.25rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(139, 111, 71, 0.2);
+  font-size: 1.05rem;
+  color: #4a3a2b;
+  font-weight: 700;
 }
 
 .discount-indicator {
@@ -2169,6 +2219,30 @@
   color: #E6A94A;
   text-align: right;
   margin-top: 0.25rem;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .order-total {
+    justify-content: stretch;
+  }
+
+  .order-total > span {
+    font-size: 1rem;
+  }
+
+  .order-total-values {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .order-total-line {
+    font-size: 0.82rem;
+  }
+
+  .order-total-line.total-line {
+    font-size: 0.92rem;
+  }
 }
 
 /* Add Product Section */

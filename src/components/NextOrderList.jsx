@@ -14,7 +14,7 @@ const buildOrderItemKey = (item) => {
   return `${vendor}::${item.productName}::${item.productStrength}::${item.warehouse}`;
 };
 
-const NextOrderList = ({ onSuccess, onError }) => {
+const NextOrderList = ({ onSuccess, onError, onSubmitted }) => {
   const [orderItems, setOrderItems] = useState(() => {
     const savedOrder = localStorage.getItem('pendingOrder');
     return savedOrder ? JSON.parse(savedOrder) : [];
@@ -27,6 +27,8 @@ const NextOrderList = ({ onSuccess, onError }) => {
   const [vendors, setVendors] = useState([]);
   const [showNewVendor, setShowNewVendor] = useState(false);
   const [newVendorName, setNewVendorName] = useState('');
+  const [includeShipping, setIncludeShipping] = useState(false);
+  const [shippingCost, setShippingCost] = useState(0);
 
   // Save orderItems to localStorage whenever they change
   useEffect(() => {
@@ -98,6 +100,11 @@ const NextOrderList = ({ onSuccess, onError }) => {
       return product.warehouseCosts?.[warehouse] || 0;
     }
     const vendorProfile = vendors.find(v => v.id === vendorId);
+    const vendorName = vendorProfile?.name || vendorId;
+    // New: read from vendorPricing on the product doc
+    const vp = product.vendorPricing?.[vendorName];
+    if (vp && typeof vp.price === 'number') return vp.price;
+    // Legacy fallback: old vendor profile products sub-map
     if (vendorProfile?.products) {
       const key = `${product.product}__${product.strength}`;
       const vendorProduct = vendorProfile.products[key];
@@ -186,8 +193,17 @@ const NextOrderList = ({ onSuccess, onError }) => {
     }));
   };
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return orderItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+  };
+
+  const getShippingTotal = () => {
+    if (!includeShipping) return 0;
+    return Math.max(0, parseFloat(shippingCost) || 0);
+  };
+
+  const calculateTotal = () => {
+    return calculateSubtotal() + getShippingTotal();
   };
 
   // Group products by category
@@ -244,15 +260,11 @@ const NextOrderList = ({ onSuccess, onError }) => {
     return grouped;
   };
 
-  const formatOrderId = (dateObj) => {
-    const pad = (n) => String(n).padStart(2, '0');
-    const y = dateObj.getFullYear();
-    const m = pad(dateObj.getMonth() + 1);
-    const d = pad(dateObj.getDate());
-    const hh = pad(dateObj.getHours());
-    const mm = pad(dateObj.getMinutes());
-    const ss = pad(dateObj.getSeconds());
-    return `CP-ORDER-${y}${m}${d}${hh}${mm}${ss}`;
+  const generateOrderId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `CP-ORDER-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    }
+    return `CP-ORDER-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
   };
 
   const submitOrder = async () => {
@@ -264,14 +276,15 @@ const NextOrderList = ({ onSuccess, onError }) => {
     setIsSubmitting(true);
 
     try {
-      const timestampDate = new Date();
-      const timestamp = timestampDate.toISOString();
+      const timestamp = new Date().toISOString();
 
       const itemsWithIds = orderItems.map(item => ({
         ...item,
         itemId: Date.now().toString() + Math.random().toString(36).substr(2, 9)
       }));
-      const total = itemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+      const subtotal = itemsWithIds.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+      const orderShippingTotal = getShippingTotal();
+      const grandTotal = subtotal + orderShippingTotal;
       const itemsByVendor = itemsWithIds.reduce((acc, item) => {
         const vendorId = normalizeVendorId(item.vendor);
         if (!acc[vendorId]) acc[vendorId] = [];
@@ -280,17 +293,35 @@ const NextOrderList = ({ onSuccess, onError }) => {
       }, {});
 
       const vendorIds = Object.keys(itemsByVendor);
+      let remainingShipping = orderShippingTotal;
       const orderWrites = vendorIds.map((vendorId, idx) => {
         const vendorItems = itemsByVendor[vendorId];
-        const vendorTotal = vendorItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+        const vendorSubtotal = vendorItems.reduce((sum, item) => sum + (item.quantity * item.pricePerKit), 0);
+        let shippingAllocated = 0;
+        if (orderShippingTotal > 0) {
+          if (vendorIds.length === 1) {
+            shippingAllocated = orderShippingTotal;
+          } else if (idx === vendorIds.length - 1) {
+            shippingAllocated = Math.max(0, Number(remainingShipping.toFixed(2)));
+          } else {
+            const proportional = subtotal > 0 ? (vendorSubtotal / subtotal) * orderShippingTotal : 0;
+            shippingAllocated = Number(proportional.toFixed(2));
+            remainingShipping -= shippingAllocated;
+          }
+        }
+        const vendorTotal = vendorSubtotal + shippingAllocated;
         const vendorWarehouses = [...new Set(vendorItems.map(item => item.warehouse || 'US'))];
         const warehouseValue = vendorWarehouses.length === 1 ? vendorWarehouses[0] : 'Mixed';
-        const orderId = `${formatOrderId(timestampDate)}-${idx + 1}`;
+        const orderId = generateOrderId();
         return setDoc(doc(db, 'c&pProductOrders', orderId), {
           id: orderId,
           warehouse: warehouseValue,
           vendor: vendorId,
           items: vendorItems,
+          subtotal: vendorSubtotal,
+          shippingCost: shippingAllocated,
+          shippingApplied: orderShippingTotal > 0,
+          orderShippingTotal,
           total: vendorTotal,
           submittedAt: timestamp,
           status: 'pending',
@@ -330,7 +361,11 @@ const NextOrderList = ({ onSuccess, onError }) => {
       await Promise.all(vendorPriceWrites);
       
       setOrderItems([]);
+      setIncludeShipping(false);
+      setShippingCost(0);
       localStorage.removeItem('pendingOrder');
+      onSuccess(`Order submitted successfully (${itemsWithIds.length} item${itemsWithIds.length === 1 ? '' : 's'}, total $${formatPrice(grandTotal)})`);
+      onSubmitted && onSubmitted();
     } catch (error) {
       console.error('Error submitting order:', error);
       onError('Failed to submit order: ' + error.message, 'Error');
@@ -442,10 +477,13 @@ const NextOrderList = ({ onSuccess, onError }) => {
           {products
             .filter(product => {
               if (isTSC) {
+                // Only show TSC products with warehouse costs
                 const cost = product.warehouseCosts?.[activeWarehouse];
-                return cost !== undefined && cost > 0;
+                return product.vendor === 'TSC' && cost !== undefined && cost > 0;
               }
-              return true;
+              // For non-TSC vendors: show full catalog (TSC products) + any vendor-exclusive products
+              if (!activeVendorProfile) return false;
+              return product.vendor === 'TSC' || product.vendor === activeVendorProfile.name;
             })
             .sort((a, b) => (a.id || '').localeCompare(b.id || ''))
             .map((product, index) => {
@@ -455,7 +493,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
                 item.productStrength === product.strength &&
                 item.warehouse === activeWarehouse
               );
-              const label = `${product.id || product.product} ${product.strength}`;
+              const label = `${product.product || product.id} ${product.strength}`;
               return (
                 <button
                   key={product.id || index}
@@ -523,6 +561,7 @@ const NextOrderList = ({ onSuccess, onError }) => {
                             step="0.01"
                             value={item.pricePerKit}
                             onChange={(e) => updateItem(itemKey, 'pricePerKit', e.target.value)}
+                            onFocus={(e) => e.target.select()}
                             className="price-input"
                           />
                         </td>
@@ -548,8 +587,49 @@ const NextOrderList = ({ onSuccess, onError }) => {
 
           {/* Order Total */}
           <div className="order-total-card">
-            <h3>Order Total</h3>
-            <p className="total-amount">${formatPrice(calculateTotal())}</p>
+            <div className="order-total-content">
+              <h3>Order Total</h3>
+              <div className="total-line">
+                <span>Subtotal</span>
+                <span>${formatPrice(calculateSubtotal())}</span>
+              </div>
+              <div className="shipping-row">
+                <label className="shipping-toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={includeShipping}
+                    onChange={(e) => {
+                      setIncludeShipping(e.target.checked);
+                      if (!e.target.checked) setShippingCost(0);
+                    }}
+                  />
+                  <span>Add shipping</span>
+                </label>
+                {includeShipping && (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={shippingCost}
+                    onChange={(e) => setShippingCost(Math.max(0, parseFloat(e.target.value) || 0))}
+                    onFocus={(e) => e.target.select()}
+                    className="shipping-cost-input"
+                    placeholder="0.00"
+                    aria-label="Shipping cost"
+                  />
+                )}
+              </div>
+              {includeShipping && (
+                <div className="total-line">
+                  <span>Shipping</span>
+                  <span>${formatPrice(getShippingTotal())}</span>
+                </div>
+              )}
+              <div className="total-line grand-total-line">
+                <span>Grand Total</span>
+                <span>${formatPrice(calculateTotal())}</span>
+              </div>
+            </div>
           </div>
 
           {/* Submit Order Button */}

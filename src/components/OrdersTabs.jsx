@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
-import NextOrderList from "./NextOrderList";
 import SubmittedOrders from "./SubmittedOrders";
 const DeliveredOrders = (props) => <SubmittedOrders deliveredOnly {...props} />;
 import "./OrdersTabs.css";
 
 const TAB_CONFIG = [
-  { key: "next", label: "Next Order", component: NextOrderList },
   { key: "orders", label: "Pending", component: SubmittedOrders },
   { key: "delivered", label: "Delivered", component: DeliveredOrders },
 ];
 
 const OrdersTabs = ({ onSuccess, onError }) => {
-  const [activeTab, setActiveTab] = useState("next");
+  const [activeTab, setActiveTab] = useState("orders");
   const [isSticky, setIsSticky] = useState(false);
 
   useEffect(() => {

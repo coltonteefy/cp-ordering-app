@@ -1227,3 +1227,72 @@
     opacity: 0;
   }
 }
+
+/* Vendor price unset */
+.vendor-price-unset {
+  color: #aaa;
+  font-style: italic;
+}
+
+/* View toggle (Vendor Profiles / Master Pricing) */
+.product-view-toggle {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  background: #f5f0e8;
+  border-radius: 999px;
+  padding: 0.2rem;
+  width: fit-content;
+}
+
+.product-view-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #8B6914;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.product-view-btn.active {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  color: #5D3A1A;
+}
+
+/* Master pricing table */
+.master-pricing-section {
+  margin-top: 1.5rem;
+}
+
+.master-pricing-table thead th {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.vendor-type-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+.badge-general {
+  background: #f0ece3;
+  color: #8B6914;
+  border: 1px solid #e0d4b0;
+}
+.badge-custom {
+  background: #e8f0e8;
+  color: #4a7a4a;
+  border: 1px solid #b8d4b8;
+}
+.vendor-price-unset {
+  color: #aaa;
+  font-style: italic;
+}

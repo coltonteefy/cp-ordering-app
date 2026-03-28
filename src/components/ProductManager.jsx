@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { collection, onSnapshot, doc, setDoc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './ProductManager.css';
 
@@ -46,7 +46,6 @@ const ProductManager = ({ onSuccess, onError }) => {
   const [newVendorProduct, setNewVendorProduct] = useState({ product: '', strength: '', price: 0 });
   const [vendors, setVendors] = useState([]);
   const [selectedVendorProfile, setSelectedVendorProfile] = useState('');
-  const [tscSynced, setTscSynced] = useState(false);
   const [editingColor, setEditingColor] = useState(false);
   const [newWallet, setNewWallet] = useState({ label: '', address: '' });
   const [showWalletComposer, setShowWalletComposer] = useState(false);
@@ -55,6 +54,9 @@ const ProductManager = ({ onSuccess, onError }) => {
   const [editingWalletId, setEditingWalletId] = useState(null);
   const [walletEditForm, setWalletEditForm] = useState({ label: '', address: '' });
   const [selectedWalletLabelPreset, setSelectedWalletLabelPreset] = useState('USDC');
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editProductForm, setEditProductForm] = useState({ product: '', strength: '', price: 0, priceHK: 0 });
+  const [showMasterPricing, setShowMasterPricing] = useState(false);
 
   const saveAllToFirestore = useCallback(async () => {
     try {
@@ -66,6 +68,7 @@ const ProductManager = ({ onSuccess, onError }) => {
           strength: product.strength,
           warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 },
           vendor: product.vendor || 'TSC',
+          vendorPricing: product.vendorPricing || {},
           canvaTemplateUrl: product.canvaTemplateUrl || '',
           currentCoa: product.currentCoa || { lot: '', url: '' },
           pastCoas: product.pastCoas || []
@@ -88,6 +91,7 @@ const ProductManager = ({ onSuccess, onError }) => {
           strength: product.strength,
           warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 },
           vendor: product.vendor || 'TSC',
+          vendorPricing: product.vendorPricing || {},
           canvaTemplateUrl: product.canvaTemplateUrl || '',
           currentCoa: product.currentCoa || { lot: '', url: '' },
           pastCoas: product.pastCoas || []
@@ -132,6 +136,7 @@ const ProductManager = ({ onSuccess, onError }) => {
               strength: data.strength,
               warehouseCosts: warehouseCosts,
               vendor: data.vendor || 'TSC',
+              vendorPricing: data.vendorPricing || {},
               canvaTemplateUrl: data.canvaTemplateUrl || '',
               currentCoa: data.currentCoa || { lot: '', url: '' },
               pastCoas: data.pastCoas || []
@@ -167,40 +172,13 @@ const ProductManager = ({ onSuccess, onError }) => {
     return () => unsubscribe();
   }, []);
 
-  // Sync TSC products into c&pVendors as a vendor profile
-  useEffect(() => {
-    if (!products.length || tscSynced) return;
-    const tscProducts = products.filter(p => (p.vendor || 'TSC') === 'TSC');
-    if (!tscProducts.length) return;
-
-    const productsMap = {};
-    tscProducts.forEach(p => {
-      const key = `${p.product}__${p.strength}`;
-      productsMap[key] = {
-        product: p.product,
-        strength: p.strength,
-        price: p.warehouseCosts?.US || 0,
-        priceHK: p.warehouseCosts?.HK || 0,
-        lastOrdered: null
-      };
-    });
-
-    setDoc(doc(db, 'c&pVendors', 'TSC'), {
-      name: 'TSC',
-      products: productsMap,
-      updatedAt: new Date().toISOString()
-    }, { merge: true }).then(() => {
-      setTscSynced(true);
-    }).catch(err => console.error('Error syncing TSC profile:', err));
-  }, [products, tscSynced]);
-
   // Auto-select first vendor once loaded
   useEffect(() => {
     if (!selectedVendorProfile && vendors.length > 0) {
       const tsc = vendors.find(v => v.name === 'TSC');
       setSelectedVendorProfile(tsc ? tsc.id : vendors[0].id);
     }
-  }, [vendors, selectedVendorProfile]);
+  }, [vendors]);
 
   // Auto-assign colors to vendors that don't have one
   useEffect(() => {
@@ -329,10 +307,17 @@ const ProductManager = ({ onSuccess, onError }) => {
   };
 
   const profileProducts = useMemo(() => {
-    if (!activeProfile?.products) return [];
-    return Object.values(activeProfile.products)
+    if (!activeProfile) return [];
+    if (isTSC) {
+      return products
+        .filter(p => (p.vendor || 'TSC') === 'TSC')
+        .sort((a, b) => (a.product || '').localeCompare(b.product || '') || (a.strength || '').localeCompare(b.strength || ''));
+    }
+    // Non-TSC: full catalog (TSC products) + any vendor-exclusive products
+    return products
+      .filter(p => (p.vendor || 'TSC') === 'TSC' || p.vendor === activeProfile.name)
       .sort((a, b) => (a.product || '').localeCompare(b.product || '') || (a.strength || '').localeCompare(b.strength || ''));
-  }, [activeProfile]);
+  }, [products, activeProfile, isTSC]);
 
   // All vendor options for the selector
   const vendorOptions = useMemo(() => {
@@ -342,12 +327,13 @@ const ProductManager = ({ onSuccess, onError }) => {
         if (b.name === 'TSC') return 1;
         return (a.name || '').localeCompare(b.name || '');
       })
-      .map(v => ({
-        id: v.id,
-        name: v.name,
-        count: v.products ? Object.keys(v.products).length : 0
-      }));
-  }, [vendors]);
+      .map(v => {
+        const count = v.name === 'TSC'
+          ? products.filter(p => (p.vendor || 'TSC') === 'TSC').length
+          : products.filter(p => (p.vendor || 'TSC') === 'TSC' || p.vendor === v.name).length;
+        return { id: v.id, name: v.name, count };
+      });
+  }, [vendors, products]);
 
   const updateProductCost = (id, warehouse, newCost) => {
     setEditForm(prev => ({
@@ -368,6 +354,7 @@ const ProductManager = ({ onSuccess, onError }) => {
         strength: product.strength,
         warehouseCosts: product.warehouseCosts || { US: 0, HK: 0 },
         vendor: product.vendor || 'TSC',
+        vendorPricing: product.vendorPricing || {},
         canvaTemplateUrl: product.canvaTemplateUrl || '',
         currentCoa: product.currentCoa || { lot: '', url: '' },
         pastCoas: product.pastCoas || []
@@ -424,6 +411,7 @@ const ProductManager = ({ onSuccess, onError }) => {
         strength: newProduct.strength,
         warehouseCosts: newProduct.warehouseCosts || { US: 0, HK: 0 },
         vendor: newProduct.vendor || 'TSC',
+        vendorPricing: newProduct.vendorPricing || {},
         canvaTemplateUrl: newProduct.canvaTemplateUrl || '',
         currentCoa: newProduct.currentCoa || { lot: '', url: '' },
         pastCoas: newProduct.pastCoas || []
@@ -437,6 +425,7 @@ const ProductManager = ({ onSuccess, onError }) => {
           strength: newProduct.strength,
           warehouseCosts: newProduct.warehouseCosts || { US: 0, HK: 0 },
           vendor: newProduct.vendor || 'TSC',
+          vendorPricing: newProduct.vendorPricing || {},
           canvaTemplateUrl: newProduct.canvaTemplateUrl || '',
           currentCoa: newProduct.currentCoa || { lot: '', url: '' },
           pastCoas: newProduct.pastCoas || []
@@ -450,49 +439,58 @@ const ProductManager = ({ onSuccess, onError }) => {
     }
   };
 
+  // Helper to clean corrupted products before saving
+  const cleanProducts = (products) => {
+    const cleaned = {};
+    if (!products) return cleaned;
+    Object.entries(products).forEach(([key, product]) => {
+      if (product && product.product && product.strength && key && !key.includes('undefined')) {
+        cleaned[key] = product;
+      }
+    });
+    return cleaned;
+  };
+
   const addVendorProduct = async () => {
-    const strengthValue = newVendorProduct.strength.replace(/[^0-9.]/g, '').trim();
-    if (!newVendorProduct.product.trim() || !strengthValue) {
+    const trimmedProduct = newVendorProduct.product?.trim() || '';
+    const strengthValue = (newVendorProduct.strength || '').replace(/[^0-9.]/g, '').trim();
+    
+    if (!trimmedProduct || !strengthValue) {
       onError('Please fill in product name and strength', 'Validation Error');
       return;
     }
     try {
-      const vendorId = selectedVendorProfile;
-      const vendorProfile = vendors.find(v => v.id === vendorId);
-      if (!vendorProfile) {
-        onError('Vendor profile not found', 'Error');
-        return;
-      }
-      const strength = newVendorProduct.strength || strengthValue + ' mg';
-      const key = `${newVendorProduct.product}__${strength}`;
-      const updatedProducts = {
-        ...(vendorProfile.products || {}),
-        [key]: {
-          product: newVendorProduct.product,
-          strength,
-          price: parseFloat(newVendorProduct.price) || 0,
-          ...(isTSC ? { priceHK: parseFloat(newVendorProduct.priceHK) || 0 } : {}),
-          lastOrdered: null
-        }
-      };
-      await setDoc(doc(db, 'c&pVendors', vendorId), {
-        ...vendorProfile,
-        products: updatedProducts,
-        updatedAt: new Date().toISOString()
-      });
+      const vendorName = activeProfile.name;
+      const strength = strengthValue.includes('mg') ? strengthValue : strengthValue + ' mg';
+      const docId = buildDocId(trimmedProduct, strength);
 
-      // If TSC, also add to c&pProductList
       if (isTSC) {
-        const docId = buildDocId(newVendorProduct.product, strength);
+        // TSC: create product with warehouseCosts, vendor = 'TSC'
         await setDoc(doc(db, 'c&pProductList', docId), {
           id: docId,
-          product: newVendorProduct.product,
+          product: trimmedProduct,
           strength,
           warehouseCosts: {
             US: parseFloat(newVendorProduct.price) || 0,
             HK: parseFloat(newVendorProduct.priceHK) || 0
           },
           vendor: 'TSC',
+          vendorPricing: {},
+          canvaTemplateUrl: '',
+          currentCoa: { lot: '', url: '' },
+          pastCoas: []
+        });
+      } else {
+        // Non-TSC: create vendor-specific product with vendorPricing
+        await setDoc(doc(db, 'c&pProductList', docId), {
+          id: docId,
+          product: trimmedProduct,
+          strength,
+          warehouseCosts: { US: 0, HK: 0 },
+          vendor: vendorName,
+          vendorPricing: {
+            [vendorName]: { price: parseFloat(newVendorProduct.price) || 0 }
+          },
           canvaTemplateUrl: '',
           currentCoa: { lot: '', url: '' },
           pastCoas: []
@@ -501,10 +499,138 @@ const ProductManager = ({ onSuccess, onError }) => {
 
       setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
       setShowAddForm(false);
-      onSuccess(`Product added to ${vendorProfile.name}`, 'Success');
+      onSuccess(`Product added to ${vendorName}`);
     } catch (error) {
       console.error('Error adding vendor product:', error);
       onError('Failed to add product: ' + error.message, 'Error');
+    }
+  };
+
+  const startEditProduct = (product) => {
+    setEditingProduct(product);
+    if (isTSC) {
+      setEditProductForm({
+        product: product.product,
+        strength: product.strength,
+        price: product.warehouseCosts?.US || 0,
+        priceHK: product.warehouseCosts?.HK || 0
+      });
+    } else {
+      const legacyKey = `${product.product}__${product.strength}`;
+      const legacyPrice = activeProfile?.products?.[legacyKey]?.price || 0;
+      setEditProductForm({
+        product: product.product,
+        strength: product.strength,
+        price: product.vendorPricing?.[activeProfile.name]?.price ?? legacyPrice,
+        priceHK: 0
+      });
+    }
+  };
+
+  const saveEditProduct = async () => {
+    const trimmedProduct = editProductForm.product?.trim();
+    const trimmedStrength = editProductForm.strength?.trim();
+
+    if (!trimmedProduct || !trimmedStrength) {
+      onError('Product name and strength are required', 'Validation Error');
+      return;
+    }
+
+    if (!editingProduct) return;
+
+    try {
+      const docId = editingProduct.docId;
+
+      if (isTSC) {
+        // TSC: update warehouseCosts on the product doc
+        await setDoc(doc(db, 'c&pProductList', docId), {
+          product: trimmedProduct,
+          strength: trimmedStrength,
+          warehouseCosts: {
+            US: parseFloat(editProductForm.price) || 0,
+            HK: parseFloat(editProductForm.priceHK) || 0
+          }
+        }, { merge: true });
+      } else {
+        const vendorName = activeProfile.name;
+        const isVendorSpecific = editingProduct.vendor !== 'TSC';
+
+        if (isVendorSpecific) {
+          // Vendor-specific product: can rename + update price
+          const newDocId = buildDocId(trimmedProduct, trimmedStrength);
+          if (newDocId !== docId) {
+            // Name/strength changed — create new doc, delete old
+            await setDoc(doc(db, 'c&pProductList', newDocId), {
+              id: newDocId,
+              product: trimmedProduct,
+              strength: trimmedStrength,
+              warehouseCosts: editingProduct.warehouseCosts || { US: 0, HK: 0 },
+              vendor: editingProduct.vendor,
+              vendorPricing: {
+                ...(editingProduct.vendorPricing || {}),
+                [vendorName]: { price: parseFloat(editProductForm.price) || 0 }
+              },
+              canvaTemplateUrl: editingProduct.canvaTemplateUrl || '',
+              currentCoa: editingProduct.currentCoa || { lot: '', url: '' },
+              pastCoas: editingProduct.pastCoas || []
+            });
+            await deleteDoc(doc(db, 'c&pProductList', docId));
+          } else {
+            await setDoc(doc(db, 'c&pProductList', docId), {
+              product: trimmedProduct,
+              strength: trimmedStrength,
+              vendorPricing: {
+                ...(editingProduct.vendorPricing || {}),
+                [vendorName]: { price: parseFloat(editProductForm.price) || 0 }
+              }
+            }, { merge: true });
+          }
+        } else {
+          // TSC-origin product in non-TSC view: only update this vendor's price
+          await setDoc(doc(db, 'c&pProductList', docId), {
+            vendorPricing: {
+              ...(editingProduct.vendorPricing || {}),
+              [vendorName]: { price: parseFloat(editProductForm.price) || 0 }
+            }
+          }, { merge: true });
+        }
+      }
+
+      setEditingProduct(null);
+      setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+      onSuccess('Product updated');
+    } catch (error) {
+      console.error('Error updating product:', error);
+      onError('Failed to update product: ' + error.message, 'Error');
+    }
+  };
+
+  const deleteProduct = async () => {
+    if (!editingProduct) return;
+    if (!window.confirm('Are you sure you want to delete this product?')) return;
+
+    try {
+      const docId = editingProduct.docId;
+
+      if (isTSC || editingProduct.vendor !== 'TSC') {
+        // TSC tab (any product) or vendor-specific product: delete the whole doc
+        await deleteDoc(doc(db, 'c&pProductList', docId));
+      } else {
+        // Non-TSC vendor view + TSC-origin product: just remove this vendor's pricing entry
+        const vendorName = activeProfile.name;
+        const updatedVendorPricing = { ...(editingProduct.vendorPricing || {}) };
+        delete updatedVendorPricing[vendorName];
+        await setDoc(doc(db, 'c&pProductList', docId), {
+          vendorPricing: updatedVendorPricing
+        }, { merge: true });
+      }
+
+      setEditingProduct(null);
+      setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+      onSuccess('Product deleted');
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      onError('Failed to delete product: ' + error.message, 'Error');
     }
   };
 
@@ -550,8 +676,42 @@ const ProductManager = ({ onSuccess, onError }) => {
     }
   };
 
+  // One-time migration: move pricing from c&pVendors.products → c&pProductList.vendorPricing
+  const migrateVendorPricing = async () => {
+    if (!window.confirm('This will copy vendor pricing into the unified product list. Safe to run multiple times. Continue?')) return;
+    try {
+      let count = 0;
+      for (const vendor of vendors.filter(v => v.name !== 'TSC')) {
+        if (!vendor.products) continue;
+        for (const [, vProduct] of Object.entries(vendor.products)) {
+          if (!vProduct?.product || !vProduct?.strength) continue;
+          const docId = buildDocId(vProduct.product, vProduct.strength);
+          const existing = products.find(p => p.docId === docId);
+          if (existing) {
+            await setDoc(doc(db, 'c&pProductList', docId), {
+              vendorPricing: {
+                ...(existing.vendorPricing || {}),
+                [vendor.name]: { price: parseFloat(vProduct.price) || 0 }
+              }
+            }, { merge: true });
+            count++;
+          }
+        }
+      }
+      onSuccess(`Migrated pricing for ${count} products`);
+    } catch (error) {
+      onError('Migration failed: ' + error.message, 'Error');
+    }
+  };
+
   return (
     <div className="product-manager">
+      {vendors.length === 0 ? (
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <p>Loading vendor profiles...</p>
+        </div>
+      ) : (
+      <>
       <div className="product-hero">
         <div className="product-hero-text">
           <span className="product-hero-eyebrow">Products</span>
@@ -567,98 +727,231 @@ const ProductManager = ({ onSuccess, onError }) => {
             <div className="product-metric-label">Vendors</div>
             <div className="product-metric-value">{vendorOptions.length}</div>
           </div>
+          <button
+            className="vendor-wallet-toggle-btn"
+            onClick={migrateVendorPricing}
+            style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem' }}
+            title="One-time migration: copy pricing from old vendor profiles into the unified product list"
+          >
+            Sync Vendor Pricing
+          </button>
         </div>
       </div>
 
-      <div className="vendor-profiles-section">
-        <div className="vendor-profiles-header">
-          <div className="vendor-profile-tabs">
-            {vendorOptions.map(v => {
+      <div className="vendor-profiles-header">
+        <div className="vendor-profile-tabs">
+          {vendorOptions.map(v => {
               const vColor = v.id === selectedVendorProfile
                 ? (vendors.find(x => x.id === v.id)?.color || vendorColor(v.name))
                 : undefined;
               return (
                 <button
                   key={v.id}
-                  className={`vendor-profile-tab${v.id === selectedVendorProfile ? ' active' : ''}`}
-                  style={v.id === selectedVendorProfile ? { background: vColor, borderColor: vColor } : undefined}
-                  onClick={() => { setSelectedVendorProfile(v.id); setShowAddForm(false); }}
+                  className={`vendor-profile-tab${v.id === selectedVendorProfile && !showMasterPricing ? ' active' : ''}`}
+                  style={v.id === selectedVendorProfile && !showMasterPricing ? { background: vColor, borderColor: vColor } : undefined}
+                  onClick={() => { setSelectedVendorProfile(v.id); setShowAddForm(false); setShowMasterPricing(false); }}
                 >
                   {v.name}
                   <span className="vendor-profile-tab-count">{v.count}</span>
                 </button>
               );
             })}
-          </div>
-          <button onClick={() => setShowAddForm(!showAddForm)} className="btn-neon-cyan">
-            {showAddForm ? 'Cancel' : 'Add Product'}
-          </button>
           <button
-            className="vendor-wallet-toggle-btn"
-            onClick={() => setShowWalletComposer(true)}
-            style={{ borderColor: profileColor + '40', color: profileColor }}
+            className={`vendor-profile-tab${showMasterPricing ? ' active' : ''}`}
+            style={showMasterPricing ? { background: '#444', borderColor: '#666' } : undefined}
+            onClick={() => { setShowMasterPricing(true); setShowAddForm(false); }}
           >
-            + Add Wallet
+            Master Pricing
           </button>
         </div>
+        {!showMasterPricing && (
+          <>
+            <button onClick={() => setShowAddForm(true)} className="btn-neon-cyan">
+              Add Product
+            </button>
+            <button
+              className="vendor-wallet-toggle-btn"
+              onClick={() => setShowWalletComposer(true)}
+              style={{ borderColor: profileColor + '40', color: profileColor }}
+            >
+              + Add Wallet
+            </button>
+          </>
+        )}
+      </div>
 
-        {showAddForm && (
-          <div className="add-product-form">
-            <h3>Add Product to {activeProfile?.name}</h3>
-            <div className="form-row">
-              <div className="form-field">
-                <label>Product Name</label>
-                <input
-                  type="text"
-                  value={newVendorProduct.product}
-                  onChange={(e) => setNewVendorProduct({ ...newVendorProduct, product: e.target.value })}
-                  placeholder="e.g., BPC-157"
-                />
-              </div>
-              <div className="form-field">
-                <label>Strength</label>
-                <div className="strength-input-wrapper">
-                  <input
-                    type="number"
-                    value={(newVendorProduct.strength || '').replace(/[^0-9.]/g, '')}
-                    onChange={(e) => setNewVendorProduct({ ...newVendorProduct, strength: e.target.value + ' mg' })}
-                    placeholder="10"
-                    className="strength-number"
-                  />
-                  <span className="strength-unit">mg</span>
+      {showMasterPricing ? (
+        <div className="master-pricing-section">
+          <div className="vendor-profile-table-wrap" style={{ overflowX: 'auto' }}>
+            <table className="vendor-profile-table master-pricing-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Strength</th>
+                  {vendors
+                    .slice()
+                    .sort((a, b) => a.name === 'TSC' ? -1 : b.name === 'TSC' ? 1 : (a.name || '').localeCompare(b.name || ''))
+                    .map(v => (
+                      <th key={v.id} style={{ borderBottomColor: (v.color || vendorColor(v.name)) + '60', color: v.color || vendorColor(v.name) }}>
+                        {v.name}{v.name === 'TSC' ? ' (US)' : ''}
+                      </th>
+                    ))
+                  }
+                  {vendors.some(v => v.name === 'TSC') && <th style={{ borderBottomColor: '#8B691440', color: '#8B6914' }}>TSC (HK)</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {products
+                  .filter(p => (p.vendor || 'TSC') === 'TSC')
+                  .sort((a, b) => (a.product || '').localeCompare(b.product || '') || (a.strength || '').localeCompare(b.strength || ''))
+                  .map((p, i) => {
+                    const sortedVendors = vendors
+                      .slice()
+                      .sort((a, b) => a.name === 'TSC' ? -1 : b.name === 'TSC' ? 1 : (a.name || '').localeCompare(b.name || ''));
+                    return (
+                      <tr key={p.docId || i}>
+                        <td className="product-table-name">{p.product}</td>
+                        <td>{p.strength || '—'}</td>
+                        {sortedVendors.map(v => {
+                          const color = v.color || vendorColor(v.name);
+                          let price;
+                          if (v.name === 'TSC') {
+                            price = p.warehouseCosts?.US || 0;
+                          } else {
+                            const legacyKey = `${p.product}__${p.strength}`;
+                            const legacyPrice = v.products?.[legacyKey]?.price;
+                            price = p.vendorPricing?.[v.name]?.price ?? legacyPrice ?? null;
+                          }
+                          return (
+                            <td key={v.id} className="vendor-profile-price" style={{ color: price > 0 ? color : undefined }}>
+                              {price !== null && price !== undefined && price > 0
+                                ? `$${Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : <span className="vendor-price-unset">—</span>
+                              }
+                            </td>
+                          );
+                        })}
+                        {vendors.some(v => v.name === 'TSC') && (
+                          <td className="vendor-profile-price" style={{ color: '#8B6914' }}>
+                            {(p.warehouseCosts?.HK || 0) > 0
+                              ? `$${(p.warehouseCosts.HK).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : <span className="vendor-price-unset">—</span>
+                            }
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <>
+        {showAddForm && ReactDOM.createPortal(
+          <div
+            className="vendor-wallet-modal-backdrop"
+            onClick={() => {
+              setShowAddForm(false);
+              setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
+            }}
+          >
+            <div
+              className="vendor-wallet-modal"
+              onClick={(e) => e.stopPropagation()}
+              style={{ borderColor: profileColor + '30' }}
+            >
+              <div className="vendor-wallet-modal-header">
+                <div>
+                  <h3 className="vendor-wallet-modal-title">Add Product</h3>
+                  <p className="vendor-wallet-modal-subtitle">Add a new product to {activeProfile?.name}.</p>
                 </div>
+                <button
+                  className="vendor-wallet-modal-close"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
+                  }}
+                >
+                  Cancel
+                </button>
               </div>
-              <div className="form-field">
-                <label>Price per Kit ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={newVendorProduct.price}
-                  onChange={(e) => setNewVendorProduct({ ...newVendorProduct, price: parseFloat(e.target.value) || 0 })}
-                  onFocus={(e) => e.target.select()}
-                  placeholder="0.00"
-                />
-              </div>
-              {isTSC && (
-                <div className="form-field">
-                  <label>HK Price per Kit ($)</label>
+
+              <div className="vendor-wallet-modal-body">
+                <div className="form-group">
+                  <label>Product Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., BPC-157"
+                    value={newVendorProduct.product}
+                    onChange={(e) => setNewVendorProduct({ ...newVendorProduct, product: e.target.value })}
+                    className="vendor-wallet-modal-input"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Strength</label>
+                  <div className="strength-input-wrapper">
+                    <input
+                      type="number"
+                      placeholder="10"
+                      value={(newVendorProduct.strength || '').replace(/[^0-9.]/g, '')}
+                      onChange={(e) => setNewVendorProduct({ ...newVendorProduct, strength: e.target.value + ' mg' })}
+                      onFocus={(e) => e.target.select()}
+                      className="strength-number"
+                    />
+                    <span className="strength-unit">mg</span>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Price per Kit ($)</label>
                   <input
                     type="number"
                     step="0.01"
-                    value={newVendorProduct.priceHK || 0}
-                    onChange={(e) => setNewVendorProduct({ ...newVendorProduct, priceHK: parseFloat(e.target.value) || 0 })}
-                    onFocus={(e) => e.target.select()}
                     placeholder="0.00"
+                    value={newVendorProduct.price}
+                    onChange={(e) => setNewVendorProduct({ ...newVendorProduct, price: parseFloat(e.target.value) || 0 })}
+                    onFocus={(e) => e.target.select()}
+                    className="vendor-wallet-modal-input"
                   />
                 </div>
-              )}
-              <div className="form-field">
-                <button onClick={addVendorProduct} className="btn-neon-lime add-product-btn">
+                {isTSC && (
+                  <div className="form-group">
+                    <label>HK Price per Kit ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newVendorProduct.priceHK || 0}
+                      onChange={(e) => setNewVendorProduct({ ...newVendorProduct, priceHK: parseFloat(e.target.value) || 0 })}
+                      onFocus={(e) => e.target.select()}
+                      className="vendor-wallet-modal-input"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="vendor-wallet-modal-actions">
+                <button
+                  className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="vendor-wallet-add-btn"
+                  onClick={addVendorProduct}
+                  style={{ background: profileColor }}
+                >
                   Add Product
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {activeProfile && (
@@ -883,34 +1176,181 @@ const ProductManager = ({ onSuccess, onError }) => {
                     <tr>
                       <th style={{ borderBottomColor: profileColor + '40' }}>Product</th>
                       <th style={{ borderBottomColor: profileColor + '40' }}>Strength</th>
-                      <th style={{ borderBottomColor: profileColor + '40' }}>{isTSC ? 'US Cost / Kit' : 'Price / Kit'}</th>
+                      {isTSC
+                        ? <th style={{ borderBottomColor: profileColor + '40' }}>US Cost / Kit</th>
+                        : <th style={{ borderBottomColor: profileColor + '40' }}>{activeProfile.name} Price / Kit</th>
+                      }
                       {isTSC && <th style={{ borderBottomColor: profileColor + '40' }}>HK Cost / Kit</th>}
-                      <th style={{ borderBottomColor: profileColor + '40' }}>Last Ordered</th>
+                      <th style={{ borderBottomColor: profileColor + '40' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {profileProducts.map((p, i) => (
-                      <tr key={i}>
-                        <td className="product-table-name">{p.product}</td>
-                        <td>{p.strength || '—'}</td>
-                        <td className="vendor-profile-price" style={{ color: profileColor }}>
-                          ${(p.price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        {isTSC && (
-                          <td className="vendor-profile-price" style={{ color: profileColor }}>
-                            ${(p.priceHK || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {profileProducts.map((p, i) => {
+                      const catalogPrice = p.warehouseCosts?.US || 0;
+                      const legacyKey = `${p.product}__${p.strength}`;
+                      const legacyPrice = activeProfile?.products?.[legacyKey]?.price || 0;
+                      const vendorPrice = isTSC
+                        ? catalogPrice
+                        : (p.vendorPricing?.[activeProfile.name]?.price || legacyPrice);
+                      const hkPrice = p.warehouseCosts?.HK || 0;
+                      return (
+                        <tr key={p.docId || i}>
+                          <td className="product-table-name">{p.product}</td>
+                          <td>{p.strength || '—'}</td>
+                          <td className="vendor-profile-price" style={{ color: (isTSC ? catalogPrice : vendorPrice) > 0 ? profileColor : undefined }}>
+                            {isTSC
+                              ? (catalogPrice > 0
+                                  ? `$${catalogPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                  : <span className="vendor-price-unset">—</span>)
+                              : (vendorPrice > 0
+                                  ? `$${vendorPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                  : <span className="vendor-price-unset">—</span>)
+                            }
                           </td>
-                        )}
-                        <td className="vendor-profile-date">
-                          {p.lastOrdered ? new Date(p.lastOrdered).toLocaleDateString() : '—'}
-                        </td>
-                      </tr>
-                    ))}
+                          {isTSC && (
+                            <td className="vendor-profile-price" style={{ color: profileColor }}>
+                              ${hkPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          )}
+                          <td>
+                            <button
+                              className="vendor-wallet-edit-btn"
+                              onClick={() => startEditProduct(p)}
+                              style={{ color: profileColor }}
+                            >
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="vendor-profile-empty">No pricing data yet. Prices are saved when you submit orders for this vendor.</p>
+              <p className="vendor-profile-empty">No products found.</p>
+            )}
+
+            {editingProduct && ReactDOM.createPortal(
+              <div
+                className="vendor-wallet-modal-backdrop"
+                onClick={() => {
+                  setEditingProduct(null);
+                  setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+                }}
+              >
+                <div
+                  className="vendor-wallet-modal"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ borderColor: profileColor + '30' }}
+                >
+                  <div className="vendor-wallet-modal-header">
+                    <div>
+                      <h3 className="vendor-wallet-modal-title">Edit Product</h3>
+                      <p className="vendor-wallet-modal-subtitle">
+                        {isTSC ? 'Update product details.' : `Set ${activeProfile.name}'s price for this product.`}
+                      </p>
+                    </div>
+                    <button
+                      className="vendor-wallet-modal-close"
+                      onClick={() => {
+                        setEditingProduct(null);
+                        setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <div className="vendor-wallet-modal-body">
+                    {/* Product name — editable for TSC or vendor-specific products, read-only for TSC products in non-TSC view */}
+                    <div className="form-group">
+                      <label>Product Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., BPC-157"
+                        value={editProductForm.product}
+                        onChange={(e) => setEditProductForm(prev => ({ ...prev, product: e.target.value }))}
+                        className="vendor-wallet-modal-input"
+                        readOnly={!isTSC && editingProduct?.vendor === 'TSC'}
+                        style={!isTSC && editingProduct?.vendor === 'TSC' ? { opacity: 0.5, cursor: 'default' } : undefined}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Strength</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., 10mg"
+                        value={editProductForm.strength}
+                        onChange={(e) => setEditProductForm(prev => ({ ...prev, strength: e.target.value }))}
+                        className="vendor-wallet-modal-input"
+                        readOnly={!isTSC && editingProduct?.vendor === 'TSC'}
+                        style={!isTSC && editingProduct?.vendor === 'TSC' ? { opacity: 0.5, cursor: 'default' } : undefined}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>{isTSC ? 'US Cost / Kit ($)' : `${activeProfile.name} Price / Kit ($)`}</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={editProductForm.price}
+                        onChange={(e) => setEditProductForm(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                        onFocus={(e) => e.target.select()}
+                        className="vendor-wallet-modal-input"
+                      />
+                    </div>
+                    {isTSC && (
+                      <div className="form-group">
+                        <label>HK Cost / Kit ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={editProductForm.priceHK}
+                          onChange={(e) => setEditProductForm(prev => ({ ...prev, priceHK: parseFloat(e.target.value) || 0 }))}
+                          onFocus={(e) => e.target.select()}
+                          className="vendor-wallet-modal-input"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="vendor-wallet-modal-actions">
+                    <button
+                      className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary"
+                      onClick={() => {
+                        setEditingProduct(null);
+                        setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                      {/* Only show Delete for TSC products on TSC tab, or vendor-specific products */}
+                      {(isTSC || editingProduct?.vendor !== 'TSC') && (
+                        <button
+                          className="vendor-wallet-toggle-btn"
+                          onClick={deleteProduct}
+                          style={{ background: '#D74F3B', color: '#fff' }}
+                        >
+                          Delete
+                        </button>
+                      )}
+                      <button
+                        className="vendor-wallet-add-btn"
+                        onClick={saveEditProduct}
+                        style={{ background: profileColor }}
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>,
+              document.body
             )}
 
             {showPaymentHistoryModal && ReactDOM.createPortal(
@@ -977,7 +1417,8 @@ const ProductManager = ({ onSuccess, onError }) => {
             )}
           </div>
         )}
-      </div>
+      </>
+      )}
 
       {editForm &&
         ReactDOM.createPortal(
@@ -1091,6 +1532,8 @@ const ProductManager = ({ onSuccess, onError }) => {
           </div>,
           document.body
         )}
+      </>
+      )}
     </div>
   );
 };

@@ -256,6 +256,7 @@ const PromoSchedule = ({ onSuccess, onError }) => {
                   max="100"
                   value={newPromo.discount}
                   onChange={(e) => setNewPromo({ ...newPromo, discount: e.target.value })}
+                  onFocus={(e) => e.target.select()}
                   required
                 />
               </div>
@@ -320,6 +321,7 @@ const PromoSchedule = ({ onSuccess, onError }) => {
                               max="100"
                               value={ideaData.discount}
                               onChange={(e) => updateIdeaField(month, index, 'discount', parseInt(e.target.value))}
+                              onFocus={(e) => e.target.select()}
                               className="edit-input-small"
                             />
                           </div>

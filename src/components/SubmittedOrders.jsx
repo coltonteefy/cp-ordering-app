@@ -819,20 +819,31 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   };
 
   // Rendering helpers -----------------------------------------
-  const calculateFinalTotal = (order) => {
-    const itemsTotal = (order.items || []).reduce(
-      (sum, item) => sum + (item.quantity || 0) * (item.pricePerKit || 0),
+  const getOrderFinancials = (order) => {
+    const computedItemsSubtotal = (order.items || []).reduce(
+      (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0),
       0
     );
-    const baseTotal = typeof order.total === 'number' ? order.total : itemsTotal;
-    const discount = order.discountPercent || 0;
-    return baseTotal - baseTotal * (discount / 100);
+    const itemsSubtotal = typeof order.subtotal === 'number' ? order.subtotal : computedItemsSubtotal;
+    const shippingCost = Math.max(0, Number(order.shippingCost) || 0);
+    const baseTotal = itemsSubtotal + shippingCost;
+    const discountPercent = Number(order.discountPercent) || 0;
+    const finalTotal = baseTotal - baseTotal * (discountPercent / 100);
+    return {
+      itemsSubtotal,
+      shippingCost,
+      baseTotal,
+      discountPercent,
+      finalTotal
+    };
   };
+
+  const calculateFinalTotal = (order) => getOrderFinancials(order).finalTotal;
 
   const renderOrder = (order) => {
     const isEditing = editingOrders.has(order.id);
-    const discount = order.discountPercent || 0;
-    const finalTotal = calculateFinalTotal(order);
+    const { itemsSubtotal, shippingCost, discountPercent, finalTotal } = getOrderFinancials(order);
+    const discount = discountPercent;
     const submittedAtDisplay = new Date(order.submittedAt).toLocaleString();
     const trackingEntries =
       order.trackingEntries && Array.isArray(order.trackingEntries) && order.trackingEntries.length > 0
@@ -1458,6 +1469,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   max="100"
                   step="0.01"
                   value={discount}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => updateDiscount(order.id, parseFloat(e.target.value) || 0)}
                   className="discount-input"
                 />
@@ -1465,10 +1477,18 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
             )}
 
             <div className="order-total">
-              <span>Order Total</span>
-              <div>
-                <div className="total-amount">
-                  ${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <div className="order-total-values">
+                <div className="order-total-line">
+                  <span>Items</span>
+                  <span>${itemsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="order-total-line shipping-line">
+                  <span>Shipping</span>
+                  <span>${shippingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="order-total-line total-line">
+                  <span>Total</span>
+                  <span>${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 {discount > 0 && <div className="discount-indicator">{discount}% discount applied</div>}
               </div>

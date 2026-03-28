@@ -672,6 +672,7 @@ const LotIDTracker = () => {
                 onChange={(e) =>
                   setLotModalConfig((prev) => ({ ...prev, kits: e.target.value }))
                 }
+                onFocus={(e) => e.target.select()}
                 className="lot-modal-input"
               />
 
@@ -752,6 +753,7 @@ const LotIDTracker = () => {
                 placeholder="Enter kit count"
                 value={editLotModal.kits}
                 onChange={(e) => setEditLotModal((prev) => ({ ...prev, kits: e.target.value }))}
+                onFocus={(e) => e.target.select()}
                 className="lot-modal-input"
               />
 

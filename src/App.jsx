@@ -4,6 +4,7 @@ import { auth } from './firebaseConfig';
 import Modal from './components/Modal';
 import LoginForm from './components/LoginForm';
 import OrdersTabs from './components/OrdersTabs';
+import NextOrderList from './components/NextOrderList';
 import ProductManager from './components/ProductManager';
 import PromoSchedule from './components/PromoSchedule';
 import LotIDTracker from './components/LotIDTracker';
@@ -16,6 +17,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
+  const [toast, setToast] = useState({ visible: false, message: '' });
   const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
@@ -25,6 +27,7 @@ function App() {
 
   const [activePage, setActivePage] = useState(parseHashPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showNextOrderModal, setShowNextOrderModal] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -46,6 +49,11 @@ function App() {
 
   const closeModal = () => {
     setModal({ isOpen: false, title: '', message: '' });
+  };
+
+  const showToast = (message) => {
+    setToast({ visible: true, message });
+    setTimeout(() => setToast({ visible: false, message: '' }), 3000);
   };
 
   // Keep URL hash in sync with active page and respond to hash changes (acts like lightweight routing)
@@ -78,6 +86,20 @@ function App() {
       showModal('Sign out failed: ' + error.message, 'Error');
     }
   };
+
+  const handleNewOrderSubmitted = () => {
+    setShowNextOrderModal(false);
+  };
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    if (showNextOrderModal) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showNextOrderModal]);
 
   if (loading) {
     return (
@@ -129,7 +151,7 @@ function App() {
           <section className="hero">
             <div className="hero-content">
               <LoginForm 
-                onSuccess={showModal}
+                onSuccess={showToast}
                 onError={showModal}
               />
             </div>
@@ -143,29 +165,62 @@ function App() {
             <div className="page-transition" key={activePage}>
             {activePage === 'payments' ? (
               <PaymentTracker
-                onSuccess={showModal}
+                onSuccess={showToast}
                 onError={showModal}
               />
             ) : activePage === 'vendors' ? (
               <ProductManager 
-                onSuccess={showModal}
+                onSuccess={showToast}
                 onError={showModal}
               />
             ) : activePage === 'promo' ? (
               <PromoSchedule 
-                onSuccess={showModal}
+                onSuccess={showToast}
                 onError={showModal}
               />
             ) : activePage === 'lotid' ? (
               <LotIDTracker />
             ) : (
               <>
+                <div className="orders-page-actions">
+                  <button
+                    className="orders-next-order-btn"
+                    onClick={() => setShowNextOrderModal(true)}
+                  >
+                    + New Order
+                  </button>
+                </div>
                 <OrdersTabs 
-                  onSuccess={showModal}
+                  onSuccess={showToast}
                   onError={showModal}
                 />
             </>
             )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast.visible && (
+        <div className="app-toast">{toast.message}</div>
+      )}
+
+      {showNextOrderModal && (
+        <div className="next-order-modal-overlay" onClick={() => setShowNextOrderModal(false)}>
+          <div className="next-order-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="next-order-modal-header">
+              <h3>New Order</h3>
+              <button
+                className="next-order-modal-close"
+                onClick={() => setShowNextOrderModal(false)}
+                aria-label="Close New Order"
+              >
+                ×
+              </button>
+            </div>
+            <div className="next-order-modal-body">
+              <NextOrderList onSuccess={showToast} onError={showModal} onSubmitted={handleNewOrderSubmitted} />
             </div>
           </div>
         </div>
