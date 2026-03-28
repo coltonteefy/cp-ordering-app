@@ -43,7 +43,7 @@ const ProductManager = ({ onSuccess, onError }) => {
   const [hasInitialized, setHasInitialized] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProduct, setNewProduct] = useState({ product: '', strength: '', warehouseCosts: { US: 0, HK: 0 }, vendor: 'TSC' });
-  const [newVendorProduct, setNewVendorProduct] = useState({ product: '', strength: '', price: 0 });
+  const [newVendorProduct, setNewVendorProduct] = useState({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
   const [vendors, setVendors] = useState([]);
   const [selectedVendorProfile, setSelectedVendorProfile] = useState('');
   const [editingColor, setEditingColor] = useState(false);
@@ -452,11 +452,12 @@ const ProductManager = ({ onSuccess, onError }) => {
   };
 
   const addVendorProduct = async () => {
+    const trimmedId = newVendorProduct.id?.trim() || '';
     const trimmedProduct = newVendorProduct.product?.trim() || '';
     const strengthValue = (newVendorProduct.strength || '').replace(/[^0-9.]/g, '').trim();
     
-    if (!trimmedProduct || !strengthValue) {
-      onError('Please fill in product name and strength', 'Validation Error');
+    if (!trimmedId || !trimmedProduct || !strengthValue) {
+      onError('Please fill in product ID, product name, and strength', 'Validation Error');
       return;
     }
     try {
@@ -467,7 +468,7 @@ const ProductManager = ({ onSuccess, onError }) => {
       if (isTSC) {
         // TSC: create product with warehouseCosts, vendor = 'TSC'
         await setDoc(doc(db, 'c&pProductList', docId), {
-          id: docId,
+          id: trimmedId,
           product: trimmedProduct,
           strength,
           warehouseCosts: {
@@ -483,7 +484,7 @@ const ProductManager = ({ onSuccess, onError }) => {
       } else {
         // Non-TSC: create vendor-specific product with vendorPricing
         await setDoc(doc(db, 'c&pProductList', docId), {
-          id: docId,
+          id: trimmedId,
           product: trimmedProduct,
           strength,
           warehouseCosts: { US: 0, HK: 0 },
@@ -497,7 +498,7 @@ const ProductManager = ({ onSuccess, onError }) => {
         });
       }
 
-      setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
+      setNewVendorProduct({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
       setShowAddForm(false);
       onSuccess(`Product added to ${vendorName}`);
     } catch (error) {
@@ -854,7 +855,7 @@ const ProductManager = ({ onSuccess, onError }) => {
             className="vendor-wallet-modal-backdrop"
             onClick={() => {
               setShowAddForm(false);
-              setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
+              setNewVendorProduct({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
             }}
           >
             <div
@@ -871,7 +872,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                   className="vendor-wallet-modal-close"
                   onClick={() => {
                     setShowAddForm(false);
-                    setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
+                    setNewVendorProduct({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
                   }}
                 >
                   Cancel
@@ -879,6 +880,16 @@ const ProductManager = ({ onSuccess, onError }) => {
               </div>
 
               <div className="vendor-wallet-modal-body">
+                <div className="form-group">
+                  <label>Product ID</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., R50"
+                    value={newVendorProduct.id || ''}
+                    onChange={(e) => setNewVendorProduct({ ...newVendorProduct, id: e.target.value })}
+                    className="vendor-wallet-modal-input"
+                  />
+                </div>
                 <div className="form-group">
                   <label>Product Name</label>
                   <input
@@ -936,7 +947,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                   className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary"
                   onClick={() => {
                     setShowAddForm(false);
-                    setNewVendorProduct({ product: '', strength: '', price: 0, priceHK: 0 });
+                    setNewVendorProduct({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
                   }}
                 >
                   Cancel

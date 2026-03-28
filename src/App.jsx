@@ -28,6 +28,7 @@ function App() {
   const [activePage, setActivePage] = useState(parseHashPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showNextOrderModal, setShowNextOrderModal] = useState(false);
+  const [isClosingNewOrderModal, setIsClosingNewOrderModal] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -88,7 +89,21 @@ function App() {
   };
 
   const handleNewOrderSubmitted = () => {
-    setShowNextOrderModal(false);
+    closeNewOrderModal();
+  };
+
+  const openNewOrderModal = () => {
+    setIsClosingNewOrderModal(false);
+    setShowNextOrderModal(true);
+  };
+
+  const closeNewOrderModal = () => {
+    if (!showNextOrderModal || isClosingNewOrderModal) return;
+    setIsClosingNewOrderModal(true);
+    setTimeout(() => {
+      setShowNextOrderModal(false);
+      setIsClosingNewOrderModal(false);
+    }, 220);
   };
 
   useEffect(() => {
@@ -185,7 +200,7 @@ function App() {
                 <div className="orders-page-actions">
                   <button
                     className="orders-next-order-btn"
-                    onClick={() => setShowNextOrderModal(true)}
+                    onClick={openNewOrderModal}
                   >
                     + New Order
                   </button>
@@ -207,16 +222,19 @@ function App() {
       )}
 
       {showNextOrderModal && (
-        <div className="next-order-modal-overlay" onClick={() => setShowNextOrderModal(false)}>
+        <div
+          className={`next-order-modal-overlay ${isClosingNewOrderModal ? 'closing' : 'open'}`}
+          onClick={closeNewOrderModal}
+        >
           <div className="next-order-modal" onClick={(e) => e.stopPropagation()}>
             <div className="next-order-modal-header">
               <h3>New Order</h3>
               <button
                 className="next-order-modal-close"
-                onClick={() => setShowNextOrderModal(false)}
+                onClick={closeNewOrderModal}
                 aria-label="Close New Order"
               >
-                ×
+                Cancel
               </button>
             </div>
             <div className="next-order-modal-body">
