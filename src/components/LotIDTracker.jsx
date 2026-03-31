@@ -1509,6 +1509,15 @@ const LotIDTracker = () => {
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
+                        {activePreviewLot?.lot && (
+                          <button
+                            type="button"
+                            className="lot-id-print-btn"
+                            onClick={() => handlePrintLotLabel(p, activePreviewLot)}
+                          >
+                            Print Label
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="lot-id-layout-btn"
@@ -1543,6 +1552,15 @@ const LotIDTracker = () => {
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
+                        {activePreviewLot?.lot && (
+                          <button
+                            type="button"
+                            className="lot-id-print-btn"
+                            onClick={() => handlePrintKitLabel(p, activePreviewLot)}
+                          >
+                            Print Kit
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="lot-id-layout-btn"
@@ -1625,25 +1643,11 @@ const LotIDTracker = () => {
                               </span>
                             </span>
                             <span className="lot-id-meta-stat">
-                              {typeof coa.kits === "number" ? coa.kits : 0} kits
-                            </span>
-                            {coa.vendor && (
-                              <span className="lot-id-vendor-badge">{coa.vendor}</span>
-                            )}
-                            <button
-                              type="button"
-                              className="lot-id-print-btn"
-                              onClick={() => handlePrintLotLabel(p, coa)}
-                            >
-                              Print Label
-                            </button>
-                            <button
-                              type="button"
-                              className="lot-id-print-btn"
-                              onClick={() => handlePrintKitLabel(p, coa)}
-                            >
-                              Print Kit
-                            </button>
+                            {typeof coa.kits === "number" ? coa.kits : 0} kits
+                          </span>
+                          {coa.vendor && (
+                            <span className="lot-id-vendor-badge">{coa.vendor}</span>
+                          )}
                           </div>
                           {coa.note && (
                             <div className="lot-id-note-display">{coa.note}</div>
