@@ -1014,7 +1014,7 @@
 .lot-id-template {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 
 .lot-id-label-preview-card {
@@ -1238,6 +1238,116 @@
   padding: 0;
 }
 
+.lot-id-print-label-kit {
+  width: 240px;
+  max-width: 100%;
+  aspect-ratio: 2 / 3;
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid #ddccb6;
+  box-shadow: 0 12px 28px rgba(50, 33, 18, 0.12);
+  background: linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%);
+}
+
+.lot-id-print-label-kit-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.lot-id-print-label-kit-lot {
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  font-size: 1.05rem;
+  line-height: 1;
+  font-weight: 900;
+  color: #24170d;
+  text-transform: uppercase;
+}
+
+.lot-id-print-label-kit-qr {
+  position: absolute;
+  left: 18px;
+  top: 44px;
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
+.lot-id-print-label-kit-logo {
+  position: absolute;
+  left: 24px;
+  bottom: 18px;
+  width: 170px;
+  height: 64px;
+  object-fit: contain;
+  transform-origin: left bottom;
+  transform: rotate(-90deg);
+}
+
+.lot-id-print-label-kit-product {
+  position: absolute;
+  left: 118px;
+  bottom: 20px;
+  transform-origin: left bottom;
+  transform: rotate(-90deg);
+  width: 220px;
+  font-size: 2.85rem;
+  line-height: 0.86;
+  font-weight: 900;
+  color: #111111;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-wrap: balance;
+}
+
+.lot-id-print-label-kit-strength {
+  position: absolute;
+  left: 172px;
+  bottom: 22px;
+  transform-origin: left bottom;
+  transform: rotate(-90deg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #b24b2c;
+  color: #ffffff;
+  font-size: 2.1rem;
+  line-height: 1;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 14px 18px;
+  border-radius: 8px;
+}
+
+.lot-id-print-label-kit-footer {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  transform-origin: right bottom;
+  transform: rotate(-90deg);
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #111111;
+  white-space: nowrap;
+}
+
 .lot-id-main-split {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
@@ -1251,9 +1361,13 @@
 }
 
 .lot-layout-editor {
-  width: min(900px, 96vw);
-  max-height: 85vh;
+  width: min(560px, 94vw);
+  max-height: 100vh;
+  height: 100vh;
   overflow: auto;
+  border-radius: 24px 0 0 24px;
+  border-right: 0;
+  padding-bottom: 1.25rem;
 }
 
 .lot-layout-editor-header {
@@ -1270,23 +1384,19 @@
   margin-top: 1rem;
 }
 
-.lot-layout-preview-panel {
-  grid-column: 1 / -1;
-  border: 1px solid #e8d8c5;
-  border-radius: 14px;
-  padding: 0.85rem;
-  background: #fffdf9;
+.lot-layout-backdrop {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
 }
 
-.lot-layout-preview-title {
-  font-size: 0.9rem;
-  font-weight: 800;
-  color: #4a3825;
-  margin-bottom: 0.55rem;
-}
-
-.lot-id-label-preview-shell-editor {
-  margin-top: 0;
+.lot-layout-editor-note {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: #8a735b;
+  font-weight: 600;
 }
 
 .lot-layout-field {
