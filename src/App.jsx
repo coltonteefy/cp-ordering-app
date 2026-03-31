@@ -10,6 +10,7 @@ import PromoSchedule from './components/PromoSchedule';
 import LotIDTracker from './components/LotIDTracker';
 import PaymentTracker from './components/PaymentTracker';
 import IncomingProducts from './components/IncomingProducts';
+import SkuPoPage from './components/SkuPoPage';
 import './App.css';
 
 function App() {
@@ -18,7 +19,7 @@ function App() {
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
   const [toast, setToast] = useState({ visible: false, message: '' });
-  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments'];
+  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -148,8 +149,8 @@ function App() {
               <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
               <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
               <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
-              <button onClick={() => goToPage('promo')} className={`nav-link ${activePage === 'promo' ? 'active' : ''}`}>Promo Schedule</button>
               <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
+              <button onClick={() => goToPage('sku-po')} className={`nav-link ${activePage === 'sku-po' ? 'active' : ''}`}>SKU PO</button>
             </div>
             <div className="nav-actions">
               <button onClick={handleSignOut} className="btn-secondary">
@@ -180,6 +181,11 @@ function App() {
             <div className="page-transition" key={activePage}>
             {activePage === 'payments' ? (
               <PaymentTracker
+                onSuccess={showToast}
+                onError={showModal}
+              />
+            ) : activePage === 'sku-po' ? (
+              <SkuPoPage
                 onSuccess={showToast}
                 onError={showModal}
               />
