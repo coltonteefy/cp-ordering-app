@@ -296,6 +296,13 @@
   border-color: #d7c7b1;
 }
 
+.lot-modal-btn.danger {
+  margin-right: auto;
+  background: #fff4f2;
+  color: #a53622;
+  border-color: #efc2ba;
+}
+
 .lot-id-layout {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);

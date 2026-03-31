@@ -1175,6 +1175,31 @@ const LotIDTracker = () => {
     });
     closeEditLotModal();
   };
+  const deleteEditLotModal = () => {
+    const { productKey, index, lot } = editLotModal;
+    if (productKey === null || index === null) return;
+    const confirmed = window.confirm(
+      `Delete lot ${lot || "this lot"}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+    setProductData((prev) => {
+      const currentList = [...(prev[productKey]?.coaList || [])];
+      if (!currentList[index]) return prev;
+      currentList.splice(index, 1);
+      handleSaveCoaList(productKey, currentList);
+      return {
+        ...prev,
+        [productKey]: { ...(prev[productKey] || {}), coaList: currentList },
+      };
+    });
+    setPreviewLotSelection((prev) => {
+      if (!prev[productKey] || prev[productKey] !== lot) return prev;
+      const next = { ...prev };
+      delete next[productKey];
+      return next;
+    });
+    closeEditLotModal();
+  };
 
   const openLotModal = (key, nextLotId) => {
     const capSeed =
@@ -1870,6 +1895,13 @@ const LotIDTracker = () => {
               />
 
               <div className="lot-modal-actions">
+                <button
+                  type="button"
+                  className="lot-modal-btn danger"
+                  onClick={deleteEditLotModal}
+                >
+                  Delete Lot
+                </button>
                 <button type="button" className="lot-modal-btn secondary" onClick={closeEditLotModal}>
                   Cancel
                 </button>
