@@ -16,7 +16,7 @@
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  border-radius: 999px;
+  border-radius: 12px;
   padding: 0.15rem 0.55rem;
   margin-left: 0.25rem;
   text-transform: uppercase;
@@ -244,6 +244,23 @@
   border: 1px solid #e3d6c2;
   background: #fff;
   font-size: 1rem;
+}
+
+.lot-modal-color-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.lot-modal-color-picker {
+  width: 52px;
+  height: 46px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid #e3d6c2;
+  background: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .lot-modal-input[readonly] {
@@ -798,6 +815,19 @@
   border-radius: 12px;
   padding: 0.75rem 0.9rem;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.05);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.lot-id-list-item:hover {
+  border-color: #ddb584;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 10px rgba(0,0,0,0.08);
+}
+
+.lot-id-list-item.preview-active {
+  border-color: #d48a38;
+  box-shadow: 0 0 0 2px rgba(212, 138, 56, 0.18), inset 0 1px 0 rgba(255,255,255,0.85), 0 6px 14px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
 }
 
 .lot-id-card-header {
@@ -837,6 +867,25 @@
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.lot-id-print-btn {
+  margin-left: auto;
+  background: #fff5e8;
+  color: #8d4e17;
+  border: 1px solid #e7be8e;
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.lot-id-print-btn:hover {
+  background: #ffe9cf;
+  border-color: #d99649;
+  transform: translateY(-1px);
 }
 
 .lot-id-meta-stat {
@@ -968,6 +1017,227 @@
   gap: 0.5rem;
 }
 
+.lot-id-label-preview-card {
+  border: 1px solid #e9d8c5;
+  background: linear-gradient(180deg, #fffdf9 0%, #f7efe5 100%);
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.lot-id-label-preview-heading {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #3b2c1e;
+}
+
+.lot-id-label-preview-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.lot-id-label-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.lot-id-layout-btn {
+  flex-shrink: 0;
+  background: #fff5e8;
+  color: #8d4e17;
+  border: 1px solid #e7be8e;
+  border-radius: 999px;
+  padding: 0.42rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lot-id-label-preview-sub {
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  color: #7a6550;
+}
+
+.lot-id-label-preview-shell {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+  padding: 0.8rem;
+  background:
+    radial-gradient(circle at top left, rgba(240, 161, 90, 0.16), transparent 42%),
+    linear-gradient(135deg, #f8f0e5 0%, #fffdf9 100%);
+  border: 1px solid #eddcc6;
+  border-radius: 12px;
+}
+
+.lot-id-label-preview-empty {
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  color: #95826c;
+  border: 1px dashed #dcc7ab;
+  background: #fffaf3;
+  border-radius: 12px;
+  padding: 0.8rem;
+}
+
+.lot-id-label-preview-capnote {
+  margin-top: 0.55rem;
+  font-size: 0.78rem;
+  color: #7a6550;
+  font-weight: 700;
+}
+
+.lot-id-print-label {
+  width: 420px;
+  max-width: 100%;
+  aspect-ratio: 7 / 3;
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #ddccb6;
+  box-shadow: 0 10px 24px rgba(50, 33, 18, 0.12);
+}
+
+.lot-id-print-label-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+}
+
+.lot-id-print-label-tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lot-id-print-label-body {
+  position: absolute;
+  inset: 0;
+}
+
+.lot-id-print-label-center {
+  position: absolute;
+  left: 50%;
+  top: 43%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.22rem;
+  width: 244px;
+  text-align: center;
+}
+
+.lot-id-print-label-logo-wrap {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.lot-id-print-label-logo {
+  width: 112px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.lot-id-print-label-name {
+  font-size: 2rem;
+  line-height: 0.92;
+  font-weight: 900;
+  color: #24170d;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-wrap: balance;
+}
+
+.lot-id-print-label-strength {
+  display: inline-flex;
+  width: fit-content;
+  justify-self: center;
+  align-items: center;
+  justify-content: center;
+  background: #f39b57;
+  color: #fffaf3;
+  font-size: 1.28rem;
+  font-weight: 900;
+  padding: 0.34rem 0.8rem;
+  border-radius: 12px;
+}
+
+.lot-id-print-label-footer {
+  position: absolute;
+  left: 30px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  color: #24170d;
+}
+
+.lot-id-print-label-footer span {
+  font-weight: 500;
+}
+
+.lot-id-print-label-qr-wrap {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+}
+
+.lot-id-print-label-qr {
+  width: 82px;
+  height: auto;
+  max-height: 132px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
+.lot-id-print-label-lot {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #2b1a0f;
+  letter-spacing: 0.02em;
+  padding: 0;
+}
+
 .lot-id-main-split {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
@@ -1002,6 +1272,57 @@
 .lot-id-main-split .lot-id-section {
   margin-bottom: 0;
   height: 100%;
+}
+
+.lot-layout-editor {
+  width: min(900px, 96vw);
+  max-height: 85vh;
+  overflow: auto;
+}
+
+.lot-layout-editor-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.lot-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.lot-layout-preview-panel {
+  grid-column: 1 / -1;
+  border: 1px solid #e8d8c5;
+  border-radius: 14px;
+  padding: 0.85rem;
+  background: #fffdf9;
+}
+
+.lot-layout-preview-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #4a3825;
+  margin-bottom: 0.55rem;
+}
+
+.lot-id-label-preview-shell-editor {
+  margin-top: 0;
+}
+
+.lot-layout-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.lot-layout-field span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #4a3825;
 }
 
 @media (max-width: 600px) {
@@ -1043,6 +1364,10 @@
   }
 
   .lot-id-main-split {
+    grid-template-columns: 1fr;
+  }
+
+  .lot-layout-grid {
     grid-template-columns: 1fr;
   }
 }

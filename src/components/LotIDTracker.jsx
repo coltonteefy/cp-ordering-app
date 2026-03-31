@@ -4,9 +4,25 @@ import { collection, onSnapshot, updateDoc, doc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import "./LotIDTracker.css";
 
-const createEmptyCOA = () => ({ lot: "", url: "", capColor: "" });
+const createEmptyCOA = () => ({ lot: "", url: "", capColor: "", capShade: "" });
 const coaListSafe = (arr) => (Array.isArray(arr) ? arr : []);
 const buildCoaUrl = (id) => (id ? `https://coffeeandpeppers.com/${id}` : "");
+const LABEL_ASSET_BASE = `${window.location.origin}/assets`;
+const LABEL_LOGO_SRC = `${LABEL_ASSET_BASE}/labelLogo.png`;
+const LABEL_QR_SRC = `${LABEL_ASSET_BASE}/coaQR.png`;
+const LABEL_BACKGROUND_IMAGE = `${LABEL_ASSET_BASE}/silverBackground.png`;
+const APP_LOGO_SRC = `${window.location.origin}/assets/logo.png`;
+const buildQrCodeUrl = (lot) =>
+  `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(
+    buildCoaUrl(lot)
+  )}`;
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 const resolveCapColorValue = (value) => {
   const cleaned = (value || "").trim();
   if (!cleaned) return null;
@@ -18,6 +34,401 @@ const resolveCapColorValue = (value) => {
   if (supportsColor(compact)) return compact;
   if (supportsColor(cleaned)) return cleaned;
   return null;
+};
+const getReadableTextColor = (value) => {
+  const color = resolveCapColorValue(value);
+  if (!color) return "#2b1a0f";
+  const probe = document.createElement("span");
+  probe.style.color = color;
+  document.body.appendChild(probe);
+  const computed = window.getComputedStyle(probe).color;
+  document.body.removeChild(probe);
+  const match = computed.match(/\d+/g);
+  if (!match || match.length < 3) return "#2b1a0f";
+  const [r, g, b] = match.slice(0, 3).map(Number);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#2b1a0f" : "#fffaf3";
+};
+const normalizeLabelAccentColor = (value) => {
+  const resolved = resolveCapColorValue(value);
+  if (!resolved) return "#efe3d3";
+  const channels = getColorChannels(resolved);
+  if (!channels) return resolved;
+  const { r, g, b } = channels;
+  const isNearWhite = r > 240 && g > 240 && b > 240;
+  return isNearWhite ? "#8f3a17" : resolved;
+};
+const colorValueToHex = (value, fallback = "#c9c1b7") => {
+  const channels = getColorChannels(value);
+  if (!channels) return fallback;
+  const toHex = (n) => n.toString(16).padStart(2, "0");
+  return `#${toHex(channels.r)}${toHex(channels.g)}${toHex(channels.b)}`;
+};
+const getCapRenderColor = (capColor, capShade) => capShade || capColor || "";
+const getColorChannels = (value) => {
+  const color = resolveCapColorValue(value);
+  if (!color) return null;
+  const probe = document.createElement("span");
+  probe.style.color = color;
+  document.body.appendChild(probe);
+  const computed = window.getComputedStyle(probe).color;
+  document.body.removeChild(probe);
+  const match = computed.match(/\d+/g);
+  if (!match || match.length < 3) return null;
+  const [r, g, b] = match.slice(0, 3).map(Number);
+  return { r, g, b };
+};
+const LABEL_BASE_BACKGROUND = [
+  "linear-gradient(180deg, rgba(255,255,255,0.86) 0%, rgba(237,239,243,0.92) 18%, rgba(250,251,253,0.98) 50%, rgba(232,235,239,0.94) 82%, rgba(255,255,255,0.9) 100%)",
+  "repeating-linear-gradient(0deg, rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 3px, rgba(185,191,199,0.12) 7px, rgba(255,255,255,0.08) 12px, rgba(166,173,182,0.1) 16px, rgba(255,255,255,0.14) 22px)",
+  "repeating-linear-gradient(0deg, rgba(120,128,138,0.05) 0px, rgba(255,255,255,0.04) 2px, rgba(143,150,160,0.05) 5px, rgba(255,255,255,0.02) 8px, rgba(125,133,143,0.04) 12px, rgba(255,255,255,0.03) 18px)",
+  "linear-gradient(90deg, rgba(171,177,186,0.22) 0%, rgba(255,255,255,0.74) 24%, rgba(221,225,231,0.22) 48%, rgba(255,255,255,0.88) 72%, rgba(175,181,190,0.16) 100%)",
+];
+const LABEL_PREVIEW_WIDTH = 420;
+const LABEL_PREVIEW_HEIGHT = 180;
+const LABEL_PRINT_WIDTH = 1.75 * 96;
+const LABEL_PRINT_HEIGHT = 0.75 * 96;
+const FIXED_LABEL_LOGO = {
+  leftPercent: 50,
+  topPercent: 18,
+  width: 200,
+  height: 55,
+};
+const FIXED_MASS_PAD_Y = 5;
+const FIXED_MASS_RADIUS = 10;
+const FIXED_MASS_TEXT_COLOR = "#ffffff";
+const DEFAULT_LABEL_DESIGN = {
+  centerLeftPercent: 50,
+  centerTopPercent: 55,
+  centerWidth: 244,
+  centerGap: 4,
+  nameFontSize: 35,
+  nameLineHeight: 0.9,
+  strengthFontSize: 20,
+  massTextColor: FIXED_MASS_TEXT_COLOR,
+  strengthPadY: FIXED_MASS_PAD_Y,
+  strengthPadX: 13,
+  strengthRadius: FIXED_MASS_RADIUS,
+  footerLeft: 35,
+  footerBottom: 10,
+  footerFontSize: 12,
+  qrRight: 20,
+  qrWidth: 82,
+  qrMaxHeight: 132,
+  lotRight: 2,
+  lotFontSize: 13,
+};
+const mergeLabelDesign = (value) => ({ ...DEFAULT_LABEL_DESIGN, ...(value || {}) });
+const buildLabelDesignStyles = (design) => ({
+  logoWrap: {
+    left: `${FIXED_LABEL_LOGO.leftPercent}%`,
+    top: `${FIXED_LABEL_LOGO.topPercent}%`,
+  },
+  logo: {
+    width: `${FIXED_LABEL_LOGO.width}px`,
+    height: `${FIXED_LABEL_LOGO.height}px`,
+  },
+  center: {
+    left: `${design.centerLeftPercent}%`,
+    top: `${design.centerTopPercent}%`,
+    width: `${design.centerWidth}px`,
+    gap: `${design.centerGap}px`,
+  },
+  name: {
+    fontSize: `${design.nameFontSize}px`,
+    lineHeight: design.nameLineHeight,
+  },
+  strength: {
+    fontSize: `${design.strengthFontSize}px`,
+    padding: `${FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
+    borderRadius: `${FIXED_MASS_RADIUS}px`,
+    color: FIXED_MASS_TEXT_COLOR,
+  },
+  footer: {
+    left: `${design.footerLeft}px`,
+    bottom: `${design.footerBottom}px`,
+    fontSize: `${design.footerFontSize}px`,
+  },
+  qrWrap: {
+    right: `${design.qrRight}px`,
+  },
+  qr: {
+    width: `${design.qrWidth}px`,
+    maxHeight: `${design.qrMaxHeight}px`,
+  },
+  lot: {
+    right: `${design.lotRight}px`,
+    fontSize: `${design.lotFontSize}px`,
+  },
+});
+const scaleLabelDesignForPrint = (design) => {
+  const merged = mergeLabelDesign(design);
+  const scaleX = LABEL_PRINT_WIDTH / LABEL_PREVIEW_WIDTH;
+  const scaleY = LABEL_PRINT_HEIGHT / LABEL_PREVIEW_HEIGHT;
+  const scale = scaleX;
+  return {
+    ...merged,
+    centerWidth: merged.centerWidth * scaleX,
+    centerGap: merged.centerGap * scaleY,
+    logoWidth: merged.logoWidth * scaleX,
+    logoHeight: merged.logoHeight * scaleY,
+    nameFontSize: merged.nameFontSize * scale,
+    strengthFontSize: merged.strengthFontSize * scale,
+    strengthPadY: FIXED_MASS_PAD_Y * scaleY,
+    strengthPadX: merged.strengthPadX * scaleX,
+    strengthRadius: FIXED_MASS_RADIUS * scale,
+    footerLeft: merged.footerLeft * scaleX,
+    footerBottom: merged.footerBottom * scaleY,
+    footerFontSize: merged.footerFontSize * scale,
+    qrRight: merged.qrRight * scaleX,
+    qrWidth: merged.qrWidth * scaleX,
+    qrMaxHeight: merged.qrMaxHeight * scaleY,
+    lotRight: merged.lotRight * scaleX,
+    lotFontSize: merged.lotFontSize * scale,
+  };
+};
+const buildFixedLogoPrintStyles = () => {
+  const scaleX = LABEL_PRINT_WIDTH / LABEL_PREVIEW_WIDTH;
+  const scaleY = LABEL_PRINT_HEIGHT / LABEL_PREVIEW_HEIGHT;
+  return {
+    wrap: {
+      leftPercent: FIXED_LABEL_LOGO.leftPercent,
+      topPercent: FIXED_LABEL_LOGO.topPercent,
+    },
+    size: {
+      width: FIXED_LABEL_LOGO.width * scaleX,
+      height: FIXED_LABEL_LOGO.height * scaleY,
+    },
+  };
+};
+const buildLabelBackground = (value) => {
+  const channels = getColorChannels(normalizeLabelAccentColor(value));
+  if (!channels) return "transparent";
+  return `linear-gradient(90deg, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.88) 0%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.64) 9%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.4) 18%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.22) 30%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.1) 42%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.03) 56%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0) 68%)`;
+};
+const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor, design }) => {
+  const capColorValue = normalizeLabelAccentColor(capColor);
+  const capTextColor = getReadableTextColor(capColorValue);
+  const qrCodeUrl = buildQrCodeUrl(lot);
+  const labelBackground = buildLabelBackground(capColorValue);
+  const labelDesign = scaleLabelDesignForPrint(design);
+  const printLogo = buildFixedLogoPrintStyles();
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(lot)} label</title>
+    <style>
+      @page { size: 1.75in 0.75in; margin: 0; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 1.75in;
+        height: 0.75in;
+        background: #ffffff;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .label {
+        width: 1.75in;
+        height: 0.75in;
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%);
+      }
+      .bg-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        pointer-events: none;
+      }
+      .bg-tint {
+        position: absolute;
+        inset: 0;
+        background: ${escapeHtml(labelBackground)};
+        pointer-events: none;
+      }
+      .content {
+        position: absolute;
+        inset: 0;
+      }
+      .center-stack {
+        position: absolute;
+        left: ${labelDesign.centerLeftPercent}%;
+        top: ${labelDesign.centerTopPercent}%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: ${labelDesign.centerGap}px;
+        width: ${labelDesign.centerWidth}px;
+        text-align: center;
+      }
+      .logo-wrap {
+        position: absolute;
+        left: ${printLogo.wrap.leftPercent}%;
+        top: ${printLogo.wrap.topPercent}%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        justify-content: center;
+      }
+      .logo {
+        width: ${printLogo.size.width}px;
+        height: ${printLogo.size.height}px;
+        object-fit: contain;
+      }
+      .name {
+        text-align: center;
+        font-size: ${labelDesign.nameFontSize}px;
+        line-height: ${labelDesign.nameLineHeight};
+        font-weight: 900;
+        color: #23160d;
+        text-transform: uppercase;
+        white-space: normal;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        text-wrap: balance;
+      }
+      .strength {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        justify-self: center;
+        background: ${escapeHtml(capColorValue)};
+        color: ${escapeHtml(FIXED_MASS_TEXT_COLOR)};
+        border-radius: ${labelDesign.strengthRadius}px;
+        padding: ${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;
+        font-size: ${labelDesign.strengthFontSize}px;
+        line-height: 1;
+        font-weight: 900;
+      }
+      .footer {
+        position: absolute;
+        left: ${labelDesign.footerLeft}px;
+        bottom: ${labelDesign.footerBottom}px;
+        font-size: ${labelDesign.footerFontSize}px;
+        line-height: 1.2;
+        color: #23160d;
+      }
+      .footer strong {
+        display: block;
+        font-weight: 500;
+      }
+      .qr-wrap {
+        position: absolute;
+        right: ${labelDesign.qrRight}px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+      }
+      .qr {
+        width: ${labelDesign.qrWidth}px;
+        height: auto;
+        max-height: ${labelDesign.qrMaxHeight}px;
+        object-fit: contain;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        -ms-interpolation-mode: nearest-neighbor;
+      }
+      .lot {
+        position: absolute;
+        right: ${labelDesign.lotRight}px;
+        top: 50%;
+        transform: translateY(-50%) rotate(180deg);
+        writing-mode: vertical-rl;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: ${labelDesign.lotFontSize}px;
+        line-height: 1;
+        font-weight: 800;
+        color: #2b1a0f;
+        letter-spacing: 0.03em;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="label">
+      <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
+      <div class="bg-tint"></div>
+      <div class="content">
+        <div class="center-stack">
+          <div class="name">${escapeHtml(productName || "")}</div>
+          <div class="strength">${escapeHtml(strength || "")}</div>
+        </div>
+        <div class="logo-wrap">
+          <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(
+    APP_LOGO_SRC
+  )}';" />
+        </div>
+        <div class="footer">
+          <strong>99% PURITY</strong>
+          <strong>FOR RESEARCH USE ONLY</strong>
+          </div>
+        </div>
+        <div class="qr-wrap">
+          <img class="qr" src="${escapeHtml(LABEL_QR_SRC)}" onerror="this.onerror=null;this.src='${escapeHtml(
+    qrCodeUrl
+  )}';" alt="QR code for ${escapeHtml(
+    productId || lot || "label"
+  )}" />
+        </div>
+        <div class="lot">${escapeHtml(lot || "")}</div>
+      </div>
+    <script>
+      window.onload = function () {
+        var assets = [
+          "${escapeHtml(LABEL_BACKGROUND_IMAGE)}",
+          "${escapeHtml(LABEL_LOGO_SRC)}",
+          "${escapeHtml(LABEL_QR_SRC)}"
+        ];
+        var settled = false;
+        var remaining = assets.length;
+
+        function finish() {
+          if (settled) return;
+          settled = true;
+          window.focus();
+          setTimeout(function () {
+            window.print();
+          }, 120);
+        }
+
+        function markDone() {
+          remaining -= 1;
+          if (remaining <= 0) finish();
+        }
+
+        assets.forEach(function (src) {
+          var img = new Image();
+          img.onload = markDone;
+          img.onerror = markDone;
+          img.src = src;
+        });
+
+        setTimeout(finish, 900);
+      };
+      window.onafterprint = function () {
+        window.close();
+      };
+    </script>
+  </body>
+</html>`;
 };
 const pickLabelLink = (p) => {
   const raw =
@@ -96,12 +507,16 @@ const LotIDTracker = () => {
   const [editingSections, setEditingSections] = useState({});
   const [lotEditMode, setLotEditMode] = useState({});
   const [copyFlash, setCopyFlash] = useState({});
-  const [editLotModal, setEditLotModal] = useState({ productKey: null, index: null, lot: "", capColor: "", kits: "", vendor: "", note: "" });
+  const [labelEditorOpen, setLabelEditorOpen] = useState(false);
+  const [labelDesignDraft, setLabelDesignDraft] = useState(DEFAULT_LABEL_DESIGN);
+  const [previewLotSelection, setPreviewLotSelection] = useState({});
+  const [editLotModal, setEditLotModal] = useState({ productKey: null, index: null, lot: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
     lot: "",
     capColor: "",
+    capShade: "",
     kits: "",
     vendor: "",
     note: "",
@@ -223,6 +638,7 @@ const LotIDTracker = () => {
             lot: currentCoa.lot || "",
             url: buildCoaUrl(currentCoa.lot || data.id || ""),
             capColor: currentCoa.capColor || data.capColor || "",
+            capShade: currentCoa.capShade || "",
           };
             items.push({
               docId: doc.id,
@@ -232,7 +648,8 @@ const LotIDTracker = () => {
               currentCoa: normalizedCurrent,
               coaList: data.coaList || [],
               canvaTemplateUrl: data.canvaTemplateUrl || "",
-              capColor: currentCoa.capColor || data.capColor || ""
+              capColor: currentCoa.capColor || data.capColor || "",
+              labelDesign: mergeLabelDesign(data.labelDesign),
             });
           });
         items.sort((a, b) => a.product.localeCompare(b.product));
@@ -247,15 +664,18 @@ const LotIDTracker = () => {
                 ...p.currentCoa,
                 url: buildCoaUrl(p.currentCoa?.lot || p.id || ""),
                 capColor: p.currentCoa?.capColor || p.capColor || "",
+                capShade: p.currentCoa?.capShade || "",
               },
               coaList: Array.isArray(p.coaList)
                 ? p.coaList.map((c) => ({
                     ...c,
                     url: buildCoaUrl(c.lot || c.url || p.id || ""),
                     kits: Number(c.kits) || 0,
+                    capShade: c.capShade || "",
                   }))
                 : [],
-              capColor: p.currentCoa?.capColor || p.capColor || ""
+              capColor: p.currentCoa?.capColor || p.capColor || "",
+              labelDesign: mergeLabelDesign(p.labelDesign),
             };
             return acc;
           }, {});
@@ -410,6 +830,7 @@ const LotIDTracker = () => {
       index: i,
       lot: coa.lot || "",
       capColor: coa.capColor || "",
+      capShade: coa.capShade || "",
       kits: coa.kits ?? "",
       vendor: coa.vendor || "",
       note: coa.note || "",
@@ -417,10 +838,10 @@ const LotIDTracker = () => {
   };
 
   const closeEditLotModal = () =>
-    setEditLotModal({ productKey: null, index: null, lot: "", capColor: "", kits: "", vendor: "", note: "" });
+    setEditLotModal({ productKey: null, index: null, lot: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
 
   const saveEditLotModal = () => {
-    const { productKey, index, lot, capColor, kits, vendor, note } = editLotModal;
+    const { productKey, index, lot, capColor, capShade, kits, vendor, note } = editLotModal;
     if (productKey === null || index === null) return;
     setProductData((prev) => {
       const currentList = [...(prev[productKey]?.coaList || [])];
@@ -430,6 +851,7 @@ const LotIDTracker = () => {
         lot,
         url: buildCoaUrl(lot),
         capColor,
+        capShade,
         kits: Number(kits) || 0,
         vendor,
         note,
@@ -451,6 +873,7 @@ const LotIDTracker = () => {
       productKey: key,
       lot: nextLotId,
       capColor: capSeed,
+      capShade: colorValueToHex(capSeed),
       kits: "",
       vendor: vendorSeed,
       note: "",
@@ -458,10 +881,10 @@ const LotIDTracker = () => {
   };
 
   const closeLotModal = () =>
-    setLotModalConfig({ productKey: null, lot: "", capColor: "", kits: "", vendor: "", note: "" });
+    setLotModalConfig({ productKey: null, lot: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
 
   const confirmLotModal = async () => {
-    const { productKey, lot, capColor, kits, vendor, note } = lotModalConfig;
+    const { productKey, lot, capColor, capShade, kits, vendor, note } = lotModalConfig;
     if (!productKey || !lot) return;
     const entry = productData[productKey] || {
       currentCOA: createEmptyCOA(),
@@ -472,6 +895,7 @@ const LotIDTracker = () => {
         lot,
         url: buildCoaUrl(lot),
         capColor: capColor || "",
+        capShade: capShade || "",
         kits: Number(kits) || 0,
         vendor: vendor || "",
         note: note || "",
@@ -486,6 +910,128 @@ const LotIDTracker = () => {
     copyToClipboard(lot, productKey, "generatedLot");
     closeLotModal();
   };
+
+  const handlePrintLotLabel = (product, lotEntry) => {
+    if (!lotEntry?.lot) return;
+    const printWindow = window.open("", "_blank", "width=420,height=240");
+    if (!printWindow) return;
+    const markup = buildLabelPrintMarkup({
+      productId: productData[product.docId]?.productID || product.id || "",
+      productName: product.product || "",
+      strength: product.strength || "",
+      lot: lotEntry.lot,
+      capColor: getCapRenderColor(lotEntry.capColor, lotEntry.capShade),
+      design: productData[product.docId]?.labelDesign || DEFAULT_LABEL_DESIGN,
+    });
+    printWindow.document.open();
+    printWindow.document.write(markup);
+    printWindow.document.close();
+  };
+
+  const updateLabelDesign = (field, value) => {
+    setLabelDesignDraft((prev) => ({
+      ...prev,
+      [field]: typeof value === "number" ? value : Number(value),
+    }));
+  };
+
+  const openLabelEditor = (productKey) => {
+    setLabelDesignDraft(mergeLabelDesign(productData[productKey]?.labelDesign));
+    setLabelEditorOpen(true);
+  };
+
+  const saveLabelDesign = async () => {
+    if (!selectedProductId) return;
+    const nextDesign = mergeLabelDesign(labelDesignDraft);
+    setProductData((prev) => ({
+      ...prev,
+      [selectedProductId]: {
+        ...prev[selectedProductId],
+        labelDesign: nextDesign,
+      },
+    }));
+    await saveSection(selectedProductId, { labelDesign: nextDesign });
+    setLabelEditorOpen(false);
+  };
+
+  const renderLabelPreview = (product, lotEntry, designStyles) => (
+    <div
+      className="lot-id-print-label"
+      style={{
+        background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)",
+      }}
+    >
+      <img
+        src="/assets/silverBackground.png"
+        alt=""
+        className="lot-id-print-label-bg"
+      />
+      <div
+        className="lot-id-print-label-tint"
+        style={{ background: buildLabelBackground(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)) }}
+      />
+      <div className="lot-id-print-label-body">
+        <div className="lot-id-print-label-logo-wrap" style={designStyles.logoWrap}>
+          <img
+            src="/assets/labelLogo.png"
+            alt="Coffee and Peppers"
+            className="lot-id-print-label-logo"
+            style={designStyles.logo}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = "/assets/logo.png";
+            }}
+          />
+        </div>
+        <div className="lot-id-print-label-center" style={designStyles.center}>
+          <div className="lot-id-print-label-name" style={designStyles.name}>
+            {product.product}
+          </div>
+          <div
+            className="lot-id-print-label-strength"
+            style={{
+              ...designStyles.strength,
+              backgroundColor: normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)),
+            }}
+          >
+            {product.strength}
+          </div>
+        </div>
+        <div className="lot-id-print-label-footer" style={designStyles.footer}>
+          <span>99% PURITY</span>
+          <span>FOR RESEARCH USE ONLY</span>
+        </div>
+      </div>
+      <div className="lot-id-print-label-qr-wrap" style={designStyles.qrWrap}>
+        <img
+          src="/assets/coaQR.png"
+          alt={`QR for ${lotEntry.lot}`}
+          className="lot-id-print-label-qr"
+          style={designStyles.qr}
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = buildQrCodeUrl(lotEntry.lot);
+          }}
+        />
+      </div>
+      <div className="lot-id-print-label-lot" style={designStyles.lot}>
+        {lotEntry.lot}
+      </div>
+    </div>
+  );
+
+  const selectedProduct = products.find((p) => p.docId === selectedProductId) || null;
+  const selectedProductState = selectedProduct ? (productData[selectedProduct.docId] || {
+    productID: "",
+    currentCOA: createEmptyCOA(),
+    coaList: [],
+    labelDesign: DEFAULT_LABEL_DESIGN,
+  }) : null;
+  const selectedPreviewLot =
+    selectedProductState?.coaList?.find(
+      (lot) => lot.lot === previewLotSelection[selectedProductId]
+    ) || selectedProductState?.coaList?.[0] || null;
+  const editorDesignStyles = buildLabelDesignStyles(labelDesignDraft);
 
   return (
     <div className="lot-id-tracker-container">
@@ -519,6 +1065,15 @@ const LotIDTracker = () => {
             (data.coaList?.length || 0) + (data.currentCOA?.lot ? 1 : 0);
           const nextSeq = String(usedCount + 1).padStart(2, "0");
           const nextIdPreview = `CP${data.productID || p.id || "ID"}${todayChunk}${nextSeq}`;
+          const activePreviewLot =
+            data.coaList?.find((lot) => lot.lot === previewLotSelection[key]) ||
+            data.coaList?.[0] ||
+            null;
+          const designStyles = buildLabelDesignStyles(
+            labelEditorOpen && selectedProductId === key
+              ? labelDesignDraft
+              : mergeLabelDesign(data.labelDesign)
+          );
 
           return (
             <div
@@ -541,6 +1096,39 @@ const LotIDTracker = () => {
 
               <div className="lot-id-main-split">
                 <div className="lot-id-template">
+                  <div className="lot-id-label-preview-card">
+                    <div className="lot-id-label-preview-topbar">
+                      <div>
+                        <div className="lot-id-label-preview-heading">Print Label</div>
+                        <div className="lot-id-label-preview-sub">
+                          Uses the lot cap color and prints at 1.75&quot; x 0.75&quot;.
+                        </div>
+                      </div>
+                      <div className="lot-id-label-preview-actions">
+                        <button
+                          type="button"
+                          className="lot-id-layout-btn"
+                          onClick={() => openLabelEditor(key)}
+                        >
+                          Edit Layout
+                        </button>
+                      </div>
+                    </div>
+                    {activePreviewLot?.lot ? (
+                      <div className="lot-id-label-preview-shell">
+                        {renderLabelPreview(p, activePreviewLot, designStyles)}
+                      </div>
+                    ) : (
+                      <div className="lot-id-label-preview-empty">
+                        Generate a lot first to preview its printable label.
+                      </div>
+                    )}
+                    {activePreviewLot?.lot && (
+                      <div className="lot-id-label-preview-capnote">
+                        Cap color band: {activePreviewLot.capColor || "No cap color"}
+                      </div>
+                    )}
+                  </div>
                   {labelLink ? (
                     <>
                       {embedLink && (
@@ -582,7 +1170,16 @@ const LotIDTracker = () => {
                     const lotList = data.coaList || [];
                     return lotList.length ? (
                       lotList.map((coa, i) => (
-                        <li key={i} className="lot-id-list-item">
+                        <li
+                          key={i}
+                          className={`lot-id-list-item${activePreviewLot?.lot === coa.lot ? " preview-active" : ""}`}
+                          onClick={() =>
+                            setPreviewLotSelection((prev) => ({
+                              ...prev,
+                              [key]: coa.lot,
+                            }))
+                          }
+                        >
                           <div className="lot-id-card-header">
                             <button
                               className="lot-id-card-id"
@@ -607,7 +1204,7 @@ const LotIDTracker = () => {
                             <span className={`lot-id-capchip${coa.capColor ? "" : " empty"}`}>
                               <span
                                 className="lot-id-capchip-swatch"
-                                style={{ backgroundColor: coa.capColor || "#e7dfd3" }}
+                                style={{ backgroundColor: getCapRenderColor(coa.capColor, coa.capShade) || "#e7dfd3" }}
                               />
                               <span className="lot-id-capchip-text">
                                 {coa.capColor || "No cap color"}
@@ -619,6 +1216,13 @@ const LotIDTracker = () => {
                             {coa.vendor && (
                               <span className="lot-id-vendor-badge">{coa.vendor}</span>
                             )}
+                            <button
+                              type="button"
+                              className="lot-id-print-btn"
+                              onClick={() => handlePrintLotLabel(p, coa)}
+                            >
+                              Print Label
+                            </button>
                           </div>
                           {coa.note && (
                             <div className="lot-id-note-display">{coa.note}</div>
@@ -653,15 +1257,26 @@ const LotIDTracker = () => {
               />
 
               <label className="lot-modal-label">Cap Color</label>
-              <input
-                type="text"
-                placeholder="e.g. Sand, #F5E9D8"
-                value={lotModalConfig.capColor}
-                onChange={(e) =>
-                  setLotModalConfig((prev) => ({ ...prev, capColor: e.target.value }))
-                }
-                className="lot-modal-input"
-              />
+              <div className="lot-modal-color-row">
+                <input
+                  type="color"
+                  value={colorValueToHex(lotModalConfig.capShade || lotModalConfig.capColor)}
+                  onChange={(e) =>
+                    setLotModalConfig((prev) => ({ ...prev, capShade: e.target.value }))
+                  }
+                  className="lot-modal-color-picker"
+                  aria-label="Pick cap color"
+                />
+                <input
+                  type="text"
+                  placeholder="e.g. Sand, #F5E9D8"
+                  value={lotModalConfig.capColor}
+                  onChange={(e) =>
+                    setLotModalConfig((prev) => ({ ...prev, capColor: e.target.value }))
+                  }
+                  className="lot-modal-input"
+                />
+              </div>
 
               <label className="lot-modal-label">Kits in Batch</label>
               <input
@@ -738,13 +1353,22 @@ const LotIDTracker = () => {
               />
 
               <label className="lot-modal-label">Cap Color</label>
-              <input
-                type="text"
-                placeholder="e.g. Sand, #F5E9D8"
-                value={editLotModal.capColor}
-                onChange={(e) => setEditLotModal((prev) => ({ ...prev, capColor: e.target.value }))}
-                className="lot-modal-input"
-              />
+              <div className="lot-modal-color-row">
+                <input
+                  type="color"
+                  value={colorValueToHex(editLotModal.capShade || editLotModal.capColor)}
+                  onChange={(e) => setEditLotModal((prev) => ({ ...prev, capShade: e.target.value }))}
+                  className="lot-modal-color-picker"
+                  aria-label="Pick cap color"
+                />
+                <input
+                  type="text"
+                  placeholder="e.g. Sand, #F5E9D8"
+                  value={editLotModal.capColor}
+                  onChange={(e) => setEditLotModal((prev) => ({ ...prev, capColor: e.target.value }))}
+                  className="lot-modal-input"
+                />
+              </div>
 
               <label className="lot-modal-label">Kits in Batch</label>
               <input
@@ -793,6 +1417,134 @@ const LotIDTracker = () => {
                 </button>
                 <button type="button" className="lot-modal-btn primary" onClick={saveEditLotModal}>
                   Save Changes
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {labelEditorOpen &&
+        createPortal(
+          <div className="lot-modal-backdrop" onClick={() => setLabelEditorOpen(false)}>
+            <div className="lot-modal lot-layout-editor" onClick={(e) => e.stopPropagation()}>
+              <div className="lot-layout-editor-header">
+                <div>
+                  <h3>Edit Label Layout</h3>
+                  <p className="lot-modal-sub">Adjust positions and sizes for the printed label.</p>
+                </div>
+                <button
+                  type="button"
+                  className="lot-modal-btn secondary"
+                  onClick={() => setLabelDesignDraft(DEFAULT_LABEL_DESIGN)}
+                >
+                  Reset
+                </button>
+              </div>
+
+              <div className="lot-layout-grid">
+                {selectedProduct && selectedPreviewLot && (
+                  <div className="lot-layout-preview-panel">
+                    <div className="lot-layout-preview-title">Live Preview</div>
+                    <div className="lot-id-label-preview-shell lot-id-label-preview-shell-editor">
+                      {renderLabelPreview(selectedProduct, selectedPreviewLot, editorDesignStyles)}
+                    </div>
+                  </div>
+                )}
+                <label className="lot-layout-field">
+                  <span>Center Left %</span>
+                  <input type="number" value={labelDesignDraft.centerLeftPercent} onChange={(e) => updateLabelDesign("centerLeftPercent", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Center Top %</span>
+                  <input type="number" value={labelDesignDraft.centerTopPercent} onChange={(e) => updateLabelDesign("centerTopPercent", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Center Width</span>
+                  <input type="number" value={labelDesignDraft.centerWidth} onChange={(e) => updateLabelDesign("centerWidth", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Center Gap</span>
+                  <input type="number" value={labelDesignDraft.centerGap} onChange={(e) => updateLabelDesign("centerGap", e.target.value)} className="lot-modal-input" />
+                </label>
+
+                <label className="lot-layout-field">
+                  <span>Product Font</span>
+                  <input type="number" value={labelDesignDraft.nameFontSize} onChange={(e) => updateLabelDesign("nameFontSize", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Product Line Height</span>
+                  <input type="number" step="0.01" value={labelDesignDraft.nameLineHeight} onChange={(e) => updateLabelDesign("nameLineHeight", e.target.value)} className="lot-modal-input" />
+                </label>
+
+                <label className="lot-layout-field">
+                  <span>Mass Font</span>
+                  <input type="number" value={labelDesignDraft.strengthFontSize} onChange={(e) => updateLabelDesign("strengthFontSize", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Mass Text Color</span>
+                  <div className="lot-modal-color-row">
+                    <input
+                      type="color"
+                      value={colorValueToHex(labelDesignDraft.massTextColor, "#2b1a0f")}
+                      onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                      className="lot-modal-color-picker"
+                    />
+                    <input
+                      type="text"
+                      value={labelDesignDraft.massTextColor}
+                      onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                      className="lot-modal-input"
+                    />
+                  </div>
+                </label>
+                <label className="lot-layout-field">
+                  <span>Mass Pad X</span>
+                  <input type="number" value={labelDesignDraft.strengthPadX} onChange={(e) => updateLabelDesign("strengthPadX", e.target.value)} className="lot-modal-input" />
+                </label>
+
+                <label className="lot-layout-field">
+                  <span>Footer Left</span>
+                  <input type="number" value={labelDesignDraft.footerLeft} onChange={(e) => updateLabelDesign("footerLeft", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Footer Bottom</span>
+                  <input type="number" value={labelDesignDraft.footerBottom} onChange={(e) => updateLabelDesign("footerBottom", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Footer Font</span>
+                  <input type="number" value={labelDesignDraft.footerFontSize} onChange={(e) => updateLabelDesign("footerFontSize", e.target.value)} className="lot-modal-input" />
+                </label>
+
+                <label className="lot-layout-field">
+                  <span>QR Right</span>
+                  <input type="number" value={labelDesignDraft.qrRight} onChange={(e) => updateLabelDesign("qrRight", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>QR Width</span>
+                  <input type="number" value={labelDesignDraft.qrWidth} onChange={(e) => updateLabelDesign("qrWidth", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>QR Max Height</span>
+                  <input type="number" value={labelDesignDraft.qrMaxHeight} onChange={(e) => updateLabelDesign("qrMaxHeight", e.target.value)} className="lot-modal-input" />
+                </label>
+
+                <label className="lot-layout-field">
+                  <span>Lot Right</span>
+                  <input type="number" value={labelDesignDraft.lotRight} onChange={(e) => updateLabelDesign("lotRight", e.target.value)} className="lot-modal-input" />
+                </label>
+                <label className="lot-layout-field">
+                  <span>Lot Font</span>
+                  <input type="number" value={labelDesignDraft.lotFontSize} onChange={(e) => updateLabelDesign("lotFontSize", e.target.value)} className="lot-modal-input" />
+                </label>
+              </div>
+
+              <div className="lot-modal-actions">
+                <button type="button" className="lot-modal-btn secondary" onClick={() => setLabelEditorOpen(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="lot-modal-btn primary" onClick={saveLabelDesign}>
+                  Save Layout
                 </button>
               </div>
             </div>
