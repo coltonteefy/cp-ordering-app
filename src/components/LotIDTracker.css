@@ -870,7 +870,7 @@
 }
 
 .lot-id-print-btn {
-  margin-left: auto;
+  margin-left: 0;
   background: #fff5e8;
   color: #8d4e17;
   border: 1px solid #e7be8e;
@@ -1039,22 +1039,23 @@
 
 .lot-id-label-preview-actions {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 0.5rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .lot-id-layout-btn {
   flex-shrink: 0;
-  background: #fff5e8;
+  background: transparent;
   color: #8d4e17;
-  border: 1px solid #e7be8e;
-  border-radius: 999px;
-  padding: 0.42rem 0.7rem;
-  font-size: 0.76rem;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  font-size: 0.82rem;
   font-weight: 800;
   cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
 }
 
 .lot-id-label-preview-sub {
@@ -1225,8 +1226,8 @@
   position: absolute;
   right: 4px;
   top: 50%;
-  transform: translateY(-50%) rotate(180deg);
-  writing-mode: vertical-rl;
+  transform: translateY(-50%);
+  writing-mode: vertical-lr;
   display: flex;
   align-items: center;
   justify-content: center;

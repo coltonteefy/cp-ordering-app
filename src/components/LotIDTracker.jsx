@@ -23,6 +23,25 @@ const escapeHtml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+const splitLabelProductName = (value) => {
+  const text = String(value ?? "");
+  const match = text.match(/^(.*?&)\s*(.+)$/);
+  if (!match) return [text];
+  return [match[1], match[2]];
+};
+const renderLabelProductName = (value) => {
+  const lines = splitLabelProductName(value);
+  return lines.map((line, index) => (
+    <React.Fragment key={`${line}-${index}`}>
+      {index > 0 && <br />}
+      {line}
+    </React.Fragment>
+  ));
+};
+const buildLabelProductHtml = (value) =>
+  splitLabelProductName(value)
+    .map((line) => escapeHtml(line))
+    .join("<br />");
 const resolveCapColorValue = (value) => {
   const cleaned = (value || "").trim();
   if (!cleaned) return null;
@@ -147,7 +166,7 @@ const DEFAULT_KIT_LABEL_DESIGN = {
   footerBottom: 250,
   footerFontSize: 15,
   footerGap: 20,
-  bottomFadeHeight: 145,
+  bottomFadeHeight: 250,
 };
 const mergeLabelDesign = (value) => ({ ...DEFAULT_LABEL_DESIGN, ...(value || {}) });
 const mergeKitLabelDesign = (value) => ({
@@ -462,8 +481,8 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         position: absolute;
         right: ${labelDesign.lotRight}px;
         top: 50%;
-        transform: translateY(-50%) rotate(180deg);
-        writing-mode: vertical-rl;
+        transform: translateY(-50%);
+        writing-mode: vertical-lr;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -482,7 +501,7 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
       <div class="bg-tint"></div>
       <div class="content">
         <div class="center-stack">
-          <div class="name">${escapeHtml(productName || "")}</div>
+          <div class="name">${buildLabelProductHtml(productName || "")}</div>
           <div class="strength">${escapeHtml(strength || "")}</div>
         </div>
         <div class="logo-wrap">
@@ -706,7 +725,7 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
       <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(
         APP_LOGO_SRC
       )}';" />
-      <div class="product">${escapeHtml(productName || "")}</div>
+      <div class="product">${buildLabelProductHtml(productName || "")}</div>
       <div class="strength-group">
         <div class="strength">${escapeHtml(strength || "")}</div>
         <div class="count">10 Vials</div>
@@ -1301,7 +1320,7 @@ const LotIDTracker = () => {
         </div>
         <div className="lot-id-print-label-center" style={designStyles.center}>
           <div className="lot-id-print-label-name" style={designStyles.name}>
-            {product.product}
+            {renderLabelProductName(product.product)}
           </div>
           <div
             className="lot-id-print-label-strength"
@@ -1373,7 +1392,7 @@ const LotIDTracker = () => {
         }}
       />
       <div className="lot-id-print-label-kit-product" style={designStyles.product}>
-        {product.product}
+        {renderLabelProductName(product.product)}
       </div>
       <div
         className="lot-id-print-label-kit-strength-group"
@@ -1509,6 +1528,13 @@ const LotIDTracker = () => {
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
+                        <button
+                          type="button"
+                          className="lot-id-layout-btn"
+                          onClick={() => openLabelEditor(key, "vial")}
+                        >
+                          Edit Layout
+                        </button>
                         {activePreviewLot?.lot && (
                           <button
                             type="button"
@@ -1518,13 +1544,6 @@ const LotIDTracker = () => {
                             Print Label
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="lot-id-layout-btn"
-                          onClick={() => openLabelEditor(key, "vial")}
-                        >
-                          Edit Layout
-                        </button>
                       </div>
                     </div>
                     {activePreviewLot?.lot ? (
@@ -1552,6 +1571,13 @@ const LotIDTracker = () => {
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
+                        <button
+                          type="button"
+                          className="lot-id-layout-btn"
+                          onClick={() => openLabelEditor(key, "kit")}
+                        >
+                          Edit Kit Layout
+                        </button>
                         {activePreviewLot?.lot && (
                           <button
                             type="button"
@@ -1561,13 +1587,6 @@ const LotIDTracker = () => {
                             Print Kit
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="lot-id-layout-btn"
-                          onClick={() => openLabelEditor(key, "kit")}
-                        >
-                          Edit Kit Layout
-                        </button>
                       </div>
                     </div>
                     {activePreviewLot?.lot ? (
