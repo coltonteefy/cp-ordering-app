@@ -1276,6 +1276,8 @@
   width: 96px;
   height: 96px;
   object-fit: contain;
+  transform: rotate(-90deg);
+  transform-origin: center;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;
@@ -1313,12 +1315,18 @@
   text-wrap: balance;
 }
 
-.lot-id-print-label-kit-strength {
+.lot-id-print-label-kit-strength-group {
   position: absolute;
   left: 172px;
   bottom: 22px;
   transform-origin: left bottom;
   transform: rotate(-90deg);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lot-id-print-label-kit-strength {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1331,6 +1339,14 @@
   white-space: nowrap;
   padding: 14px 18px;
   border-radius: 8px;
+}
+
+.lot-id-print-label-kit-count {
+  font-size: 2.1rem;
+  line-height: 1;
+  font-weight: 700;
+  color: #111111;
+  white-space: nowrap;
 }
 
 .lot-id-print-label-kit-footer {

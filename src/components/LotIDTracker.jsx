@@ -609,6 +609,8 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         width: ${kitDesign.qrSize}px;
         height: ${kitDesign.qrSize}px;
         object-fit: contain;
+        transform: rotate(-90deg);
+        transform-origin: center;
         image-rendering: pixelated;
         image-rendering: crisp-edges;
         -ms-interpolation-mode: nearest-neighbor;
@@ -643,12 +645,17 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         line-clamp: 2;
         text-wrap: balance;
       }
-      .strength {
+      .strength-group {
         position: absolute;
         left: ${kitDesign.strengthLeft}px;
         bottom: ${kitDesign.strengthBottom}px;
         transform-origin: left bottom;
         transform: rotate(-90deg);
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .strength {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -660,6 +667,13 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         line-height: 1;
         font-weight: 900;
         text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .count {
+        font-size: ${kitDesign.strengthFontSize}px;
+        line-height: 1;
+        font-weight: 700;
+        color: #111111;
         white-space: nowrap;
       }
       .footer {
@@ -693,7 +707,10 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         APP_LOGO_SRC
       )}';" />
       <div class="product">${escapeHtml(productName || "")}</div>
-      <div class="strength">${escapeHtml(strength || "")}</div>
+      <div class="strength-group">
+        <div class="strength">${escapeHtml(strength || "")}</div>
+        <div class="count">10 Vials</div>
+      </div>
       <div class="footer">
         <span>99% Purity</span>
         <span>Research Use Only</span>
@@ -1359,15 +1376,33 @@ const LotIDTracker = () => {
         {product.product}
       </div>
       <div
-        className="lot-id-print-label-kit-strength"
+        className="lot-id-print-label-kit-strength-group"
         style={{
-          ...designStyles.strength,
-          backgroundColor: normalizeLabelAccentColor(
-            getCapRenderColor(lotEntry.capColor, lotEntry.capShade)
-          ),
+          left: designStyles.strength.left,
+          bottom: designStyles.strength.bottom,
         }}
       >
-        {product.strength}
+        <div
+          className="lot-id-print-label-kit-strength"
+          style={{
+            fontSize: designStyles.strength.fontSize,
+            padding: designStyles.strength.padding,
+            borderRadius: designStyles.strength.borderRadius,
+            backgroundColor: normalizeLabelAccentColor(
+              getCapRenderColor(lotEntry.capColor, lotEntry.capShade)
+            ),
+          }}
+        >
+          {product.strength}
+        </div>
+        <div
+          className="lot-id-print-label-kit-count"
+          style={{
+            fontSize: designStyles.strength.fontSize,
+          }}
+        >
+          10 Vials
+        </div>
       </div>
       <div className="lot-id-print-label-kit-footer" style={designStyles.footer}>
         <span>99% Purity</span>
