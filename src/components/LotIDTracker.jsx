@@ -430,39 +430,6 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
   </body>
 </html>`;
 };
-const pickLabelLink = (p) => {
-  const raw =
-    p?.canvaTemplateUrl ||
-    p?.canvaTemplateURL ||
-    p?.labelsUrl ||
-    p?.labels ||
-    "";
-  return raw.trim();
-};
-const buildEmbedLink = (url) => {
-  const trimmed = (url || "").trim();
-  if (!trimmed) return "";
-
-  // If it's already an embed link, use it as-is
-  if (trimmed.includes("embed")) return trimmed;
-
-  try {
-    const parsed = new URL(trimmed);
-    // Force Canva URLs to /view and add embed=1 param
-    if (parsed.hostname.includes("canva.com")) {
-      parsed.pathname = parsed.pathname.replace(/\/edit$/, "/view").replace(/\/view$/, "/view");
-      parsed.searchParams.set("embed", "1");
-      return parsed.toString();
-    }
-    // Fallback for other hosts: just add embed param
-    parsed.searchParams.set("embed", "1");
-    return parsed.toString();
-  } catch (e) {
-    // If URL constructor fails, append query param manually
-    return `${trimmed}${trimmed.includes("?") ? "&" : "?"}embed=1`;
-  }
-};
-
 const GROUP_ORDER = [
   "BPC/TB",
   "R10/20/30/40",
@@ -647,7 +614,6 @@ const LotIDTracker = () => {
               strength: data.strength,
               currentCoa: normalizedCurrent,
               coaList: data.coaList || [],
-              canvaTemplateUrl: data.canvaTemplateUrl || "",
               capColor: currentCoa.capColor || data.capColor || "",
               labelDesign: mergeLabelDesign(data.labelDesign),
             });
@@ -1049,13 +1015,11 @@ const LotIDTracker = () => {
       <div className="lot-id-single-view">
         {products.filter((p) => p.docId === selectedProductId).map((p, idx) => {
           const key = p.docId;
-            const labelLink = pickLabelLink(p);
-            const embedLink = buildEmbedLink(labelLink);
-            const data = productData[key] || {
-              productID: "",
-              currentCOA: createEmptyCOA(),
-              coaList: [],
-            };
+          const data = productData[key] || {
+            productID: "",
+            currentCOA: createEmptyCOA(),
+            coaList: [],
+          };
           const capColorText =
             (productData[key]?.capColor ||
               data.currentCOA.capColor ||
@@ -1129,30 +1093,6 @@ const LotIDTracker = () => {
                       </div>
                     )}
                   </div>
-                  {labelLink ? (
-                    <>
-                      {embedLink && (
-                        <div className="lot-id-template-frame">
-                          <iframe
-                            src={embedLink}
-                            title={`${p.id || p.product} label preview`}
-                            allowFullScreen
-                            loading="lazy"
-                          />
-                        </div>
-                      )}
-                      <a
-                        href={labelLink}
-                        target="_blank"
-                        rel="noopener"
-                        className="lot-id-template-link"
-                      >
-                        {p.id ? `${p.id} labels` : "Labels"}
-                      </a>
-                    </>
-                  ) : (
-                    <span className="lot-id-template-link muted">waiting on labels</span>
-                  )}
                 </div>
 
                 <div className="lot-id-section">
