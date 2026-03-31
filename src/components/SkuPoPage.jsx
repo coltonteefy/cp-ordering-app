@@ -382,8 +382,8 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                       <th>Line</th>
                       <th>SKU / Item Code</th>
                       <th>Description</th>
-                      <th>Quantity SINGLES</th>
                       <th>Quantity KIT</th>
+                      <th>Quantity SINGLES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -398,6 +398,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                           />
                         </td>
                         <td className="sku-po-description-cell">{item.description}</td>
+                        <td className="sku-po-total-cell">{calculateKitValue(item.quantitySingles, item.singlesPerKit)}</td>
                         <td>
                           <input
                             type="number"
@@ -407,7 +408,6 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                             onFocus={(event) => event.target.select()}
                           />
                         </td>
-                        <td className="sku-po-total-cell">{calculateKitValue(item.quantitySingles, item.singlesPerKit)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -421,6 +421,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                       onChange={handleOrderDateChange}
                     />
                   </label>
+                  <span className="sku-po-date-brand">Coffee and Peppers</span>
                 </div>
               </div>
 
@@ -458,6 +459,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                   <div className="sku-po-print-meta-bar bottom">
                     <span>Order Date:</span>
                     <strong>{formatShortDate(draft.orderDate)}</strong>
+                    <span className="sku-po-print-brand">Coffee and Peppers</span>
                   </div>
                 </div>
               </div>

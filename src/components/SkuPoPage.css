@@ -436,6 +436,13 @@
   border-top: 1px solid #111111;
 }
 
+.sku-po-print-brand {
+  margin-left: auto;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .sku-po-print-table {
   width: 100%;
   height: calc(100% - 0.24in);
@@ -500,6 +507,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 0.5rem 0.25rem;
+  flex-wrap: wrap;
 }
 
 .sku-po-date-input-row label {
@@ -522,6 +530,15 @@
   background: #fffdf9;
   font-size: 0.85rem;
   color: #2c2c2c;
+}
+
+.sku-po-date-brand {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #8d4e17;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .sku-po-section-heading.compact {
