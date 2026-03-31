@@ -42,6 +42,10 @@ const buildLabelProductHtml = (value) =>
   splitLabelProductName(value)
     .map((line) => escapeHtml(line))
     .join("<br />");
+const nextCapShadeFromText = (value, fallback = "") => {
+  const resolved = resolveCapColorValue(value);
+  return resolved ? colorValueToHex(resolved, fallback || "#c9c1b7") : fallback;
+};
 const resolveCapColorValue = (value) => {
   const cleaned = (value || "").trim();
   if (!cleaned) return null;
@@ -1716,7 +1720,11 @@ const LotIDTracker = () => {
                   placeholder="e.g. Sand, #F5E9D8"
                   value={lotModalConfig.capColor}
                   onChange={(e) =>
-                    setLotModalConfig((prev) => ({ ...prev, capColor: e.target.value }))
+                    setLotModalConfig((prev) => ({
+                      ...prev,
+                      capColor: e.target.value,
+                      capShade: nextCapShadeFromText(e.target.value, prev.capShade),
+                    }))
                   }
                   className="lot-modal-input"
                 />
@@ -1809,7 +1817,13 @@ const LotIDTracker = () => {
                   type="text"
                   placeholder="e.g. Sand, #F5E9D8"
                   value={editLotModal.capColor}
-                  onChange={(e) => setEditLotModal((prev) => ({ ...prev, capColor: e.target.value }))}
+                  onChange={(e) =>
+                    setEditLotModal((prev) => ({
+                      ...prev,
+                      capColor: e.target.value,
+                      capShade: nextCapShadeFromText(e.target.value, prev.capShade),
+                    }))
+                  }
                   className="lot-modal-input"
                 />
               </div>
