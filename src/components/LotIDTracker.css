@@ -1100,6 +1100,27 @@
   font-weight: 700;
 }
 
+.lot-id-test-label-grid {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lot-id-test-label-item {
+  display: flex;
+  justify-content: center;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.lot-id-test-label-grid .lot-id-print-label {
+  max-width: none;
+}
+
 .lot-id-print-label {
   width: 420px;
   max-width: 100%;
@@ -1146,6 +1167,29 @@
   text-align: center;
 }
 
+.lot-id-print-label-test-product {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  transform: translate(-50%, -50%);
+  width: 252px;
+  text-align: center;
+}
+
+.lot-id-print-label-test-strength {
+  position: absolute;
+  left: 50%;
+  top: 66%;
+  transform: translate(-50%, -50%);
+}
+
+.lot-id-print-label-test-variant {
+  position: absolute;
+  left: 50%;
+  top: 80%;
+  transform: translate(-50%, -50%);
+}
+
 .lot-id-print-label-logo-wrap {
   position: absolute;
   left: 50%;
@@ -1190,6 +1234,17 @@
   font-weight: 900;
   padding: 0.34rem 0.8rem;
   border-radius: 12px;
+}
+
+.lot-id-print-label-variant {
+  font-size: 0.72rem;
+  line-height: 1;
+  font-weight: 800;
+  color: #24170d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  width: 100%;
 }
 
 .lot-id-print-label-footer {
@@ -1245,6 +1300,7 @@
   letter-spacing: 0.02em;
   padding: 0;
 }
+
 
 .lot-id-print-label-kit {
   width: 240px;
@@ -1435,6 +1491,27 @@
   color: #4a3825;
 }
 
+.lot-layout-section {
+  grid-column: 1 / -1;
+  border: 1px solid #ead9c4;
+  border-radius: 14px;
+  background: #fffdf9;
+  padding: 0.9rem;
+}
+
+.lot-layout-section-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #4a3825;
+  margin-bottom: 0.75rem;
+}
+
+.lot-layout-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
 @media (max-width: 600px) {
   .lot-id-layout {
     grid-template-columns: 1fr;
@@ -1478,6 +1555,10 @@
   }
 
   .lot-layout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lot-layout-section-grid {
     grid-template-columns: 1fr;
   }
 }
