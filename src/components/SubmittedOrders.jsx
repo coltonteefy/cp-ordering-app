@@ -824,7 +824,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0),
       0
     );
-    const itemsSubtotal = typeof order.subtotal === 'number' ? order.subtotal : computedItemsSubtotal;
+    const itemsSubtotal = computedItemsSubtotal;
     const shippingCost = Math.max(0, Number(order.shippingCost) || 0);
     const baseTotal = itemsSubtotal + shippingCost;
     const discountPercent = Number(order.discountPercent) || 0;
