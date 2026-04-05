@@ -1122,11 +1122,11 @@
 }
 
 .lot-id-print-label {
-  width: 420px;
+  width: 180px;
   max-width: 100%;
-  aspect-ratio: 7 / 3;
+  aspect-ratio: 3 / 7;
   position: relative;
-  border-radius: 16px;
+  border-radius: 8px;
   overflow: hidden;
   border: 1px solid #ddccb6;
   box-shadow: 0 10px 24px rgba(50, 33, 18, 0.12);
@@ -1155,15 +1155,10 @@
 
 .lot-id-print-label-center {
   position: absolute;
-  left: 50%;
-  top: 43%;
-  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.22rem;
-  width: 244px;
   text-align: center;
 }
 
@@ -1192,17 +1187,12 @@
 
 .lot-id-print-label-logo-wrap {
   position: absolute;
-  left: 50%;
-  top: 24%;
-  transform: translate(-50%, -50%);
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
 .lot-id-print-label-logo {
-  width: 112px;
-  height: 52px;
   object-fit: contain;
 }
 
@@ -1249,14 +1239,12 @@
 
 .lot-id-print-label-footer {
   position: absolute;
-  left: 30px;
-  bottom: 18px;
   display: flex;
   flex-direction: column;
   gap: 0.12rem;
-  font-size: 0.72rem;
   line-height: 1.1;
   color: #24170d;
+  white-space: nowrap;
 }
 
 .lot-id-print-label-footer span {
@@ -1265,40 +1253,25 @@
 
 .lot-id-print-label-qr-wrap {
   position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: fit-content;
 }
 
 .lot-id-print-label-qr {
-  width: 82px;
-  height: auto;
-  max-height: 132px;
   object-fit: contain;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;
+  flex-shrink: 0;
 }
 
 .lot-id-print-label-lot {
   position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  writing-mode: vertical-lr;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-family: "SFMono-Regular", Consolas, Menlo, monospace;
-  font-size: 0.82rem;
   font-weight: 800;
   color: #2b1a0f;
   letter-spacing: 0.02em;
-  padding: 0;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { collection, onSnapshot, updateDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, updateDoc, doc, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import "./LotIDTracker.css";
 
@@ -108,39 +108,44 @@ const LABEL_BASE_BACKGROUND = [
   "repeating-linear-gradient(0deg, rgba(120,128,138,0.05) 0px, rgba(255,255,255,0.04) 2px, rgba(143,150,160,0.05) 5px, rgba(255,255,255,0.02) 8px, rgba(125,133,143,0.04) 12px, rgba(255,255,255,0.03) 18px)",
   "linear-gradient(90deg, rgba(171,177,186,0.22) 0%, rgba(255,255,255,0.74) 24%, rgba(221,225,231,0.22) 48%, rgba(255,255,255,0.88) 72%, rgba(175,181,190,0.16) 100%)",
 ];
-const LABEL_PREVIEW_WIDTH = 420;
-const LABEL_PREVIEW_HEIGHT = 180;
-const LABEL_PRINT_WIDTH = 1.75 * 96;
-const LABEL_PRINT_HEIGHT = 0.75 * 96;
-const FIXED_LABEL_LOGO = {
-  leftPercent: 50,
-  topPercent: 18,
-  width: 200,
-  height: 55,
-};
+const LABEL_PRINT_WIDTH = 0.75 * 96;
+const LABEL_PRINT_HEIGHT = 1.75 * 96;
+const LABEL_PREVIEW_WIDTH = 180;
+const LABEL_PREVIEW_HEIGHT = 420;
 const FIXED_MASS_PAD_Y = 5;
 const FIXED_MASS_RADIUS = 10;
 const FIXED_MASS_TEXT_COLOR = "#ffffff";
 const DEFAULT_LABEL_DESIGN = {
-  centerLeftPercent: 50,
-  centerTopPercent: 55,
-  centerWidth: 244,
-  centerGap: 4,
-  nameFontSize: 35,
-  nameLineHeight: 0.9,
-  strengthFontSize: 20,
-  massTextColor: FIXED_MASS_TEXT_COLOR,
+  // Logo — rotated -90° with transform-origin: left center
+  logoLeft: 38,
+  logoTopPercent: 62,
+  logoWidth: 170,
+  logoHeight: 64,
+  // Center stack (product + strength) — rotated -90°, right side
+  centerLeftPercent: 60,
+  centerTopPercent: 50,
+  centerWidth: 235,
+  centerGap: 8,
+  nameFontSize: 37,
+  nameLineHeight: 0.79,
+  strengthFontSize: 22,
+  massTextColor: "#ffffff",
   strengthPadY: FIXED_MASS_PAD_Y,
-  strengthPadX: 13,
+  strengthPadX: 12,
   strengthRadius: FIXED_MASS_RADIUS,
-  footerLeft: 35,
-  footerBottom: 10,
-  footerFontSize: 12,
-  qrRight: 20,
+  // Footer — rotated -90°, bottom-right area
+  footerLeft: 156,
+  footerTop: 310,
+  footerFontSize: 13,
+  // QR
+  qrLeft: 50,
+  qrTop: 22,
   qrWidth: 82,
   qrMaxHeight: 132,
-  lotRight: 2,
-  lotFontSize: 13,
+  // Lot ID — top center
+  lotLeft: 90,
+  lotTop: 8,
+  lotFontSize: 10,
 };
 const KIT_PREVIEW_WIDTH = 240;
 const KIT_PREVIEW_HEIGHT = 360;
@@ -175,47 +180,49 @@ const DEFAULT_KIT_LABEL_DESIGN = {
 };
 const DEFAULT_TEST_LABEL_DESIGN = {
   logoLeftPercent: 50,
-  logoTopPercent: 15,
+  logoTopPercent: 22,
+  logoWidth: 140,
+  logoHeight: 52,
   productLeftPercent: 50,
-  productTopPercent: 40,
-  productWidth: 255,
-  nameFontSize: 30,
-  nameLineHeight: 0.85,
+  productTopPercent: 46,
+  productWidth: 158,
+  nameFontSize: 26,
+  nameLineHeight: 0.9,
   strengthLeftPercent: 50,
-  strengthTopPercent: 60,
-  strengthFontSize: 20,
-  strengthPadX: 13,
+  strengthTopPercent: 63,
+  strengthFontSize: 15,
+  strengthPadX: 12,
   strengthRadius: FIXED_MASS_RADIUS,
   variantLeftPercent: 50,
-  variantTopPercent: 85,
-  variantFontSize: 30,
-  lotRight: 10,
-  lotTopPercent: 50,
-  lotFontSize: 12,
+  variantTopPercent: 79,
+  variantFontSize: 22,
+  lotLeft: 8,
+  lotTop: 8,
+  lotFontSize: 9,
 };
 const mergeLabelDesign = (value) => ({ ...DEFAULT_LABEL_DESIGN, ...(value || {}) });
 const mergeKitLabelDesign = (value) => ({
   ...DEFAULT_KIT_LABEL_DESIGN,
   ...(value || {}),
 });
-const mergeTestLabelDesign = (value) => ({
-  ...DEFAULT_TEST_LABEL_DESIGN,
-  ...(value || {}),
-});
+const mergeTestLabelDesign = (value) => ({ ...DEFAULT_TEST_LABEL_DESIGN, ...(value || {}) });
 const buildLabelDesignStyles = (design) => ({
   logoWrap: {
-    left: `${FIXED_LABEL_LOGO.leftPercent}%`,
-    top: `${FIXED_LABEL_LOGO.topPercent}%`,
+    left: `${design.logoLeft}px`,
+    top: `${design.logoTopPercent}%`,
+    transformOrigin: 'left center',
+    transform: 'rotate(-90deg)',
   },
   logo: {
-    width: `${FIXED_LABEL_LOGO.width}px`,
-    height: `${FIXED_LABEL_LOGO.height}px`,
+    width: `${design.logoWidth}px`,
+    height: `${design.logoHeight}px`,
   },
   center: {
     left: `${design.centerLeftPercent}%`,
     top: `${design.centerTopPercent}%`,
     width: `${design.centerWidth}px`,
     gap: `${design.centerGap}px`,
+    transform: 'translate(-50%, -50%) rotate(-90deg)',
   },
   name: {
     fontSize: `${design.nameFontSize}px`,
@@ -225,23 +232,27 @@ const buildLabelDesignStyles = (design) => ({
     fontSize: `${design.strengthFontSize}px`,
     padding: `${FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
     borderRadius: `${design.strengthRadius}px`,
-    color: FIXED_MASS_TEXT_COLOR,
+    color: design.massTextColor || FIXED_MASS_TEXT_COLOR,
   },
   footer: {
     left: `${design.footerLeft}px`,
-    bottom: `${design.footerBottom}px`,
+    top: `${design.footerTop}px`,
     fontSize: `${design.footerFontSize}px`,
+    transform: 'translate(-50%, -50%) rotate(-90deg)',
   },
   qrWrap: {
-    right: `${design.qrRight}px`,
+    left: `${design.qrLeft}px`,
+    top: `${design.qrTop}px`,
   },
   qr: {
     width: `${design.qrWidth}px`,
-    maxHeight: `${design.qrMaxHeight}px`,
+    height: `${design.qrWidth}px`,
   },
   lot: {
-    right: `${design.lotRight}px`,
+    left: `${design.lotLeft}px`,
+    top: `${design.lotTop}px`,
     fontSize: `${design.lotFontSize}px`,
+    transform: 'translateX(-50%)',
   },
 });
 const buildKitLabelDesignStyles = (design) => ({
@@ -274,7 +285,7 @@ const buildKitLabelDesignStyles = (design) => ({
     fontSize: `${design.strengthFontSize}px`,
     padding: `${design.strengthPadY}px ${design.strengthPadX}px`,
     borderRadius: `${design.strengthRadius}px`,
-    color: FIXED_MASS_TEXT_COLOR,
+    color: design.massTextColor || FIXED_MASS_TEXT_COLOR,
   },
   footer: {
     right: `${design.footerRight}px`,
@@ -292,8 +303,8 @@ const buildTestLabelDesignStyles = (design) => ({
     top: `${design.logoTopPercent}%`,
   },
   logo: {
-    width: `${FIXED_LABEL_LOGO.width}px`,
-    height: `${FIXED_LABEL_LOGO.height}px`,
+    width: `${design.logoWidth}px`,
+    height: `${design.logoHeight}px`,
   },
   product: {
     left: `${design.productLeftPercent}%`,
@@ -308,7 +319,7 @@ const buildTestLabelDesignStyles = (design) => ({
     fontSize: `${design.strengthFontSize}px`,
     padding: `${FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
     borderRadius: `${design.strengthRadius}px`,
-    color: FIXED_MASS_TEXT_COLOR,
+    color: design.massTextColor || FIXED_MASS_TEXT_COLOR,
   },
   variant: {
     left: `${design.variantLeftPercent}%`,
@@ -328,22 +339,26 @@ const scaleLabelDesignForPrint = (design) => {
   const scale = scaleX;
   return {
     ...merged,
-    centerWidth: merged.centerWidth * scaleX,
-    centerGap: merged.centerGap * scaleY,
+    logoLeft: merged.logoLeft * scaleX,
     logoWidth: merged.logoWidth * scaleX,
     logoHeight: merged.logoHeight * scaleY,
+    // logoTopPercent stays as-is (percentage)
+    centerWidth: merged.centerWidth * scaleX,
+    centerGap: merged.centerGap * scaleY,
     nameFontSize: merged.nameFontSize * scale,
     strengthFontSize: merged.strengthFontSize * scale,
     strengthPadY: FIXED_MASS_PAD_Y * scaleY,
     strengthPadX: merged.strengthPadX * scaleX,
     strengthRadius: FIXED_MASS_RADIUS * scale,
     footerLeft: merged.footerLeft * scaleX,
-    footerBottom: merged.footerBottom * scaleY,
+    footerTop: merged.footerTop * scaleY,
     footerFontSize: merged.footerFontSize * scale,
-    qrRight: merged.qrRight * scaleX,
+    qrLeft: merged.qrLeft * scaleX,
+    qrTop: merged.qrTop * scaleY,
     qrWidth: merged.qrWidth * scaleX,
     qrMaxHeight: merged.qrMaxHeight * scaleY,
-    lotRight: merged.lotRight * scaleX,
+    lotLeft: merged.lotLeft * scaleX,
+    lotTop: merged.lotTop * scaleY,
     lotFontSize: merged.lotFontSize * scale,
   };
 };
@@ -386,43 +401,36 @@ const scaleTestLabelDesignForPrint = (design) => {
   const scale = scaleX;
   return {
     ...merged,
-    logoLeftPercent: merged.logoLeftPercent,
-    logoTopPercent: merged.logoTopPercent,
-    productLeftPercent: merged.productLeftPercent,
-    productTopPercent: merged.productTopPercent,
+    logoWidth: merged.logoWidth * scaleX,
+    logoHeight: merged.logoHeight * scaleY,
     productWidth: merged.productWidth * scaleX,
     nameFontSize: merged.nameFontSize * scale,
-    strengthLeftPercent: merged.strengthLeftPercent,
-    strengthTopPercent: merged.strengthTopPercent,
     strengthFontSize: merged.strengthFontSize * scale,
     strengthPadX: merged.strengthPadX * scaleX,
     strengthRadius: merged.strengthRadius * scale,
-    variantLeftPercent: merged.variantLeftPercent,
-    variantTopPercent: merged.variantTopPercent,
     variantFontSize: merged.variantFontSize * scale,
-    lotRight: merged.lotRight * scaleX,
-    lotTopPercent: merged.lotTopPercent,
+    lotLeft: merged.lotLeft * scaleX,
+    lotTop: merged.lotTop * scaleY,
     lotFontSize: merged.lotFontSize * scale,
   };
 };
-const buildFixedLogoPrintStyles = () => {
-  const scaleX = LABEL_PRINT_WIDTH / LABEL_PREVIEW_WIDTH;
-  const scaleY = LABEL_PRINT_HEIGHT / LABEL_PREVIEW_HEIGHT;
+const buildFixedLogoPrintStyles = (design) => {
+  // design is already scaled by scaleLabelDesignForPrint — use values directly
   return {
     wrap: {
-      leftPercent: FIXED_LABEL_LOGO.leftPercent,
-      topPercent: FIXED_LABEL_LOGO.topPercent,
+      left: design.logoLeft,
+      topPercent: design.logoTopPercent,
     },
     size: {
-      width: FIXED_LABEL_LOGO.width * scaleX,
-      height: FIXED_LABEL_LOGO.height * scaleY,
+      width: design.logoWidth,
+      height: design.logoHeight,
     },
   };
 };
 const buildLabelBackground = (value) => {
   const channels = getColorChannels(normalizeLabelAccentColor(value));
   if (!channels) return "transparent";
-  return `linear-gradient(90deg, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.88) 0%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.64) 9%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.4) 18%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.22) 30%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.1) 42%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.03) 56%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0) 68%)`;
+  return `linear-gradient(0deg, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.88) 0%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.64) 9%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.4) 18%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.22) 30%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.1) 42%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.03) 56%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0) 68%)`;
 };
 const buildKitLabelFade = (value) => {
   const channels = getColorChannels(normalizeLabelAccentColor(value));
@@ -435,19 +443,19 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
   const qrCodeUrl = buildQrCodeUrl(lot);
   const labelBackground = buildLabelBackground(capColorValue);
   const labelDesign = scaleLabelDesignForPrint(design);
-  const printLogo = buildFixedLogoPrintStyles();
+  const printLogo = buildFixedLogoPrintStyles(labelDesign);
   return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
     <title>${escapeHtml(lot)} label</title>
     <style>
-      @page { size: 1.75in 0.75in; margin: 0; }
+      @page { size: 0.75in 1.75in; margin: 0; }
       html, body {
         margin: 0;
         padding: 0;
-        width: 1.75in;
-        height: 0.75in;
+        width: 0.75in;
+        height: 1.75in;
         background: #ffffff;
         font-family: Arial, Helvetica, sans-serif;
       }
@@ -456,8 +464,8 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         print-color-adjust: exact;
       }
       .label {
-        width: 1.75in;
-        height: 0.75in;
+        width: 0.75in;
+        height: 1.75in;
         box-sizing: border-box;
         position: relative;
         overflow: hidden;
@@ -478,15 +486,52 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         background: ${escapeHtml(labelBackground)};
         pointer-events: none;
       }
-      .content {
+      .lot {
         position: absolute;
-        inset: 0;
+        left: ${labelDesign.lotLeft}px;
+        top: ${labelDesign.lotTop}px;
+        transform: translateX(-50%);
+        font-size: ${labelDesign.lotFontSize}px;
+        line-height: 1;
+        font-weight: 800;
+        color: #2b1a0f;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
+      .qr-wrap {
+        position: absolute;
+        left: ${labelDesign.qrLeft}px;
+        top: ${labelDesign.qrTop}px;
+        display: flex;
+      }
+      .qr {
+        width: ${labelDesign.qrWidth}px;
+        height: ${labelDesign.qrWidth}px;
+        object-fit: contain;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        -ms-interpolation-mode: nearest-neighbor;
+      }
+      .logo-wrap {
+        position: absolute;
+        left: ${printLogo.wrap.left}px;
+        top: ${printLogo.wrap.topPercent}%;
+        transform-origin: left center;
+        transform: rotate(-90deg);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .logo {
+        width: ${printLogo.size.width}px;
+        height: ${printLogo.size.height}px;
+        object-fit: contain;
       }
       .center-stack {
         position: absolute;
         left: ${labelDesign.centerLeftPercent}%;
         top: ${labelDesign.centerTopPercent}%;
-        transform: translate(-50%, -50%);
+        transform: translate(-50%, -50%) rotate(-90deg);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -495,24 +540,6 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         width: ${labelDesign.centerWidth}px;
         text-align: center;
       }
-      .test-stack {
-        top: 50%;
-        gap: ${Math.max(labelDesign.centerGap * 1.9, 6)}px;
-        width: ${labelDesign.centerWidth + 8}px;
-      }
-      .logo-wrap {
-        position: absolute;
-        left: ${printLogo.wrap.leftPercent}%;
-        top: ${printLogo.wrap.topPercent}%;
-        transform: translate(-50%, -50%);
-        display: flex;
-        justify-content: center;
-      }
-      .logo {
-        width: ${printLogo.size.width}px;
-        height: ${printLogo.size.height}px;
-        object-fit: contain;
-      }
       .name {
         text-align: center;
         font-size: ${labelDesign.nameFontSize}px;
@@ -520,73 +547,37 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         font-weight: 900;
         color: #23160d;
         text-transform: uppercase;
-        white-space: normal;
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-        text-wrap: balance;
+        white-space: nowrap;
       }
       .strength {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        justify-self: center;
         background: ${escapeHtml(capColorValue)};
-        color: ${escapeHtml(FIXED_MASS_TEXT_COLOR)};
+        color: ${escapeHtml(labelDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};
         border-radius: ${labelDesign.strengthRadius}px;
         padding: ${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;
         font-size: ${labelDesign.strengthFontSize}px;
         line-height: 1;
         font-weight: 900;
+        white-space: nowrap;
       }
       .footer {
         position: absolute;
         left: ${labelDesign.footerLeft}px;
-        bottom: ${labelDesign.footerBottom}px;
+        top: ${labelDesign.footerTop}px;
+        transform: translate(-50%, -50%) rotate(-90deg);
         font-size: ${labelDesign.footerFontSize}px;
-        line-height: 1.2;
+        line-height: 1.3;
         color: #23160d;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5px;
+        white-space: nowrap;
       }
       .footer strong {
         display: block;
         font-weight: 500;
-      }
-      .qr-wrap {
-        position: absolute;
-        right: ${labelDesign.qrRight}px;
-        top: 50%;
-        transform: translateY(-50%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: fit-content;
-      }
-      .qr {
-        width: ${labelDesign.qrWidth}px;
-        height: auto;
-        max-height: ${labelDesign.qrMaxHeight}px;
-        object-fit: contain;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
-        -ms-interpolation-mode: nearest-neighbor;
-      }
-      .lot {
-        position: absolute;
-        right: ${labelDesign.lotRight}px;
-        top: 50%;
-        transform: translateY(-50%);
-        writing-mode: vertical-lr;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: ${labelDesign.lotFontSize}px;
-        line-height: 1;
-        font-weight: 800;
-        color: #2b1a0f;
-        letter-spacing: 0.03em;
-        padding: 0;
       }
     </style>
   </head>
@@ -594,30 +585,22 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
     <div class="label">
       <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
       <div class="bg-tint"></div>
-      <div class="content">
-        <div class="center-stack">
-          <div class="name">${buildLabelProductHtml(productName || "")}</div>
-          <div class="strength">${escapeHtml(strength || "")}</div>
-        </div>
-        <div class="logo-wrap">
-          <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(
-    APP_LOGO_SRC
-  )}';" />
-        </div>
-        <div class="footer">
-          <strong>99% PURITY</strong>
-          <strong>FOR RESEARCH USE ONLY</strong>
-          </div>
-        </div>
-        <div class="qr-wrap">
-          <img class="qr" src="${escapeHtml(LABEL_QR_SRC)}" onerror="this.onerror=null;this.src='${escapeHtml(
-    qrCodeUrl
-  )}';" alt="QR code for ${escapeHtml(
-    productId || lot || "label"
-  )}" />
-        </div>
-        <div class="lot">${escapeHtml(lot || "")}</div>
+      <div class="lot">${escapeHtml(lot || "")}</div>
+      <div class="qr-wrap">
+        <img class="qr" src="${escapeHtml(LABEL_QR_SRC)}" onerror="this.onerror=null;this.src='${escapeHtml(qrCodeUrl)}';" alt="QR code" />
       </div>
+      <div class="logo-wrap">
+        <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(APP_LOGO_SRC)}';" />
+      </div>
+      <div class="center-stack">
+        <div class="name">${buildLabelProductHtml(productName || "")}</div>
+        <div class="strength">${escapeHtml(strength || "")}</div>
+      </div>
+      <div class="footer">
+        <strong>99% PURITY</strong>
+        <strong>FOR RESEARCH USE ONLY</strong>
+      </div>
+    </div>
     <script>
       window.onload = function () {
         var assets = [
@@ -664,33 +647,21 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
   const testDesign = scaleTestLabelDesignForPrint(design);
   const scaleX = LABEL_PRINT_WIDTH / LABEL_PREVIEW_WIDTH;
   const scaleY = LABEL_PRINT_HEIGHT / LABEL_PREVIEW_HEIGHT;
-  const printLogo = {
-    wrap: {
-      leftPercent: FIXED_LABEL_LOGO.leftPercent,
-      topPercent: testDesign.logoTopPercent,
-    },
-    size: {
-      width: FIXED_LABEL_LOGO.width * scaleX,
-      height: FIXED_LABEL_LOGO.height * scaleY,
-    },
-  };
+  const logoW = testDesign.logoWidth;
+  const logoH = testDesign.logoHeight;
   const pages = TEST_LABEL_VARIANTS.map(
     (variant) => `
       <section class="label-page">
         <div class="label">
           <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
           <div class="bg-tint"></div>
-          <div class="content">
-            <div class="product">${buildLabelProductHtml(productName || "")}</div>
-            <div class="strength">${escapeHtml(strength || "")}</div>
-            <div class="variant">${escapeHtml(variant)}</div>
-            <div class="logo-wrap">
-              <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(
-                APP_LOGO_SRC
-              )}';" />
-            </div>
-          </div>
           <div class="lot">${escapeHtml(lot || "")}</div>
+          <div class="logo-wrap">
+            <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(APP_LOGO_SRC)}';" />
+          </div>
+          <div class="product">${buildLabelProductHtml(productName || "")}</div>
+          <div class="strength">${escapeHtml(strength || "")}</div>
+          <div class="variant">${escapeHtml(variant)}</div>
         </div>
       </section>`
   ).join("");
@@ -700,7 +671,7 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
     <meta charset="utf-8" />
     <title>Test labels</title>
     <style>
-      @page { size: 1.75in 0.75in; margin: 0; }
+      @page { size: 0.75in 1.75in; margin: 0; }
       html, body {
         margin: 0;
         padding: 0;
@@ -712,18 +683,19 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         print-color-adjust: exact;
       }
       .label-page {
-        width: 1.75in;
-        height: 0.75in;
+        width: 0.75in;
+        height: 1.75in;
         page-break-after: always;
         break-after: page;
+        overflow: hidden;
       }
       .label-page:last-child {
         page-break-after: auto;
         break-after: auto;
       }
       .label {
-        width: 1.75in;
-        height: 0.75in;
+        width: 0.75in;
+        height: 1.75in;
         box-sizing: border-box;
         position: relative;
         overflow: hidden;
@@ -744,9 +716,29 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         background: ${escapeHtml(labelBackground)};
         pointer-events: none;
       }
-      .content {
+      .lot {
         position: absolute;
-        inset: 0;
+        left: ${testDesign.lotLeft}px;
+        top: ${testDesign.lotTop}px;
+        font-size: ${testDesign.lotFontSize}px;
+        line-height: 1;
+        font-weight: 800;
+        color: #2b1a0f;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
+      .logo-wrap {
+        position: absolute;
+        left: ${testDesign.logoLeftPercent}%;
+        top: ${testDesign.logoTopPercent}%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        justify-content: center;
+      }
+      .logo {
+        width: ${logoW}px;
+        height: ${logoH}px;
+        object-fit: contain;
       }
       .product {
         position: absolute;
@@ -768,19 +760,6 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         line-clamp: 2;
         text-wrap: balance;
       }
-      .logo-wrap {
-        position: absolute;
-        left: ${printLogo.wrap.leftPercent}%;
-        top: ${printLogo.wrap.topPercent}%;
-        transform: translate(-50%, -50%);
-        display: flex;
-        justify-content: center;
-      }
-      .logo {
-        width: ${printLogo.size.width}px;
-        height: ${printLogo.size.height}px;
-        object-fit: contain;
-      }
       .strength {
         position: absolute;
         left: ${testDesign.strengthLeftPercent}%;
@@ -790,7 +769,7 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         align-items: center;
         justify-content: center;
         background: ${escapeHtml(capColorValue)};
-        color: ${escapeHtml(FIXED_MASS_TEXT_COLOR)};
+        color: ${escapeHtml(testDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};
         border-radius: ${testDesign.strengthRadius}px;
         padding: ${FIXED_MASS_PAD_Y * scaleY}px ${testDesign.strengthPadX}px;
         font-size: ${testDesign.strengthFontSize}px;
@@ -810,21 +789,6 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         letter-spacing: 0.04em;
         text-align: center;
       }
-      .lot {
-        position: absolute;
-        right: ${testDesign.lotRight}px;
-        top: ${testDesign.lotTopPercent}%;
-        transform: translateY(-50%);
-        writing-mode: vertical-lr;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: ${testDesign.lotFontSize}px;
-        line-height: 1;
-        font-weight: 800;
-        color: #2b1a0f;
-        letter-spacing: 0.03em;
-      }
     </style>
   </head>
   <body>
@@ -841,9 +805,7 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
           if (settled) return;
           settled = true;
           window.focus();
-          setTimeout(function () {
-            window.print();
-          }, 120);
+          setTimeout(function () { window.print(); }, 120);
         }
         function markDone() {
           remaining -= 1;
@@ -857,9 +819,7 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         });
         setTimeout(finish, 900);
       };
-      window.onafterprint = function () {
-        window.close();
-      };
+      window.onafterprint = function () { window.close(); };
     </script>
   </body>
 </html>`;
@@ -980,7 +940,7 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         align-items: center;
         justify-content: center;
         background: ${escapeHtml(accentColor)};
-        color: ${escapeHtml(FIXED_MASS_TEXT_COLOR)};
+        color: ${escapeHtml(kitDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};
         padding: ${kitDesign.strengthPadY}px ${kitDesign.strengthPadX}px;
         border-radius: ${kitDesign.strengthRadius}px;
         font-size: ${kitDesign.strengthFontSize}px;
@@ -1119,8 +1079,10 @@ const LotIDTracker = () => {
   const [labelEditorOpen, setLabelEditorOpen] = useState(false);
   const [labelDesignDraft, setLabelDesignDraft] = useState(DEFAULT_LABEL_DESIGN);
   const [labelEditorMode, setLabelEditorMode] = useState("vial");
+  const [labelEditorProductKey, setLabelEditorProductKey] = useState(null);
   const [previewLotSelection, setPreviewLotSelection] = useState({});
   const [editLotModal, setEditLotModal] = useState({ productKey: null, index: null, lot: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
+  const [editProductModal, setEditProductModal] = useState({ open: false, docId: null, id: "", product: "" });
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
@@ -1198,6 +1160,17 @@ const LotIDTracker = () => {
       console.error("Error saving section", err);
     }
   };
+  const saveProductInfo = async () => {
+    const { docId, id, product } = editProductModal;
+    if (!docId || !product.trim()) return;
+    try {
+      await updateDoc(doc(db, "c&pProductList", docId), { id: id.trim(), product: product.trim() });
+      setProducts((prev) => prev.map((p) => p.docId === docId ? { ...p, id: id.trim(), product: product.trim() } : p));
+      setEditProductModal({ open: false, docId: null, id: "", product: "" });
+    } catch (err) {
+      console.error("Error saving product info", err);
+    }
+  };
   const copyToClipboard = (text, key, field) => {
     if (!text) return;
     navigator.clipboard
@@ -1258,7 +1231,7 @@ const LotIDTracker = () => {
               currentCoa: normalizedCurrent,
               coaList: data.coaList || [],
               capColor: currentCoa.capColor || data.capColor || "",
-              labelDesign: mergeLabelDesign(data.labelDesign),
+              verticalLabelDesign: mergeLabelDesign(data.verticalLabelDesign),
               kitLabelDesign: mergeKitLabelDesign(data.kitLabelDesign),
               testLabelDesign: mergeTestLabelDesign(data.testLabelDesign),
             });
@@ -1286,7 +1259,7 @@ const LotIDTracker = () => {
                   }))
                 : [],
               capColor: p.currentCoa?.capColor || p.capColor || "",
-              labelDesign: mergeLabelDesign(p.labelDesign),
+              verticalLabelDesign: mergeLabelDesign(p.verticalLabelDesign),
               kitLabelDesign: mergeKitLabelDesign(p.kitLabelDesign),
               testLabelDesign: mergeTestLabelDesign(p.testLabelDesign),
             };
@@ -1559,7 +1532,7 @@ const LotIDTracker = () => {
       strength: product.strength || "",
       lot: lotEntry.lot,
       capColor: getCapRenderColor(lotEntry.capColor, lotEntry.capShade),
-      design: productData[product.docId]?.labelDesign || DEFAULT_LABEL_DESIGN,
+      design: productData[product.docId]?.verticalLabelDesign || DEFAULT_LABEL_DESIGN,
     });
     printWindow.document.open();
     printWindow.document.write(markup);
@@ -1606,18 +1579,22 @@ const LotIDTracker = () => {
 
   const openLabelEditor = (productKey, mode = "vial") => {
     setLabelEditorMode(mode);
+    setLabelEditorProductKey(productKey);
     setLabelDesignDraft(
       mode === "kit"
         ? mergeKitLabelDesign(productData[productKey]?.kitLabelDesign)
         : mode === "test"
           ? mergeTestLabelDesign(productData[productKey]?.testLabelDesign)
-          : mergeLabelDesign(productData[productKey]?.labelDesign)
+          : mergeLabelDesign(productData[productKey]?.verticalLabelDesign)
     );
     setLabelEditorOpen(true);
   };
 
   const saveLabelDesign = async () => {
-    if (!selectedProductId) return;
+    if (!labelEditorProductKey) {
+      console.warn("saveLabelDesign: no labelEditorProductKey set");
+      return;
+    }
     const nextDesign =
       labelEditorMode === "kit"
         ? mergeKitLabelDesign(labelDesignDraft)
@@ -1629,65 +1606,43 @@ const LotIDTracker = () => {
         ? "kitLabelDesign"
         : labelEditorMode === "test"
           ? "testLabelDesign"
-          : "labelDesign";
+          : "verticalLabelDesign";
+    const localKey =
+      labelEditorMode === "kit"
+        ? "kitLabelDesign"
+        : labelEditorMode === "test"
+          ? "testLabelDesign"
+          : "verticalLabelDesign";
+    console.log("saveLabelDesign →", { labelEditorProductKey, fieldName, nextDesign });
     setProductData((prev) => ({
       ...prev,
-      [selectedProductId]: {
-        ...prev[selectedProductId],
-        [fieldName]: nextDesign,
+      [labelEditorProductKey]: {
+        ...prev[labelEditorProductKey],
+        [localKey]: nextDesign,
       },
     }));
-    await saveSection(selectedProductId, { [fieldName]: nextDesign });
+    try {
+      await updateDoc(doc(db, "c&pProductList", labelEditorProductKey), { [fieldName]: nextDesign });
+      console.log("saveLabelDesign: Firestore write succeeded");
+    } catch (err) {
+      console.error("saveLabelDesign: Firestore write FAILED", err);
+      alert(`Save failed: ${err.message}`);
+    }
     setLabelEditorOpen(false);
   };
 
   const renderLabelPreview = (product, lotEntry, designStyles) => (
     <div
       className="lot-id-print-label"
-      style={{
-        background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)",
-      }}
+      style={{ background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)" }}
     >
-      <img
-        src="/assets/silverBackground.png"
-        alt=""
-        className="lot-id-print-label-bg"
-      />
+      <img src="/assets/silverBackground.png" alt="" className="lot-id-print-label-bg" />
       <div
         className="lot-id-print-label-tint"
         style={{ background: buildLabelBackground(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)) }}
       />
-      <div className="lot-id-print-label-body">
-        <div className="lot-id-print-label-logo-wrap" style={designStyles.logoWrap}>
-          <img
-            src="/assets/labelLogo.png"
-            alt="Coffee and Peppers"
-            className="lot-id-print-label-logo"
-            style={designStyles.logo}
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-              e.currentTarget.src = "/assets/logo.png";
-            }}
-          />
-        </div>
-        <div className="lot-id-print-label-center lot-id-print-label-center-test" style={designStyles.center}>
-          <div className="lot-id-print-label-name" style={designStyles.name}>
-            {renderLabelProductName(product.product)}
-          </div>
-          <div
-            className="lot-id-print-label-strength"
-            style={{
-              ...designStyles.strength,
-              backgroundColor: normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)),
-            }}
-          >
-            {product.strength}
-          </div>
-        </div>
-        <div className="lot-id-print-label-footer" style={designStyles.footer}>
-          <span>99% PURITY</span>
-          <span>FOR RESEARCH USE ONLY</span>
-        </div>
+      <div className="lot-id-print-label-lot" style={designStyles.lot}>
+        {lotEntry.lot}
       </div>
       <div className="lot-id-print-label-qr-wrap" style={designStyles.qrWrap}>
         <img
@@ -1695,14 +1650,35 @@ const LotIDTracker = () => {
           alt={`QR for ${lotEntry.lot}`}
           className="lot-id-print-label-qr"
           style={designStyles.qr}
-          onError={(e) => {
-            e.currentTarget.onerror = null;
-            e.currentTarget.src = buildQrCodeUrl(lotEntry.lot);
-          }}
+          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = buildQrCodeUrl(lotEntry.lot); }}
         />
       </div>
-      <div className="lot-id-print-label-lot" style={designStyles.lot}>
-        {lotEntry.lot}
+      <div className="lot-id-print-label-logo-wrap" style={designStyles.logoWrap}>
+        <img
+          src="/assets/labelLogo.png"
+          alt="Coffee and Peppers"
+          className="lot-id-print-label-logo"
+          style={designStyles.logo}
+          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/assets/logo.png"; }}
+        />
+      </div>
+      <div className="lot-id-print-label-center" style={designStyles.center}>
+        <div className="lot-id-print-label-name" style={designStyles.name}>
+          {renderLabelProductName(product.product)}
+        </div>
+        <div
+          className="lot-id-print-label-strength"
+          style={{
+            ...designStyles.strength,
+            backgroundColor: normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)),
+          }}
+        >
+          {product.strength}
+        </div>
+      </div>
+      <div className="lot-id-print-label-footer" style={designStyles.footer}>
+        <span>99% PURITY</span>
+        <span>FOR RESEARCH USE ONLY</span>
       </div>
     </div>
   );
@@ -1855,6 +1831,25 @@ const LotIDTracker = () => {
   return (
     <div className="lot-id-tracker-container">
       <div className="lot-id-pill-bar">
+        {import.meta.env.DEV && (
+          <button
+            className="lot-id-product-pill"
+            style={{ background: '#c0392b', color: '#fff', fontWeight: 800 }}
+            onClick={async () => {
+              const snap = await getDocs(collection(db, "c&pProductList"));
+              let count = 0;
+              for (const docSnap of snap.docs) {
+                await updateDoc(doc(db, "c&pProductList", docSnap.id), {
+                  verticalLabelDesign: DEFAULT_LABEL_DESIGN,
+                });
+                count++;
+              }
+              alert(`Done — overwrote verticalLabelDesign on ${count} product(s).`);
+            }}
+          >
+            Init Vertical Labels
+          </button>
+        )}
         {products.map((p) => (
           <button
             key={p.docId}
@@ -1872,7 +1867,7 @@ const LotIDTracker = () => {
             productID: "",
             currentCOA: createEmptyCOA(),
             coaList: [],
-            labelDesign: DEFAULT_LABEL_DESIGN,
+            verticalLabelDesign: DEFAULT_LABEL_DESIGN,
             kitLabelDesign: DEFAULT_KIT_LABEL_DESIGN,
             testLabelDesign: DEFAULT_TEST_LABEL_DESIGN,
           };
@@ -1890,21 +1885,21 @@ const LotIDTracker = () => {
             data.coaList?.[0] ||
             null;
           const designStyles = buildLabelDesignStyles(
-            labelEditorOpen && selectedProductId === key
+            labelEditorOpen && labelEditorProductKey === key
               ? labelEditorMode === "vial"
                 ? labelDesignDraft
-                : mergeLabelDesign(data.labelDesign)
-              : mergeLabelDesign(data.labelDesign)
+                : mergeLabelDesign(data.verticalLabelDesign)
+              : mergeLabelDesign(data.verticalLabelDesign)
           );
           const kitDesignStyles = buildKitLabelDesignStyles(
-            labelEditorOpen && selectedProductId === key
+            labelEditorOpen && labelEditorProductKey === key
               ? labelEditorMode === "kit"
                 ? labelDesignDraft
                 : mergeKitLabelDesign(data.kitLabelDesign)
               : mergeKitLabelDesign(data.kitLabelDesign)
           );
           const testDesignStyles = buildTestLabelDesignStyles(
-            labelEditorOpen && selectedProductId === key
+            labelEditorOpen && labelEditorProductKey === key
               ? labelEditorMode === "test"
                 ? labelDesignDraft
                 : mergeTestLabelDesign(data.testLabelDesign)
@@ -1924,9 +1919,16 @@ const LotIDTracker = () => {
                 <div className="lot-id-title">
                   <div className="lot-id-preheader">{data.productID || p.id || "—"}</div>
                   <div className="lot-id-name">{p.product}</div>
+                  <div className="lot-id-strength">{p.strength}</div>
                 </div>
                 <div className="lot-id-header-actions">
-                  <div className="lot-id-strength">{p.strength}</div>
+                  <button
+                    type="button"
+                    className="lot-id-layout-btn"
+                    onClick={() => setEditProductModal({ open: true, docId: p.docId, id: p.id || "", product: p.product || "" })}
+                  >
+                    Edit
+                  </button>
                 </div>
               </div>
 
@@ -2139,6 +2141,36 @@ const LotIDTracker = () => {
           );
         })}
       </div>
+
+      {editProductModal.open &&
+        createPortal(
+          <div className="lot-modal-backdrop" onClick={() => setEditProductModal({ open: false, docId: null, id: "", product: "" })}>
+            <div className="lot-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Edit Product</h3>
+              <label className="lot-modal-label">Product ID</label>
+              <input
+                type="text"
+                value={editProductModal.id}
+                onChange={(e) => setEditProductModal((prev) => ({ ...prev, id: e.target.value }))}
+                className="lot-modal-input"
+                placeholder="e.g. TESA10"
+              />
+              <label className="lot-modal-label">Product Name</label>
+              <input
+                type="text"
+                value={editProductModal.product}
+                onChange={(e) => setEditProductModal((prev) => ({ ...prev, product: e.target.value }))}
+                className="lot-modal-input"
+                placeholder="e.g. Tesamorelin"
+              />
+              <div className="lot-modal-actions">
+                <button className="lot-modal-btn primary" onClick={saveProductInfo}>Save</button>
+                <button className="lot-modal-btn" onClick={() => setEditProductModal({ open: false, docId: null, id: "", product: "" })}>Cancel</button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {lotModalConfig.productKey &&
         createPortal(
@@ -2618,6 +2650,27 @@ const LotIDTracker = () => {
                 ) : (
                   <>
                     <div className="lot-layout-section">
+                      <div className="lot-layout-section-title">Logo</div>
+                      <div className="lot-layout-section-grid">
+                        <label className="lot-layout-field">
+                          <span>Left</span>
+                          <input type="number" value={labelDesignDraft.logoLeft} onChange={(e) => updateLabelDesign("logoLeft", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Top %</span>
+                          <input type="number" value={labelDesignDraft.logoTopPercent} onChange={(e) => updateLabelDesign("logoTopPercent", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Width</span>
+                          <input type="number" value={labelDesignDraft.logoWidth} onChange={(e) => updateLabelDesign("logoWidth", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Height</span>
+                          <input type="number" value={labelDesignDraft.logoHeight} onChange={(e) => updateLabelDesign("logoHeight", e.target.value)} className="lot-modal-input" />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="lot-layout-section">
                       <div className="lot-layout-section-title">Center Stack</div>
                       <div className="lot-layout-section-grid">
                         <label className="lot-layout-field">
@@ -2689,8 +2742,8 @@ const LotIDTracker = () => {
                           <input type="number" value={labelDesignDraft.footerLeft} onChange={(e) => updateLabelDesign("footerLeft", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
-                          <span>Bottom</span>
-                          <input type="number" value={labelDesignDraft.footerBottom} onChange={(e) => updateLabelDesign("footerBottom", e.target.value)} className="lot-modal-input" />
+                          <span>Top</span>
+                          <input type="number" value={labelDesignDraft.footerTop} onChange={(e) => updateLabelDesign("footerTop", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
                           <span>Font</span>
@@ -2702,8 +2755,8 @@ const LotIDTracker = () => {
                       <div className="lot-layout-section-title">QR</div>
                       <div className="lot-layout-section-grid">
                         <label className="lot-layout-field">
-                          <span>Right</span>
-                          <input type="number" value={labelDesignDraft.qrRight} onChange={(e) => updateLabelDesign("qrRight", e.target.value)} className="lot-modal-input" />
+                          <span>Left</span>
+                          <input type="number" value={labelDesignDraft.qrLeft} onChange={(e) => updateLabelDesign("qrLeft", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
                           <span>Width</span>
@@ -2719,8 +2772,12 @@ const LotIDTracker = () => {
                       <div className="lot-layout-section-title">Lot ID</div>
                       <div className="lot-layout-section-grid">
                         <label className="lot-layout-field">
-                          <span>Right</span>
-                          <input type="number" value={labelDesignDraft.lotRight} onChange={(e) => updateLabelDesign("lotRight", e.target.value)} className="lot-modal-input" />
+                          <span>Left</span>
+                          <input type="number" value={labelDesignDraft.lotLeft} onChange={(e) => updateLabelDesign("lotLeft", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Top</span>
+                          <input type="number" value={labelDesignDraft.lotTop} onChange={(e) => updateLabelDesign("lotTop", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
                           <span>Font</span>
