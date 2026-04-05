@@ -142,6 +142,9 @@ const DEFAULT_LABEL_DESIGN = {
   qrTop: 22,
   qrWidth: 82,
   qrMaxHeight: 132,
+  // Variant text (test labels only)
+  variantFontSize: 22,
+  variantMarginTop: 2,
   // Lot ID — top center
   lotLeft: 90,
   lotTop: 8,
@@ -180,25 +183,25 @@ const DEFAULT_KIT_LABEL_DESIGN = {
 };
 const DEFAULT_TEST_LABEL_DESIGN = {
   logoLeftPercent: 50,
-  logoTopPercent: 22,
-  logoWidth: 140,
-  logoHeight: 52,
+  logoTopPercent: 18,
+  logoWidth: 170,
+  logoHeight: 65,
   productLeftPercent: 50,
-  productTopPercent: 46,
-  productWidth: 158,
-  nameFontSize: 26,
-  nameLineHeight: 0.9,
+  productTopPercent: 42,
+  productWidth: 255,
+  nameFontSize: 30,
+  nameLineHeight: 0.85,
   strengthLeftPercent: 50,
-  strengthTopPercent: 63,
-  strengthFontSize: 15,
-  strengthPadX: 12,
-  strengthRadius: FIXED_MASS_RADIUS,
+  strengthTopPercent: 66,
+  strengthFontSize: 20,
+  strengthPadX: 13,
+  strengthPadY: 8,
+  strengthRadius: 10,
   variantLeftPercent: 50,
-  variantTopPercent: 79,
-  variantFontSize: 22,
-  lotLeft: 8,
-  lotTop: 8,
-  lotFontSize: 9,
+  variantTopPercent: 82,
+  variantFontSize: 30,
+  lotTopPercent: 54,
+  lotFontSize: 12,
 };
 const mergeLabelDesign = (value) => ({ ...DEFAULT_LABEL_DESIGN, ...(value || {}) });
 const mergeKitLabelDesign = (value) => ({
@@ -301,6 +304,7 @@ const buildTestLabelDesignStyles = (design) => ({
   logoWrap: {
     left: `${design.logoLeftPercent}%`,
     top: `${design.logoTopPercent}%`,
+    transform: 'translateX(-50%)',
   },
   logo: {
     width: `${design.logoWidth}px`,
@@ -312,24 +316,29 @@ const buildTestLabelDesignStyles = (design) => ({
     width: `${design.productWidth}px`,
     fontSize: `${design.nameFontSize}px`,
     lineHeight: design.nameLineHeight,
+    transform: 'translate(-50%, -50%)',
   },
   strength: {
     left: `${design.strengthLeftPercent}%`,
     top: `${design.strengthTopPercent}%`,
     fontSize: `${design.strengthFontSize}px`,
-    padding: `${FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
+    padding: `${design.strengthPadY ?? FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
     borderRadius: `${design.strengthRadius}px`,
     color: design.massTextColor || FIXED_MASS_TEXT_COLOR,
+    transform: 'translate(-50%, -50%)',
   },
   variant: {
     left: `${design.variantLeftPercent}%`,
     top: `${design.variantTopPercent}%`,
     fontSize: `${design.variantFontSize}px`,
+    marginTop: `${design.variantMarginTop ?? 2}px`,
+    transform: 'translate(-50%, -50%)',
   },
   lot: {
-    right: `${design.lotRight}px`,
+    left: '50%',
     top: `${design.lotTopPercent}%`,
     fontSize: `${design.lotFontSize}px`,
+    transform: 'translate(-50%, -50%)',
   },
 });
 const scaleLabelDesignForPrint = (design) => {
@@ -357,6 +366,8 @@ const scaleLabelDesignForPrint = (design) => {
     qrTop: merged.qrTop * scaleY,
     qrWidth: merged.qrWidth * scaleX,
     qrMaxHeight: merged.qrMaxHeight * scaleY,
+    variantFontSize: merged.variantFontSize * scale,
+    variantMarginTop: merged.variantMarginTop * scale,
     lotLeft: merged.lotLeft * scaleX,
     lotTop: merged.lotTop * scaleY,
     lotFontSize: merged.lotFontSize * scale,
@@ -407,10 +418,9 @@ const scaleTestLabelDesignForPrint = (design) => {
     nameFontSize: merged.nameFontSize * scale,
     strengthFontSize: merged.strengthFontSize * scale,
     strengthPadX: merged.strengthPadX * scaleX,
+    strengthPadY: (merged.strengthPadY ?? FIXED_MASS_PAD_Y) * scaleY,
     strengthRadius: merged.strengthRadius * scale,
     variantFontSize: merged.variantFontSize * scale,
-    lotLeft: merged.lotLeft * scaleX,
-    lotTop: merged.lotTop * scaleY,
     lotFontSize: merged.lotFontSize * scale,
   };
 };
@@ -644,11 +654,8 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
 const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, design }) => {
   const capColorValue = normalizeLabelAccentColor(capColor);
   const labelBackground = buildLabelBackground(capColorValue);
-  const testDesign = scaleTestLabelDesignForPrint(design);
-  const scaleX = LABEL_PRINT_WIDTH / LABEL_PREVIEW_WIDTH;
-  const scaleY = LABEL_PRINT_HEIGHT / LABEL_PREVIEW_HEIGHT;
-  const logoW = testDesign.logoWidth;
-  const logoH = testDesign.logoHeight;
+  const d = scaleLabelDesignForPrint(design);
+  const printLogo = buildFixedLogoPrintStyles(d);
   const pages = TEST_LABEL_VARIANTS.map(
     (variant) => `
       <section class="label-page">
@@ -659,9 +666,11 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
           <div class="logo-wrap">
             <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(APP_LOGO_SRC)}';" />
           </div>
-          <div class="product">${buildLabelProductHtml(productName || "")}</div>
-          <div class="strength">${escapeHtml(strength || "")}</div>
-          <div class="variant">${escapeHtml(variant)}</div>
+          <div class="center-stack">
+            <div class="name">${buildLabelProductHtml(productName || "")}</div>
+            <div class="strength">${escapeHtml(strength || "")}</div>
+            <div class="variant">${escapeHtml(variant)}</div>
+          </div>
         </div>
       </section>`
   ).join("");
@@ -718,9 +727,10 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
       }
       .lot {
         position: absolute;
-        left: ${testDesign.lotLeft}px;
-        top: ${testDesign.lotTop}px;
-        font-size: ${testDesign.lotFontSize}px;
+        left: ${d.lotLeft}px;
+        top: ${d.lotTop}px;
+        transform: translateX(-50%);
+        font-size: ${d.lotFontSize}px;
         line-height: 1;
         font-weight: 800;
         color: #2b1a0f;
@@ -729,65 +739,62 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
       }
       .logo-wrap {
         position: absolute;
-        left: ${testDesign.logoLeftPercent}%;
-        top: ${testDesign.logoTopPercent}%;
-        transform: translate(-50%, -50%);
+        left: ${printLogo.wrap.left}px;
+        top: ${printLogo.wrap.topPercent}%;
+        transform-origin: left center;
+        transform: rotate(-90deg);
         display: flex;
         justify-content: center;
+        align-items: center;
       }
       .logo {
-        width: ${logoW}px;
-        height: ${logoH}px;
+        width: ${printLogo.size.width}px;
+        height: ${printLogo.size.height}px;
         object-fit: contain;
       }
-      .product {
+      .center-stack {
         position: absolute;
-        left: ${testDesign.productLeftPercent}%;
-        top: ${testDesign.productTopPercent}%;
-        transform: translate(-50%, -50%);
-        width: ${testDesign.productWidth}px;
+        left: ${d.centerLeftPercent}%;
+        top: ${d.centerTopPercent}%;
+        transform: translate(-50%, -50%) rotate(-90deg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: ${d.centerGap}px;
+        width: ${d.centerWidth}px;
         text-align: center;
-        font-size: ${testDesign.nameFontSize}px;
-        line-height: ${testDesign.nameLineHeight};
+      }
+      .name {
+        text-align: center;
+        font-size: ${d.nameFontSize}px;
+        line-height: ${d.nameLineHeight};
         font-weight: 900;
         color: #23160d;
         text-transform: uppercase;
-        white-space: normal;
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-        text-wrap: balance;
+        white-space: nowrap;
       }
       .strength {
-        position: absolute;
-        left: ${testDesign.strengthLeftPercent}%;
-        top: ${testDesign.strengthTopPercent}%;
-        transform: translate(-50%, -50%);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         background: ${escapeHtml(capColorValue)};
-        color: ${escapeHtml(testDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};
-        border-radius: ${testDesign.strengthRadius}px;
-        padding: ${FIXED_MASS_PAD_Y * scaleY}px ${testDesign.strengthPadX}px;
-        font-size: ${testDesign.strengthFontSize}px;
+        color: ${escapeHtml(d.massTextColor || FIXED_MASS_TEXT_COLOR)};
+        border-radius: ${d.strengthRadius}px;
+        padding: ${d.strengthPadY}px ${d.strengthPadX}px;
+        font-size: ${d.strengthFontSize}px;
         line-height: 1;
         font-weight: 900;
+        white-space: nowrap;
       }
       .variant {
-        position: absolute;
-        left: ${testDesign.variantLeftPercent}%;
-        top: ${testDesign.variantTopPercent}%;
-        transform: translate(-50%, -50%);
-        font-size: ${testDesign.variantFontSize}px;
-        line-height: 1;
+        font-size: ${d.variantFontSize}px;
         font-weight: 800;
         color: #23160d;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
-        text-align: center;
+        margin-top: ${d.variantMarginTop}px;
+        white-space: nowrap;
       }
     </style>
   </head>
@@ -1233,7 +1240,7 @@ const LotIDTracker = () => {
               capColor: currentCoa.capColor || data.capColor || "",
               verticalLabelDesign: mergeLabelDesign(data.verticalLabelDesign),
               kitLabelDesign: mergeKitLabelDesign(data.kitLabelDesign),
-              testLabelDesign: mergeTestLabelDesign(data.testLabelDesign),
+              testLabelDesign: mergeLabelDesign(data.testLabelDesign),
             });
           });
         items.sort((a, b) => a.product.localeCompare(b.product));
@@ -1261,7 +1268,7 @@ const LotIDTracker = () => {
               capColor: p.currentCoa?.capColor || p.capColor || "",
               verticalLabelDesign: mergeLabelDesign(p.verticalLabelDesign),
               kitLabelDesign: mergeKitLabelDesign(p.kitLabelDesign),
-              testLabelDesign: mergeTestLabelDesign(p.testLabelDesign),
+              testLabelDesign: mergeLabelDesign(p.testLabelDesign),
             };
             return acc;
           }, {});
@@ -1563,7 +1570,7 @@ const LotIDTracker = () => {
       strength: product.strength || "",
       lot: lotEntry.lot,
       capColor: getCapRenderColor(lotEntry.capColor, lotEntry.capShade),
-      design: productData[product.docId]?.testLabelDesign || DEFAULT_TEST_LABEL_DESIGN,
+      design: productData[product.docId]?.testLabelDesign ?? DEFAULT_LABEL_DESIGN,
     });
     printWindow.document.open();
     printWindow.document.write(markup);
@@ -1584,7 +1591,7 @@ const LotIDTracker = () => {
       mode === "kit"
         ? mergeKitLabelDesign(productData[productKey]?.kitLabelDesign)
         : mode === "test"
-          ? mergeTestLabelDesign(productData[productKey]?.testLabelDesign)
+          ? mergeLabelDesign(productData[productKey]?.testLabelDesign)
           : mergeLabelDesign(productData[productKey]?.verticalLabelDesign)
     );
     setLabelEditorOpen(true);
@@ -1599,7 +1606,7 @@ const LotIDTracker = () => {
       labelEditorMode === "kit"
         ? mergeKitLabelDesign(labelDesignDraft)
         : labelEditorMode === "test"
-          ? mergeTestLabelDesign(labelDesignDraft)
+          ? mergeLabelDesign(labelDesignDraft)
           : mergeLabelDesign(labelDesignDraft);
     const fieldName =
       labelEditorMode === "kit"
@@ -1757,40 +1764,34 @@ const LotIDTracker = () => {
       </div>
     </div>
   );
-  const renderTestLabelPreview = (product, lotEntry, designStyles, variantText) => (
+  const renderTestLabelPreview = (product, lotEntry, designStyles, variantText, design) => (
     <div
       className="lot-id-print-label lot-id-print-label-test"
-      style={{
-        background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)",
-      }}
+      style={{ background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)" }}
     >
-      <img
-        src="/assets/silverBackground.png"
-        alt=""
-        className="lot-id-print-label-bg"
-      />
+      <img src="/assets/silverBackground.png" alt="" className="lot-id-print-label-bg" />
       <div
         className="lot-id-print-label-tint"
         style={{ background: buildLabelBackground(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)) }}
       />
-      <div className="lot-id-print-label-body">
-        <div className="lot-id-print-label-logo-wrap" style={designStyles.logoWrap}>
-          <img
-            src="/assets/labelLogo.png"
-            alt="Coffee and Peppers"
-            className="lot-id-print-label-logo"
-            style={designStyles.logo}
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-              e.currentTarget.src = "/assets/logo.png";
-            }}
-          />
-        </div>
-        <div className="lot-id-print-label-name lot-id-print-label-test-product" style={designStyles.product}>
+      <div className="lot-id-print-label-lot" style={designStyles.lot}>
+        {lotEntry.lot}
+      </div>
+      <div className="lot-id-print-label-logo-wrap" style={designStyles.logoWrap}>
+        <img
+          src="/assets/labelLogo.png"
+          alt="Coffee and Peppers"
+          className="lot-id-print-label-logo"
+          style={designStyles.logo}
+          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/assets/logo.png"; }}
+        />
+      </div>
+      <div className="lot-id-print-label-center" style={designStyles.center}>
+        <div className="lot-id-print-label-name" style={designStyles.name}>
           {renderLabelProductName(product.product)}
         </div>
         <div
-          className="lot-id-print-label-strength lot-id-print-label-test-strength"
+          className="lot-id-print-label-strength"
           style={{
             ...designStyles.strength,
             backgroundColor: normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)),
@@ -1798,12 +1799,19 @@ const LotIDTracker = () => {
         >
           {product.strength}
         </div>
-        <div className="lot-id-print-label-variant lot-id-print-label-test-variant" style={designStyles.variant}>
-          {variantText}
-        </div>
-      </div>
-      <div className="lot-id-print-label-lot" style={designStyles.lot}>
-        {lotEntry.lot}
+        {variantText && (
+          <div style={{
+            fontSize: `${design?.variantFontSize ?? 22}px`,
+            fontWeight: 800,
+            color: '#2b1a0f',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            marginTop: `${design?.variantMarginTop ?? 2}px`,
+            whiteSpace: 'nowrap',
+          }}>
+            {variantText}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1825,7 +1833,7 @@ const LotIDTracker = () => {
     labelEditorMode === "kit"
       ? buildKitLabelDesignStyles(mergeKitLabelDesign(labelDesignDraft))
       : labelEditorMode === "test"
-        ? buildTestLabelDesignStyles(mergeTestLabelDesign(labelDesignDraft))
+        ? buildLabelDesignStyles(mergeLabelDesign(labelDesignDraft))
         : buildLabelDesignStyles(mergeLabelDesign(labelDesignDraft));
 
   return (
@@ -1898,12 +1906,10 @@ const LotIDTracker = () => {
                 : mergeKitLabelDesign(data.kitLabelDesign)
               : mergeKitLabelDesign(data.kitLabelDesign)
           );
-          const testDesignStyles = buildTestLabelDesignStyles(
-            labelEditorOpen && labelEditorProductKey === key
-              ? labelEditorMode === "test"
-                ? labelDesignDraft
-                : mergeTestLabelDesign(data.testLabelDesign)
-              : mergeTestLabelDesign(data.testLabelDesign)
+          const testDesignStyles = buildLabelDesignStyles(
+            labelEditorOpen && labelEditorProductKey === key && labelEditorMode === "test"
+              ? mergeLabelDesign(labelDesignDraft)
+              : mergeLabelDesign(data.testLabelDesign)
           );
 
           return (
@@ -2051,7 +2057,11 @@ const LotIDTracker = () => {
                       <div className="lot-id-test-label-grid">
                         {TEST_LABEL_VARIANTS.map((testLot) => (
                           <div key={testLot} className="lot-id-test-label-item">
-                            {renderTestLabelPreview(p, activePreviewLot, testDesignStyles, testLot)}
+                            {renderTestLabelPreview(p, activePreviewLot, testDesignStyles, testLot,
+                              labelEditorOpen && labelEditorProductKey === key && labelEditorMode === "test"
+                                ? mergeLabelDesign(labelDesignDraft)
+                                : mergeLabelDesign(data.testLabelDesign)
+                            )}
                           </div>
                         ))}
                       </div>
@@ -2553,30 +2563,47 @@ const LotIDTracker = () => {
                       <div className="lot-layout-section-title">Logo</div>
                       <div className="lot-layout-section-grid">
                         <label className="lot-layout-field">
-                          <span>Left %</span>
-                          <input type="number" value={labelDesignDraft.logoLeftPercent} onChange={(e) => updateLabelDesign("logoLeftPercent", e.target.value)} className="lot-modal-input" />
+                          <span>Left</span>
+                          <input type="number" value={labelDesignDraft.logoLeft} onChange={(e) => updateLabelDesign("logoLeft", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
                           <span>Top %</span>
                           <input type="number" value={labelDesignDraft.logoTopPercent} onChange={(e) => updateLabelDesign("logoTopPercent", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Width</span>
+                          <input type="number" value={labelDesignDraft.logoWidth} onChange={(e) => updateLabelDesign("logoWidth", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Height</span>
+                          <input type="number" value={labelDesignDraft.logoHeight} onChange={(e) => updateLabelDesign("logoHeight", e.target.value)} className="lot-modal-input" />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="lot-layout-section">
+                      <div className="lot-layout-section-title">Center Stack</div>
+                      <div className="lot-layout-section-grid">
+                        <label className="lot-layout-field">
+                          <span>Left %</span>
+                          <input type="number" value={labelDesignDraft.centerLeftPercent} onChange={(e) => updateLabelDesign("centerLeftPercent", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Top %</span>
+                          <input type="number" value={labelDesignDraft.centerTopPercent} onChange={(e) => updateLabelDesign("centerTopPercent", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Width</span>
+                          <input type="number" value={labelDesignDraft.centerWidth} onChange={(e) => updateLabelDesign("centerWidth", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Gap</span>
+                          <input type="number" value={labelDesignDraft.centerGap} onChange={(e) => updateLabelDesign("centerGap", e.target.value)} className="lot-modal-input" />
                         </label>
                       </div>
                     </div>
                     <div className="lot-layout-section">
                       <div className="lot-layout-section-title">Product</div>
                       <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left %</span>
-                          <input type="number" value={labelDesignDraft.productLeftPercent} onChange={(e) => updateLabelDesign("productLeftPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.productTopPercent} onChange={(e) => updateLabelDesign("productTopPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Width</span>
-                          <input type="number" value={labelDesignDraft.productWidth} onChange={(e) => updateLabelDesign("productWidth", e.target.value)} className="lot-modal-input" />
-                        </label>
                         <label className="lot-layout-field">
                           <span>Font</span>
                           <input type="number" value={labelDesignDraft.nameFontSize} onChange={(e) => updateLabelDesign("nameFontSize", e.target.value)} className="lot-modal-input" />
@@ -2591,24 +2618,29 @@ const LotIDTracker = () => {
                       <div className="lot-layout-section-title">Mass</div>
                       <div className="lot-layout-section-grid">
                         <label className="lot-layout-field">
-                          <span>Left %</span>
-                          <input type="number" value={labelDesignDraft.strengthLeftPercent} onChange={(e) => updateLabelDesign("strengthLeftPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.strengthTopPercent} onChange={(e) => updateLabelDesign("strengthTopPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
                           <span>Font</span>
                           <input type="number" value={labelDesignDraft.strengthFontSize} onChange={(e) => updateLabelDesign("strengthFontSize", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
-                          <span>Pad X</span>
-                          <input type="number" value={labelDesignDraft.strengthPadX} onChange={(e) => updateLabelDesign("strengthPadX", e.target.value)} className="lot-modal-input" />
+                          <span>Text Color</span>
+                          <div className="lot-modal-color-row">
+                            <input
+                              type="color"
+                              value={colorValueToHex(labelDesignDraft.massTextColor, "#2b1a0f")}
+                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                              className="lot-modal-color-picker"
+                            />
+                            <input
+                              type="text"
+                              value={labelDesignDraft.massTextColor}
+                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                              className="lot-modal-input"
+                            />
+                          </div>
                         </label>
                         <label className="lot-layout-field">
-                          <span>Radius</span>
-                          <input type="number" value={labelDesignDraft.strengthRadius} onChange={(e) => updateLabelDesign("strengthRadius", e.target.value)} className="lot-modal-input" />
+                          <span>Pad X</span>
+                          <input type="number" value={labelDesignDraft.strengthPadX} onChange={(e) => updateLabelDesign("strengthPadX", e.target.value)} className="lot-modal-input" />
                         </label>
                       </div>
                     </div>
@@ -2616,16 +2648,12 @@ const LotIDTracker = () => {
                       <div className="lot-layout-section-title">Testing Variation</div>
                       <div className="lot-layout-section-grid">
                         <label className="lot-layout-field">
-                          <span>Left %</span>
-                          <input type="number" value={labelDesignDraft.variantLeftPercent} onChange={(e) => updateLabelDesign("variantLeftPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.variantTopPercent} onChange={(e) => updateLabelDesign("variantTopPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
                           <span>Font</span>
                           <input type="number" value={labelDesignDraft.variantFontSize} onChange={(e) => updateLabelDesign("variantFontSize", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Margin Top</span>
+                          <input type="number" value={labelDesignDraft.variantMarginTop} onChange={(e) => updateLabelDesign("variantMarginTop", e.target.value)} className="lot-modal-input" />
                         </label>
                       </div>
                     </div>
@@ -2633,12 +2661,12 @@ const LotIDTracker = () => {
                       <div className="lot-layout-section-title">Lot ID</div>
                       <div className="lot-layout-section-grid">
                         <label className="lot-layout-field">
-                          <span>Right</span>
-                          <input type="number" value={labelDesignDraft.lotRight} onChange={(e) => updateLabelDesign("lotRight", e.target.value)} className="lot-modal-input" />
+                          <span>Left</span>
+                          <input type="number" value={labelDesignDraft.lotLeft} onChange={(e) => updateLabelDesign("lotLeft", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.lotTopPercent} onChange={(e) => updateLabelDesign("lotTopPercent", e.target.value)} className="lot-modal-input" />
+                          <span>Top</span>
+                          <input type="number" value={labelDesignDraft.lotTop} onChange={(e) => updateLabelDesign("lotTop", e.target.value)} className="lot-modal-input" />
                         </label>
                         <label className="lot-layout-field">
                           <span>Font</span>
@@ -2751,6 +2779,7 @@ const LotIDTracker = () => {
                         </label>
                       </div>
                     </div>
+                    {labelEditorMode !== "test" && (
                     <div className="lot-layout-section">
                       <div className="lot-layout-section-title">QR</div>
                       <div className="lot-layout-section-grid">
@@ -2768,6 +2797,18 @@ const LotIDTracker = () => {
                         </label>
                       </div>
                     </div>
+                    )}
+                    {labelEditorMode === "test" && (
+                    <div className="lot-layout-section">
+                      <div className="lot-layout-section-title">Testing Variation</div>
+                      <div className="lot-layout-section-grid">
+                        <label className="lot-layout-field">
+                          <span>Font</span>
+                          <input type="number" value={labelDesignDraft.variantFontSize} onChange={(e) => updateLabelDesign("variantFontSize", e.target.value)} className="lot-modal-input" />
+                        </label>
+                      </div>
+                    </div>
+                    )}
                     <div className="lot-layout-section">
                       <div className="lot-layout-section-title">Lot ID</div>
                       <div className="lot-layout-section-grid">
