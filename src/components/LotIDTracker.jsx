@@ -1838,7 +1838,7 @@ const LotIDTracker = () => {
   return (
     <div className="lot-id-tracker-container">
       <div className="lot-id-pill-bar">
-        {import.meta.env.DEV && (
+        {false && import.meta.env.DEV && (
           <>
             <button
               className="lot-id-product-pill"
