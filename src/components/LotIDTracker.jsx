@@ -182,26 +182,25 @@ const DEFAULT_KIT_LABEL_DESIGN = {
   bottomFadeHeight: 250,
 };
 const DEFAULT_TEST_LABEL_DESIGN = {
-  logoLeftPercent: 50,
-  logoTopPercent: 18,
+  ...DEFAULT_LABEL_DESIGN,
+  logoLeft: 35,
+  logoTopPercent: 62,
   logoWidth: 170,
   logoHeight: 65,
-  productLeftPercent: 50,
-  productTopPercent: 42,
-  productWidth: 255,
+  centerLeftPercent: 70,
+  centerTopPercent: 50,
+  centerWidth: 255,
+  centerGap: 2,
   nameFontSize: 30,
   nameLineHeight: 0.85,
-  strengthLeftPercent: 50,
-  strengthTopPercent: 66,
-  strengthFontSize: 20,
+  strengthFontSize: 25,
+  massTextColor: "#ffffff",
   strengthPadX: 13,
-  strengthPadY: 8,
-  strengthRadius: 10,
-  variantLeftPercent: 50,
-  variantTopPercent: 82,
   variantFontSize: 30,
-  lotTopPercent: 54,
-  lotFontSize: 12,
+  variantMarginTop: 0,
+  lotLeft: 85,
+  lotTop: 10,
+  lotFontSize: 15,
 };
 const mergeLabelDesign = (value) => ({ ...DEFAULT_LABEL_DESIGN, ...(value || {}) });
 const mergeKitLabelDesign = (value) => ({
@@ -1840,23 +1839,43 @@ const LotIDTracker = () => {
     <div className="lot-id-tracker-container">
       <div className="lot-id-pill-bar">
         {import.meta.env.DEV && (
-          <button
-            className="lot-id-product-pill"
-            style={{ background: '#c0392b', color: '#fff', fontWeight: 800 }}
-            onClick={async () => {
-              const snap = await getDocs(collection(db, "c&pProductList"));
-              let count = 0;
-              for (const docSnap of snap.docs) {
-                await updateDoc(doc(db, "c&pProductList", docSnap.id), {
-                  verticalLabelDesign: DEFAULT_LABEL_DESIGN,
-                });
-                count++;
-              }
-              alert(`Done — overwrote verticalLabelDesign on ${count} product(s).`);
-            }}
-          >
-            Init Vertical Labels
-          </button>
+          <>
+            <button
+              className="lot-id-product-pill"
+              style={{ background: '#c0392b', color: '#fff', fontWeight: 800 }}
+              onClick={async () => {
+                const snap = await getDocs(collection(db, "c&pProductList"));
+                let count = 0;
+                for (const docSnap of snap.docs) {
+                  await updateDoc(doc(db, "c&pProductList", docSnap.id), {
+                    verticalLabelDesign: DEFAULT_LABEL_DESIGN,
+                  });
+                  count++;
+                }
+                alert(`Done — overwrote verticalLabelDesign on ${count} product(s).`);
+              }}
+            >
+              Init Vertical Labels
+            </button>
+            <button
+              className="lot-id-product-pill"
+              style={{ background: '#7b3f00', color: '#fff', fontWeight: 800 }}
+              onClick={async () => {
+                if (!confirm("Overwrite testLabelDesign on ALL products?")) return;
+                const snap = await getDocs(collection(db, "c&pProductList"));
+                let count = 0;
+                for (const docSnap of snap.docs) {
+                  await updateDoc(doc(db, "c&pProductList", docSnap.id), {
+                    testLabelDesign: DEFAULT_TEST_LABEL_DESIGN,
+                  });
+                  count++;
+                }
+                alert(`Done — overwrote testLabelDesign on ${count} product(s).`);
+              }}
+            >
+              Init Test Labels
+            </button>
+          </>
         )}
         {products.map((p) => (
           <button
