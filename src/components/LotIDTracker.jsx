@@ -2110,10 +2110,17 @@ const LotIDTracker = () => {
                   {(() => {
                     const lotList = data.coaList || [];
                     return lotList.length ? (
-                      lotList.map((coa, i) => (
+                      lotList.map((coa, i) => {
+                          const isActive = activePreviewLot?.lot === coa.lot;
+                          const capAccent = isActive ? normalizeLabelAccentColor(getCapRenderColor(coa.capColor, coa.capShade)) : null;
+                          return (
                         <li
                           key={i}
-                          className={`lot-id-list-item${activePreviewLot?.lot === coa.lot ? " preview-active" : ""}`}
+                          className={`lot-id-list-item${isActive ? " preview-active" : ""}`}
+                          style={isActive && capAccent ? {
+                            borderColor: capAccent,
+                            boxShadow: `0 0 0 3px ${capAccent}33, 0 6px 18px ${capAccent}22`,
+                          } : undefined}
                           onClick={() =>
                             setPreviewLotSelection((prev) => ({
                               ...prev,
@@ -2162,7 +2169,8 @@ const LotIDTracker = () => {
                             <div className="lot-id-note-display">{coa.note}</div>
                           )}
                         </li>
-                      ))
+                          );
+                        })
                     ) : (
                       <li className="lot-id-past-empty">None</li>
                     );
