@@ -198,6 +198,8 @@ const DEFAULT_TEST_LABEL_DESIGN = {
   strengthPadX: 13,
   variantFontSize: 30,
   variantMarginTop: 0,
+  variantOffsetX: 0,
+  variantOffsetY: 0,
   lotLeft: 85,
   lotTop: 10,
   lotFontSize: 15,
@@ -420,6 +422,8 @@ const scaleTestLabelDesignForPrint = (design) => {
     strengthPadY: (merged.strengthPadY ?? FIXED_MASS_PAD_Y) * scaleY,
     strengthRadius: merged.strengthRadius * scale,
     variantFontSize: merged.variantFontSize * scale,
+    variantOffsetX: merged.variantOffsetX * scale,
+    variantOffsetY: merged.variantOffsetY * scale,
     lotFontSize: merged.lotFontSize * scale,
   };
 };
@@ -793,6 +797,7 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         letter-spacing: 0.08em;
         text-transform: uppercase;
         margin-top: ${d.variantMarginTop}px;
+        transform: translateX(${d.variantOffsetX ?? 0}px) translateY(${d.variantOffsetY ?? 0}px);
         white-space: nowrap;
       }
     </style>
@@ -1804,6 +1809,7 @@ const LotIDTracker = () => {
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
             marginTop: `${design?.variantMarginTop ?? 2}px`,
+            transform: `translateX(${design?.variantOffsetX ?? 0}px) translateY(${design?.variantOffsetY ?? 0}px)`,
             whiteSpace: 'nowrap',
           }}>
             {variantText}
@@ -2671,6 +2677,14 @@ const LotIDTracker = () => {
                         <label className="lot-layout-field">
                           <span>Margin Top</span>
                           <input type="number" value={labelDesignDraft.variantMarginTop} onChange={(e) => updateLabelDesign("variantMarginTop", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Offset X</span>
+                          <input type="number" value={labelDesignDraft.variantOffsetX ?? 0} onChange={(e) => updateLabelDesign("variantOffsetX", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Offset Y</span>
+                          <input type="number" value={labelDesignDraft.variantOffsetY ?? 0} onChange={(e) => updateLabelDesign("variantOffsetY", e.target.value)} className="lot-modal-input" />
                         </label>
                       </div>
                     </div>
