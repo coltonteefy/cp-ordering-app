@@ -2096,8 +2096,8 @@ const LotIDTracker = () => {
                   </div>
                 </div>
 
-                <div className="lot-id-section">
-                <div className="lot-id-section-header">
+                <div className="lot-id-section lot-id-lot-list-section">
+                <div className="lot-id-section-header lot-id-lot-list-header">
                   <label>Lot List</label>
                   <button
                     className="lot-id-generate-btn"

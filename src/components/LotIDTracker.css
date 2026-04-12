@@ -813,6 +813,26 @@
   gap: 0.4rem;
 }
 
+.lot-id-lot-list-section {
+  position: sticky;
+  top: 80px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.lot-id-lot-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, #fefbf6 0%, #f7efe5 100%);
+  border-radius: 10px 10px 0 0;
+  padding-bottom: 0.65rem;
+  margin-bottom: 0;
+}
+
+
 .lot-id-list-item {
   display: flex;
   flex-direction: column;
