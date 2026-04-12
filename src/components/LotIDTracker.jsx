@@ -895,8 +895,6 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         width: ${kitDesign.qrSize}px;
         height: ${kitDesign.qrSize}px;
         object-fit: contain;
-        transform: rotate(-90deg);
-        transform-origin: center;
         image-rendering: pixelated;
         image-rendering: crisp-edges;
         -ms-interpolation-mode: nearest-neighbor;
