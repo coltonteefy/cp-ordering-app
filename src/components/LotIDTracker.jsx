@@ -189,6 +189,7 @@ const DEFAULT_KIT_LABEL_DESIGN = {
   footerFontSize: 15,
   footerGap: 20,
   bottomFadeHeight: 250,
+  massTextColor: "#ffffff",
 };
 const DEFAULT_TEST_LABEL_DESIGN = {
   ...DEFAULT_LABEL_DESIGN,
@@ -1758,6 +1759,7 @@ const LotIDTracker = ({ isGuest = false }) => {
             backgroundColor: normalizeLabelAccentColor(
               getCapRenderColor(lotEntry.capColor, lotEntry.capShade)
             ),
+            color: designStyles.strength.color,
           }}
         >
           {product.strength}
@@ -2596,6 +2598,23 @@ const LotIDTracker = ({ isGuest = false }) => {
                         <label className="lot-layout-field">
                           <span>Radius</span>
                           <input type="number" value={labelDesignDraft.strengthRadius} onChange={(e) => updateLabelDesign("strengthRadius", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Text Color</span>
+                          <div className="lot-modal-color-row">
+                            <input
+                              type="color"
+                              value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")}
+                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                              className="lot-modal-color-picker"
+                            />
+                            <input
+                              type="text"
+                              value={labelDesignDraft.massTextColor ?? "#ffffff"}
+                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                              className="lot-modal-input"
+                            />
+                          </div>
                         </label>
                       </div>
                     </div>
