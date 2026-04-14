@@ -2189,9 +2189,11 @@ const LotIDTracker = ({ isGuest = false }) => {
                                 {coa.capColor || "No cap color"}
                               </span>
                             </span>
-                            <span className="lot-id-meta-stat">
-                            {typeof coa.kits === "number" ? coa.kits : 0} kits
-                          </span>
+                            {!isGuest && (
+                              <span className="lot-id-meta-stat">
+                                {typeof coa.kits === "number" ? coa.kits : 0} kits
+                              </span>
+                            )}
                           {!isGuest && coa.vendor && (
                             <span className="lot-id-vendor-badge">{coa.vendor}</span>
                           )}
