@@ -89,6 +89,15 @@ const colorValueToHex = (value, fallback = "#c9c1b7") => {
   return `#${toHex(channels.r)}${toHex(channels.g)}${toHex(channels.b)}`;
 };
 const getCapRenderColor = (capColor, capShade) => capShade || capColor || "";
+const getCapBorderColor = (capColor, capShade) => {
+  const value = getCapRenderColor(capColor, capShade);
+  if (!value) return undefined;
+  const channels = getColorChannels(value);
+  if (!channels) return value;
+  const { r, g, b } = channels;
+  if (r > 220 && g > 220 && b > 220) return "#a0a0a0";
+  return value;
+};
 const getColorChannels = (value) => {
   const color = resolveCapColorValue(value);
   if (!color) return null;
@@ -1093,6 +1102,7 @@ const LotIDTracker = ({ isGuest = false }) => {
   const [editLotModal, setEditLotModal] = useState({ productKey: null, index: null, lot: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
   const [editProductModal, setEditProductModal] = useState({ open: false, docId: null, id: "", product: "" });
   const [selectedProductId, setSelectedProductId] = useState(null);
+  const [allLotsOpen, setAllLotsOpen] = useState(false);
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
     lot: "",
@@ -1841,7 +1851,16 @@ const LotIDTracker = ({ isGuest = false }) => {
         : buildLabelDesignStyles(mergeLabelDesign(labelDesignDraft));
 
   return (
+    <>
     <div className="lot-id-tracker-container">
+      <div className="lot-id-top-bar">
+        <button
+          className="lot-id-all-lots-btn"
+          onClick={() => setAllLotsOpen(true)}
+        >
+          All Lot IDs
+        </button>
+      </div>
       <div className="lot-id-pill-bar">
         {false && import.meta.env.DEV && (
           <>
@@ -2900,6 +2919,93 @@ const LotIDTracker = ({ isGuest = false }) => {
           document.body
         )}
     </div>
+
+      {allLotsOpen && createPortal(
+        <div className="lot-modal-backdrop all-lots-backdrop" onClick={() => setAllLotsOpen(false)}>
+          <div className="lot-modal all-lots-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="all-lots-modal-header">
+              <h3>All Lot IDs</h3>
+              <div className="all-lots-modal-header-actions">
+                <button
+                  className="lot-modal-btn secondary"
+                  onClick={() => {
+                    const rows = [["Product ID", "Product Name", "Lot ID", "Cap Color"]];
+                    products
+                      .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
+                      .forEach((p) => {
+                        const lots = productData[p.docId]?.coaList || [];
+                        lots.forEach((coa) => {
+                          rows.push([
+                            p.id || "",
+                            p.product || "",
+                            coa.lot || "",
+                            coa.capColor || "",
+                          ]);
+                        });
+                      });
+                    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+                    const blob = new Blob([csv], { type: "text/csv" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `lot-ids-${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  ↓ Download CSV
+                </button>
+                <button className="lot-modal-btn secondary" onClick={() => setAllLotsOpen(false)}>Close</button>
+              </div>
+            </div>
+            <div className="all-lots-modal-body">
+              {products.filter((p) => !/^test$/i.test((p.id || p.product || "").trim())).map((p) => {
+                const lots = productData[p.docId]?.coaList || [];
+                if (!lots.length) return null;
+                return (
+                  <div
+                    key={p.docId}
+                    className="all-lots-product-group"
+                    style={productData[p.docId]?.capColor ? { borderColor: getCapBorderColor(productData[p.docId].capColor, productData[p.docId]?.currentCOA?.capShade) } : undefined}
+                  >
+                    <div className="all-lots-product-name">{p.id || p.product} <span className="all-lots-product-full">{p.product}</span></div>
+                    <ul className="all-lots-list">
+                      {lots.map((coa, i) => (
+                        <li key={i} className="all-lots-item">
+                          <button
+                            type="button"
+                            className="all-lots-lot-id"
+                            style={coa.capColor ? { borderColor: getCapBorderColor(coa.capColor, coa.capShade) } : undefined}
+                            onClick={() => {
+                              copyToClipboard(coa.lot, p.docId, `all-${i}`);
+                            }}
+                            title="Click to copy"
+                          >
+                            {coa.lot || <i>no lot id</i>}
+                            <span className="lot-id-card-copy-icon">⎘</span>
+                          </button>
+                          {copyFlash[`${p.docId}-all-${i}`] && (
+                            <span className="lot-id-copied">Copied!</span>
+                          )}
+                          {coa.capColor && (
+                            <span
+                              className="all-lots-cap-swatch"
+                              style={{ backgroundColor: getCapRenderColor(coa.capColor, coa.capShade) || "#e7dfd3" }}
+                              title={coa.capColor}
+                            />
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 };
 
