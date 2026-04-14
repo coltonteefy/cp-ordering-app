@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInAnonymously } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import './LoginForm.css';
 
@@ -7,20 +7,15 @@ const LoginForm = ({ onSuccess, onError }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+      await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-      onError((isSignUp ? 'Sign up failed: ' : 'Login failed: ') + error.message);
+      onError('Login failed: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -39,7 +34,7 @@ const LoginForm = ({ onSuccess, onError }) => {
 
   return (
     <div className="login-form-container-inline">
-      <h2 className="text-glow-fuchsia">{isSignUp ? 'CREATE ADMIN ACCOUNT' : 'ADMIN ACCESS'}</h2>
+      <h2 className="text-glow-fuchsia">ADMIN ACCESS</h2>
       <form onSubmit={handleSubmit} className="auth-form">
         <div className="form-group">
           <label htmlFor="email">Admin ID</label>
@@ -67,19 +62,10 @@ const LoginForm = ({ onSuccess, onError }) => {
         </div>
         <div className="form-actions">
           <button type="submit" className="btn-neon-cyan" disabled={loading}>
-            {loading ? (isSignUp ? 'Creating Account...' : 'Accessing...') : (isSignUp ? 'Create Account' : 'Access System')}
+            {loading ? 'Accessing...' : 'Access System'}
           </button>
         </div>
       </form>
-      <div className="auth-toggle">
-        <button 
-          type="button" 
-          onClick={() => setIsSignUp(!isSignUp)} 
-          className="toggle-btn"
-        >
-          {isSignUp ? 'Already have an account? Sign In' : 'Create New Admin Account'}
-        </button>
-      </div>
       <div className="auth-guest-divider">
         <span>or</span>
       </div>

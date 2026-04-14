@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import Modal from './components/Modal';
 import LoginForm from './components/LoginForm';
@@ -30,6 +30,11 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showNextOrderModal, setShowNextOrderModal] = useState(false);
   const [isClosingNewOrderModal, setIsClosingNewOrderModal] = useState(false);
+
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [addUserEmail, setAddUserEmail] = useState('');
+  const [addUserPassword, setAddUserPassword] = useState('');
+  const [addUserLoading, setAddUserLoading] = useState(false);
 
   const isGuest = Boolean(user?.isAnonymous);
 
@@ -85,6 +90,22 @@ function App() {
     if (isGuest && page !== 'lotid') return;
     setActivePage(page);
     setMobileMenuOpen(false);
+  };
+
+  const handleAddUser = async (e) => {
+    e.preventDefault();
+    setAddUserLoading(true);
+    try {
+      await createUserWithEmailAndPassword(auth, addUserEmail, addUserPassword);
+      setAddUserEmail('');
+      setAddUserPassword('');
+      setShowAddUserModal(false);
+      showToast('New admin user created successfully.');
+    } catch (error) {
+      showModal('Failed to create user: ' + error.message, 'Error');
+    } finally {
+      setAddUserLoading(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -167,6 +188,11 @@ function App() {
               </div>
             )}
             <div className="nav-actions">
+              {!isGuest && (
+                <button onClick={() => setShowAddUserModal(true)} className="btn-secondary">
+                  Add User
+                </button>
+              )}
               <button onClick={handleSignOut} className="btn-secondary">
                 {isGuest ? 'Exit Guest' : 'Sign Out'}
               </button>
@@ -259,6 +285,59 @@ function App() {
             </div>
             <div className="next-order-modal-body">
               <NextOrderList onSuccess={showToast} onError={showModal} onSubmitted={handleNewOrderSubmitted} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddUserModal && (
+        <div
+          className="next-order-modal-overlay open"
+          onClick={() => setShowAddUserModal(false)}
+        >
+          <div className="next-order-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="next-order-modal-header">
+              <h3>Add New Admin User</h3>
+              <button
+                className="next-order-modal-close"
+                onClick={() => setShowAddUserModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="next-order-modal-body">
+              <form onSubmit={handleAddUser} className="auth-form">
+                <div className="form-group">
+                  <label htmlFor="add-user-email">Email</label>
+                  <input
+                    type="email"
+                    id="add-user-email"
+                    value={addUserEmail}
+                    onChange={(e) => setAddUserEmail(e.target.value)}
+                    placeholder="admin@domain.net"
+                    required
+                    disabled={addUserLoading}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="add-user-password">Password</label>
+                  <input
+                    type="password"
+                    id="add-user-password"
+                    value={addUserPassword}
+                    onChange={(e) => setAddUserPassword(e.target.value)}
+                    placeholder="• • • • • •"
+                    required
+                    minLength={6}
+                    disabled={addUserLoading}
+                  />
+                </div>
+                <div className="form-actions">
+                  <button type="submit" className="btn-neon-cyan" disabled={addUserLoading}>
+                    {addUserLoading ? 'Creating...' : 'Create User'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
