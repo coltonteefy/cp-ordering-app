@@ -31,12 +31,17 @@ function App() {
   const [showNextOrderModal, setShowNextOrderModal] = useState(false);
   const [isClosingNewOrderModal, setIsClosingNewOrderModal] = useState(false);
 
+  const isGuest = Boolean(user?.isAnonymous);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
       if (currentUser) {
         setStatus('Authenticated');
+        if (currentUser.isAnonymous) {
+          setActivePage('lotid');
+        }
       } else {
         setStatus('Not authenticated');
       }
@@ -77,6 +82,7 @@ function App() {
 
   const goToPage = (page) => {
     if (!validPages.includes(page)) return;
+    if (isGuest && page !== 'lotid') return;
     setActivePage(page);
     setMobileMenuOpen(false);
   };
@@ -136,25 +142,33 @@ function App() {
             <div className="nav-brand">
               <img src="/assets/logo.png" alt="Coffee and Peppers Logo" className="nav-logo" />
             </div>
-            <button 
-              className="mobile-menu-toggle" 
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle menu"
-            >
-              <span className="hamburger"></span>
-              <span className="hamburger"></span>
-              <span className="hamburger"></span>
-            </button>
-            <div className={`nav-menu ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-              <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
-              <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
-              <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
-              <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
-              <button onClick={() => goToPage('sku-po')} className={`nav-link ${activePage === 'sku-po' ? 'active' : ''}`}>SKU PO</button>
-            </div>
+            {!isGuest && (
+              <button 
+                className="mobile-menu-toggle" 
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label="Toggle menu"
+              >
+                <span className="hamburger"></span>
+                <span className="hamburger"></span>
+                <span className="hamburger"></span>
+              </button>
+            )}
+            {isGuest ? (
+              <div className="nav-menu">
+                <span className="nav-link active">Lot ID Tracker</span>
+              </div>
+            ) : (
+              <div className={`nav-menu ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+                <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
+                <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
+                <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
+                <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
+                <button onClick={() => goToPage('sku-po')} className={`nav-link ${activePage === 'sku-po' ? 'active' : ''}`}>SKU PO</button>
+              </div>
+            )}
             <div className="nav-actions">
               <button onClick={handleSignOut} className="btn-secondary">
-                Sign Out
+                {isGuest ? 'Exit Guest' : 'Sign Out'}
               </button>
             </div>
           </div>
@@ -200,7 +214,7 @@ function App() {
                 onError={showModal}
               />
             ) : activePage === 'lotid' ? (
-              <LotIDTracker />
+              <LotIDTracker isGuest={isGuest} />
             ) : (
               <>
                 <div className="orders-page-actions">

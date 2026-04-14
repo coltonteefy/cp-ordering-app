@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import './LoginForm.css';
 
@@ -21,6 +21,17 @@ const LoginForm = ({ onSuccess, onError }) => {
       }
     } catch (error) {
       onError((isSignUp ? 'Sign up failed: ' : 'Login failed: ') + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestAccess = async () => {
+    setLoading(true);
+    try {
+      await signInAnonymously(auth);
+    } catch (error) {
+      onError('Guest access failed: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -67,6 +78,19 @@ const LoginForm = ({ onSuccess, onError }) => {
           className="toggle-btn"
         >
           {isSignUp ? 'Already have an account? Sign In' : 'Create New Admin Account'}
+        </button>
+      </div>
+      <div className="auth-guest-divider">
+        <span>or</span>
+      </div>
+      <div className="auth-guest">
+        <button
+          type="button"
+          className="btn-guest"
+          onClick={handleGuestAccess}
+          disabled={loading}
+        >
+          {loading ? 'Accessing...' : 'Guest Access (Lot Tracker Only)'}
         </button>
       </div>
     </div>

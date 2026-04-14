@@ -1077,7 +1077,7 @@ const classifySidebarGroup = (p) => {
   return "Other";
 };
 
-const LotIDTracker = () => {
+const LotIDTracker = ({ isGuest = false }) => {
   const [products, setProducts] = useState([]);
   const [productData, setProductData] = useState({});
   const [vendors, setVendors] = useState([]);
@@ -1197,8 +1197,9 @@ const LotIDTracker = () => {
       });
   };
 
-  // Load vendor profiles
+  // Load vendor profiles (skip for guest users)
   useEffect(() => {
+    if (isGuest) return;
     const unsubscribe = onSnapshot(
       collection(db, "c&pVendors"),
       (snapshot) => {
@@ -1216,7 +1217,7 @@ const LotIDTracker = () => {
       (err) => console.error("Error loading vendors for LotIDTracker:", err)
     );
     return () => unsubscribe();
-  }, []);
+  }, [isGuest]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -1951,13 +1952,15 @@ const LotIDTracker = () => {
                   <div className="lot-id-strength">{p.strength}</div>
                 </div>
                 <div className="lot-id-header-actions">
-                  <button
-                    type="button"
-                    className="lot-id-layout-btn"
-                    onClick={() => setEditProductModal({ open: true, docId: p.docId, id: p.id || "", product: p.product || "" })}
-                  >
-                    Edit
-                  </button>
+                  {!isGuest && (
+                    <button
+                      type="button"
+                      className="lot-id-layout-btn"
+                      onClick={() => setEditProductModal({ open: true, docId: p.docId, id: p.id || "", product: p.product || "" })}
+                    >
+                      Edit
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1968,17 +1971,19 @@ const LotIDTracker = () => {
                       <div>
                         <div className="lot-id-label-preview-heading">Print Label</div>
                         <div className="lot-id-label-preview-sub">
-                          Uses the lot cap color and prints at 1.75&quot; x 0.75&quot;.
+                          1.75&quot; x 0.75&quot;
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
-                        <button
-                          type="button"
-                          className="lot-id-layout-btn"
-                          onClick={() => openLabelEditor(key, "vial")}
-                        >
-                          Edit Layout
-                        </button>
+                        {!isGuest && (
+                          <button
+                            type="button"
+                            className="lot-id-layout-btn"
+                            onClick={() => openLabelEditor(key, "vial")}
+                          >
+                            Edit Layout
+                          </button>
+                        )}
                         {activePreviewLot?.lot && (
                           <button
                             type="button"
@@ -2011,17 +2016,19 @@ const LotIDTracker = () => {
                       <div>
                         <div className="lot-id-label-preview-heading">Print Kit Label</div>
                         <div className="lot-id-label-preview-sub">
-                          Dedicated kit label tool. Prints at 1.50&quot; x 2.25&quot;.
+                          1.50&quot; x 2.25&quot;
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
-                        <button
-                          type="button"
-                          className="lot-id-layout-btn"
-                          onClick={() => openLabelEditor(key, "kit")}
-                        >
-                          Edit Kit Layout
-                        </button>
+                        {!isGuest && (
+                          <button
+                            type="button"
+                            className="lot-id-layout-btn"
+                            onClick={() => openLabelEditor(key, "kit")}
+                          >
+                            Edit Kit Layout
+                          </button>
+                        )}
                         {activePreviewLot?.lot && (
                           <button
                             type="button"
@@ -2053,18 +2060,17 @@ const LotIDTracker = () => {
                     <div className="lot-id-label-preview-topbar">
                       <div>
                         <div className="lot-id-label-preview-heading">Test Label Variants</div>
-                        <div className="lot-id-label-preview-sub">
-                          Single label format without footer text or QR code.
-                        </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
-                        <button
-                          type="button"
-                          className="lot-id-layout-btn"
-                          onClick={() => openLabelEditor(key, "test")}
-                        >
-                          Edit Test Layout
-                        </button>
+                        {!isGuest && (
+                          <button
+                            type="button"
+                            className="lot-id-layout-btn"
+                            onClick={() => openLabelEditor(key, "test")}
+                          >
+                            Edit Test Layout
+                          </button>
+                        )}
                         {activePreviewLot?.lot && (
                           <button
                             type="button"
@@ -2099,12 +2105,14 @@ const LotIDTracker = () => {
                 <div className="lot-id-section lot-id-lot-list-section">
                 <div className="lot-id-section-header lot-id-lot-list-header">
                   <label>Lot List</label>
-                  <button
-                    className="lot-id-generate-btn"
-                    onClick={() => openLotModal(key, nextIdPreview)}
-                  >
-                    + Generate Lot ID
-                  </button>
+                  {!isGuest && (
+                    <button
+                      className="lot-id-generate-btn"
+                      onClick={() => openLotModal(key, nextIdPreview)}
+                    >
+                      + Generate Lot ID
+                    </button>
+                  )}
                 </div>
                 <ul className="lot-id-past-list">
                   {(() => {
@@ -2138,12 +2146,14 @@ const LotIDTracker = () => {
                               {coa.lot || <i>no lot id</i>}
                               <span className="lot-id-card-copy-icon">⎘</span>
                             </button>
-                            <button
-                              className="lot-id-edit-toggle lot-id-card-edit-btn"
-                              onClick={() => openEditLotModal(key, i, coa)}
-                            >
-                              Edit
-                            </button>
+                            {!isGuest && (
+                              <button
+                                className="lot-id-edit-toggle lot-id-card-edit-btn"
+                                onClick={() => openEditLotModal(key, i, coa)}
+                              >
+                                Edit
+                              </button>
+                            )}
                           </div>
                           {copyFlash[`${key}-lot-${i}`] && (
                             <span className="lot-id-copied">Copied!</span>
@@ -2161,7 +2171,7 @@ const LotIDTracker = () => {
                             <span className="lot-id-meta-stat">
                             {typeof coa.kits === "number" ? coa.kits : 0} kits
                           </span>
-                          {coa.vendor && (
+                          {!isGuest && coa.vendor && (
                             <span className="lot-id-vendor-badge">{coa.vendor}</span>
                           )}
                           </div>
@@ -2267,26 +2277,30 @@ const LotIDTracker = () => {
                 className="lot-modal-input"
               />
 
-              <label className="lot-modal-label">Vendor</label>
-              <div className="lot-modal-vendor-pills">
-                <button
-                  type="button"
-                  className={`lot-modal-vendor-pill${!lotModalConfig.vendor ? ' active' : ''}`}
-                  onClick={() => setLotModalConfig((prev) => ({ ...prev, vendor: '' }))}
-                >
-                  None
-                </button>
-                {vendors.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    className={`lot-modal-vendor-pill${lotModalConfig.vendor === v.name ? ' active' : ''}`}
-                    onClick={() => setLotModalConfig((prev) => ({ ...prev, vendor: v.name }))}
-                  >
-                    {v.name}
-                  </button>
-                ))}
-              </div>
+              {!isGuest && (
+                <>
+                  <label className="lot-modal-label">Vendor</label>
+                  <div className="lot-modal-vendor-pills">
+                    <button
+                      type="button"
+                      className={`lot-modal-vendor-pill${!lotModalConfig.vendor ? ' active' : ''}`}
+                      onClick={() => setLotModalConfig((prev) => ({ ...prev, vendor: '' }))}
+                    >
+                      None
+                    </button>
+                    {vendors.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        className={`lot-modal-vendor-pill${lotModalConfig.vendor === v.name ? ' active' : ''}`}
+                        onClick={() => setLotModalConfig((prev) => ({ ...prev, vendor: v.name }))}
+                      >
+                        {v.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               <label className="lot-modal-label">Note <span className="lot-modal-label-optional">(optional)</span></label>
               <textarea
@@ -2363,26 +2377,30 @@ const LotIDTracker = () => {
                 className="lot-modal-input"
               />
 
-              <label className="lot-modal-label">Vendor</label>
-              <div className="lot-modal-vendor-pills">
-                <button
-                  type="button"
-                  className={`lot-modal-vendor-pill${!editLotModal.vendor ? ' active' : ''}`}
-                  onClick={() => setEditLotModal((prev) => ({ ...prev, vendor: '' }))}
-                >
-                  None
-                </button>
-                {vendors.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    className={`lot-modal-vendor-pill${editLotModal.vendor === v.name ? ' active' : ''}`}
-                    onClick={() => setEditLotModal((prev) => ({ ...prev, vendor: v.name }))}
-                  >
-                    {v.name}
-                  </button>
-                ))}
-              </div>
+              {!isGuest && (
+                <>
+                  <label className="lot-modal-label">Vendor</label>
+                  <div className="lot-modal-vendor-pills">
+                    <button
+                      type="button"
+                      className={`lot-modal-vendor-pill${!editLotModal.vendor ? ' active' : ''}`}
+                      onClick={() => setEditLotModal((prev) => ({ ...prev, vendor: '' }))}
+                    >
+                      None
+                    </button>
+                    {vendors.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        className={`lot-modal-vendor-pill${editLotModal.vendor === v.name ? ' active' : ''}`}
+                        onClick={() => setEditLotModal((prev) => ({ ...prev, vendor: v.name }))}
+                      >
+                        {v.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               <label className="lot-modal-label">Note <span className="lot-modal-label-optional">(optional)</span></label>
               <textarea
