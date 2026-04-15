@@ -25,9 +25,11 @@ const escapeHtml = (value) =>
     .replace(/'/g, "&#39;");
 const splitLabelProductName = (value) => {
   const text = String(value ?? "");
-  const match = text.match(/^(.*?&)\s*(.+)$/);
-  if (!match) return [text];
-  return [match[1], match[2]];
+  const ampMatch = text.match(/^(.*?&)\s*(.+)$/);
+  if (ampMatch) return [ampMatch[1], ampMatch[2]];
+  const spaceMatch = text.match(/^(\S+)\s+(.+)$/);
+  if (spaceMatch) return [spaceMatch[1], spaceMatch[2]];
+  return [text];
 };
 const renderLabelProductName = (value) => {
   const lines = splitLabelProductName(value);
@@ -75,7 +77,7 @@ const getReadableTextColor = (value) => {
 };
 const normalizeLabelAccentColor = (value) => {
   const resolved = resolveCapColorValue(value);
-  if (!resolved) return "#efe3d3";
+  if (!resolved) return "#8f3a17";
   const channels = getColorChannels(resolved);
   if (!channels) return resolved;
   const { r, g, b } = channels;
@@ -88,7 +90,7 @@ const colorValueToHex = (value, fallback = "#c9c1b7") => {
   const toHex = (n) => n.toString(16).padStart(2, "0");
   return `#${toHex(channels.r)}${toHex(channels.g)}${toHex(channels.b)}`;
 };
-const getCapRenderColor = (capColor, capShade) => capShade || capColor || "";
+const getCapRenderColor = (capColor, capShade) => capColor ? (capShade || capColor) : "";
 const getCapBorderColor = (capColor, capShade) => {
   const value = getCapRenderColor(capColor, capShade);
   if (!value) return undefined;
@@ -134,12 +136,12 @@ const DEFAULT_LABEL_DESIGN = {
   centerLeftPercent: 60,
   centerTopPercent: 50,
   centerWidth: 235,
-  centerGap: 8,
+  centerGap: 2,
   nameFontSize: 37,
   nameLineHeight: 0.79,
   strengthFontSize: 22,
   massTextColor: "#ffffff",
-  strengthPadY: FIXED_MASS_PAD_Y,
+  strengthPadY: 8,
   strengthPadX: 12,
   strengthRadius: FIXED_MASS_RADIUS,
   // Footer — rotated -90°, bottom-right area
@@ -156,8 +158,8 @@ const DEFAULT_LABEL_DESIGN = {
   variantMarginTop: 2,
   // Lot ID — top center
   lotLeft: 90,
-  lotTop: 8,
-  lotFontSize: 10,
+  lotTop: 10,
+  lotFontSize: 12,
 };
 const KIT_PREVIEW_WIDTH = 240;
 const KIT_PREVIEW_HEIGHT = 360;
@@ -244,7 +246,7 @@ const buildLabelDesignStyles = (design) => ({
   },
   strength: {
     fontSize: `${design.strengthFontSize}px`,
-    padding: `${FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
+    padding: `${design.strengthPadY ?? FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
     borderRadius: `${design.strengthRadius}px`,
     color: design.massTextColor || FIXED_MASS_TEXT_COLOR,
   },
@@ -367,7 +369,7 @@ const scaleLabelDesignForPrint = (design) => {
     centerGap: merged.centerGap * scaleY,
     nameFontSize: merged.nameFontSize * scale,
     strengthFontSize: merged.strengthFontSize * scale,
-    strengthPadY: FIXED_MASS_PAD_Y * scaleY,
+    strengthPadY: (merged.strengthPadY ?? FIXED_MASS_PAD_Y) * scaleY,
     strengthPadX: merged.strengthPadX * scaleX,
     strengthRadius: FIXED_MASS_RADIUS * scale,
     footerLeft: merged.footerLeft * scaleX,
@@ -845,6 +847,163 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
   </body>
 </html>`;
 };
+const buildAllVialLabelsPrintMarkup = (labelEntries) => {
+  // labelEntries: [{ productName, strength, lot, capColor, design }]
+  const pages = labelEntries.map(({ productName, strength, lot, capColor, design }) => {
+    const capColorValue = normalizeLabelAccentColor(capColor);
+    const qrCodeUrl = buildQrCodeUrl(lot);
+    const labelBackground = buildLabelBackground(capColorValue);
+    const labelDesign = scaleLabelDesignForPrint(design);
+    const printLogo = buildFixedLogoPrintStyles(labelDesign);
+    return `
+      <section class="label-page" data-lot="${escapeHtml(lot)}">
+        <div class="label" style="background: linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%);">
+          <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
+          <div class="bg-tint" style="background:${escapeHtml(labelBackground)};"></div>
+          <div class="lot" style="left:${labelDesign.lotLeft}px;top:${labelDesign.lotTop}px;font-size:${labelDesign.lotFontSize}px;">${escapeHtml(lot || "")}</div>
+          <div class="qr-wrap" style="left:${labelDesign.qrLeft}px;top:${labelDesign.qrTop}px;">
+            <img class="qr" style="width:${labelDesign.qrWidth}px;height:${labelDesign.qrWidth}px;" src="${escapeHtml(LABEL_QR_SRC)}" onerror="this.onerror=null;this.src='${escapeHtml(qrCodeUrl)}';" alt="QR" />
+          </div>
+          <div class="logo-wrap" style="left:${printLogo.wrap.left}px;top:${printLogo.wrap.topPercent}%;">
+            <img class="logo" style="width:${printLogo.size.width}px;height:${printLogo.size.height}px;" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(APP_LOGO_SRC)}';" />
+          </div>
+          <div class="center-stack" style="left:${labelDesign.centerLeftPercent}%;top:${labelDesign.centerTopPercent}%;width:${labelDesign.centerWidth}px;gap:${labelDesign.centerGap}px;">
+            <div class="name" style="font-size:${labelDesign.nameFontSize}px;line-height:${labelDesign.nameLineHeight};">${buildLabelProductHtml(productName || "")}</div>
+            <div class="strength" style="background:${escapeHtml(capColorValue)};color:${escapeHtml(labelDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};border-radius:${labelDesign.strengthRadius}px;padding:${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;font-size:${labelDesign.strengthFontSize}px;">${escapeHtml(strength || "")}</div>
+          </div>
+          <div class="footer" style="left:${labelDesign.footerLeft}px;top:${labelDesign.footerTop}px;font-size:${labelDesign.footerFontSize}px;">
+            <strong>99% PURITY</strong>
+            <strong>FOR RESEARCH USE ONLY</strong>
+          </div>
+        </div>
+      </section>`;
+  }).join("\n");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>All Vial Labels</title>
+    <style>
+      @page { size: 0.75in 1.75in; margin: 0; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .label-page {
+        width: 0.75in;
+        height: 1.75in;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+      }
+      .label-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .label {
+        width: 0.75in;
+        height: 1.75in;
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+      }
+      .bg-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        pointer-events: none;
+      }
+      .bg-tint {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .lot {
+        position: absolute;
+        transform: translateX(-50%);
+        line-height: 1;
+        font-weight: 800;
+        color: #2b1a0f;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
+      .qr-wrap {
+        position: absolute;
+        display: flex;
+      }
+      .qr {
+        object-fit: contain;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        -ms-interpolation-mode: nearest-neighbor;
+      }
+      .logo-wrap {
+        position: absolute;
+        transform-origin: left center;
+        transform: rotate(-90deg);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .logo {
+        object-fit: contain;
+      }
+      .center-stack {
+        position: absolute;
+        transform: translate(-50%, -50%) rotate(-90deg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .name {
+        text-align: center;
+        font-weight: 900;
+        color: #23160d;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .strength {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+      .footer {
+        position: absolute;
+        transform: translate(-50%, -50%) rotate(-90deg);
+        line-height: 1.3;
+        color: #23160d;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5px;
+        white-space: nowrap;
+      }
+      .footer strong {
+        display: block;
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    ${pages}
+  </body>
+</html>`;
+};
+
 const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capColor, design }) => {
   const accentColor = normalizeLabelAccentColor(capColor);
   const qrCodeUrl = buildQrCodeUrl(lot);
@@ -1051,6 +1210,43 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
   </body>
 </html>`;
 };
+const styleObjToCss = (obj) =>
+  Object.entries(obj)
+    .map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${String(v)}`)
+    .join(';');
+const createLabelDomForCapture = ({ productName, strength, lot, capColor, design }) => {
+  const ds = buildLabelDesignStyles(mergeLabelDesign(design));
+  const capColorValue = normalizeLabelAccentColor(capColor);
+  const labelBg = buildLabelBackground(capColorValue);
+  const qrFallbackSrc = buildQrCodeUrl(lot);
+  const el = document.createElement('div');
+  el.style.cssText = `width:${LABEL_PREVIEW_WIDTH}px;height:${LABEL_PREVIEW_HEIGHT}px;position:relative;overflow:hidden;background:linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%);font-family:Arial,Helvetica,sans-serif;box-sizing:border-box;`;
+  el.innerHTML = `
+    <img src="/assets/silverBackground.png" crossorigin="anonymous"
+      style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;" />
+    <div style="position:absolute;inset:0;background:${escapeHtml(labelBg)};pointer-events:none;"></div>
+    <div style="position:absolute;${styleObjToCss(ds.lot)};line-height:1;font-weight:800;color:#2b1a0f;letter-spacing:0.03em;white-space:nowrap;">${escapeHtml(lot || '')}</div>
+    <div style="position:absolute;${styleObjToCss(ds.qrWrap)};">
+      <img src="/assets/coaQR.png" crossorigin="anonymous"
+        style="${styleObjToCss(ds.qr)};object-fit:contain;image-rendering:pixelated;"
+        onerror="this.onerror=null;this.src='${escapeHtml(qrFallbackSrc)}'" />
+    </div>
+    <div style="position:absolute;${styleObjToCss(ds.logoWrap)};display:flex;justify-content:center;align-items:center;">
+      <img src="/assets/labelLogo.png" crossorigin="anonymous"
+        style="${styleObjToCss(ds.logo)};object-fit:contain;"
+        onerror="this.onerror=null;this.src='/assets/logo.png'" />
+    </div>
+    <div style="position:absolute;left:${ds.center.left};top:${ds.center.top};width:${ds.center.width};gap:${ds.center.gap};transform:translate(-50%,-50%) rotate(-90deg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+      <div style="${styleObjToCss(ds.name)};font-weight:900;color:#23160d;text-transform:uppercase;white-space:nowrap;">${buildLabelProductHtml(productName || '')}</div>
+      <div style="${styleObjToCss(ds.strength)};display:inline-flex;align-items:center;justify-content:center;background:${escapeHtml(capColorValue)};line-height:1;font-weight:900;white-space:nowrap;">${escapeHtml(strength || '')}</div>
+    </div>
+    <div style="position:absolute;left:${ds.footer.left};top:${ds.footer.top};font-size:${ds.footer.fontSize};transform:translate(-50%,-50%) rotate(-90deg);line-height:1.3;color:#23160d;display:flex;flex-direction:column;gap:0.5px;white-space:nowrap;">
+      <span style="display:block;font-weight:500;">99% PURITY</span>
+      <span style="display:block;font-weight:500;">FOR RESEARCH USE ONLY</span>
+    </div>
+  `;
+  return el;
+};
 const GROUP_ORDER = [
   "BPC/TB",
   "R10/20/30/40",
@@ -1104,6 +1300,8 @@ const LotIDTracker = ({ isGuest = false }) => {
   const [editProductModal, setEditProductModal] = useState({ open: false, docId: null, id: "", product: "" });
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [allLotsOpen, setAllLotsOpen] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [vendorFilter, setVendorFilter] = useState("");
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
     lot: "",
@@ -1153,6 +1351,25 @@ const LotIDTracker = ({ isGuest = false }) => {
 
     return { groups, ungrouped: others, entries };
   }, [products]);
+
+  const allVendors = useMemo(() => {
+    const set = new Set();
+    Object.values(productData).forEach((d) => {
+      (d.coaList || []).forEach((c) => { if (c.vendor) set.add(c.vendor); });
+    });
+    return [...set].sort();
+  }, [productData]);
+
+  // When the vendor filter changes, auto-select the first product that has lots from that vendor
+  useEffect(() => {
+    if (!vendorFilter) return;
+    const hasLot = (p) =>
+      (productData[p.docId]?.coaList || []).some((c) => (c.vendor || "") === vendorFilter);
+    if (!hasLot(products.find((p) => p.docId === selectedProductId) || {})) {
+      const first = products.find(hasLot);
+      if (first) setSelectedProductId(first.docId);
+    }
+  }, [vendorFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -1505,7 +1722,7 @@ const LotIDTracker = ({ isGuest = false }) => {
       productKey: key,
       lot: nextLotId,
       capColor: capSeed,
-      capShade: colorValueToHex(capSeed),
+      capShade: capSeed ? colorValueToHex(capSeed) : "",
       kits: "",
       vendor: vendorSeed,
       note: "",
@@ -1575,6 +1792,96 @@ const LotIDTracker = ({ isGuest = false }) => {
     printWindow.document.write(markup);
     printWindow.document.close();
   };
+  const handlePrintAllVialLabels = async () => {
+    const labelEntries = products
+      .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
+      .flatMap((p) => {
+        const data = productData[p.docId];
+        const lots = (data?.coaList || []).filter(
+          (c) => !vendorFilter || (c.vendor || "") === vendorFilter
+        );
+        return lots.map((lot) => ({
+          productName: p.product || "",
+          strength: p.strength || "",
+          lot: lot.lot,
+          capColor: getCapRenderColor(lot.capColor, lot.capShade),
+          design: data?.verticalLabelDesign || DEFAULT_LABEL_DESIGN,
+        }));
+      })
+      .filter((e) => e.lot);
+
+    if (!labelEntries.length) {
+      alert("No products with lots found.");
+      return;
+    }
+
+    setPdfGenerating(true);
+    try {
+      const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
+
+      const W = LABEL_PREVIEW_WIDTH;
+      const H = LABEL_PREVIEW_HEIGHT;
+      const CAPTURE_SCALE = 3;
+
+      const captureContainer = document.createElement('div');
+      Object.assign(captureContainer.style, {
+        position: 'fixed',
+        top: '0',
+        left: '-9999px',
+        width: `${W}px`,
+        height: `${H}px`,
+        overflow: 'visible',
+        pointerEvents: 'none',
+        zIndex: '99999',
+      });
+      document.body.appendChild(captureContainer);
+
+      const pdf = new jsPDF({ unit: 'px', format: [W, H], hotfixes: ['px_scaling'] });
+      let isFirst = true;
+
+      for (const entry of labelEntries) {
+        const labelEl = createLabelDomForCapture(entry);
+        captureContainer.appendChild(labelEl);
+
+        const imgs = [...captureContainer.querySelectorAll('img')];
+        await Promise.all(
+          imgs.map(
+            (img) =>
+              new Promise((resolve) => {
+                if (img.complete && img.naturalWidth) resolve();
+                else { img.onload = resolve; img.onerror = resolve; }
+              })
+          )
+        );
+
+        const canvas = await html2canvas(labelEl, {
+          scale: CAPTURE_SCALE,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          logging: false,
+          width: W,
+          height: H,
+          windowWidth: W,
+          windowHeight: H,
+        });
+
+        if (!isFirst) pdf.addPage([W, H], 'p');
+        isFirst = false;
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, W, H);
+        captureContainer.removeChild(labelEl);
+      }
+
+      document.body.removeChild(captureContainer);
+      pdf.save(`vial-labels-${vendorFilter ? `${vendorFilter}-` : ""}${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
   const handlePrintAllTestLabels = (product, lotEntry) => {
     if (!lotEntry?.lot) return;
     const printWindow = window.open("", "_blank", "width=420,height=320");
@@ -1862,10 +2169,65 @@ const LotIDTracker = ({ isGuest = false }) => {
         >
           All Lot IDs
         </button>
+        {!isGuest && (
+          <button
+            className="lot-id-all-lots-btn"
+            onClick={handlePrintAllVialLabels}
+            disabled={pdfGenerating}
+          >
+            {pdfGenerating ? 'Generating PDF…' : vendorFilter ? `Download ${vendorFilter} Vial Labels` : 'Download All Vial Labels'}
+          </button>
+        )}
       </div>
+      {!isGuest && allVendors.length > 0 && (
+        <div className="lot-id-vendor-bar">
+          <span className="lot-id-vendor-bar-label">Vendor</span>
+          <button
+            className={`lot-id-vendor-bar-pill${vendorFilter === "" ? " active" : ""}`}
+            onClick={() => setVendorFilter("")}
+          >
+            All
+          </button>
+          {allVendors.map((v) => {
+            const count = Object.values(productData).reduce(
+              (n, d) => n + (d.coaList || []).filter((c) => (c.vendor || "") === v).length,
+              0
+            );
+            return (
+              <button
+                key={v}
+                className={`lot-id-vendor-bar-pill${vendorFilter === v ? " active" : ""}`}
+                onClick={() => setVendorFilter((prev) => (prev === v ? "" : v))}
+              >
+                {v}
+                <span className="lot-id-vendor-bar-count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="lot-id-pill-bar">
         {false && import.meta.env.DEV && (
           <>
+            <button
+              className="lot-id-product-pill"
+              style={{ background: '#1a6b3a', color: '#fff', fontWeight: 800 }}
+              onClick={async () => {
+                if (!confirm("Patch centerGap=2, strengthPadY=8, lotTop=10, lotFontSize=12 on ALL verticalLabelDesigns?")) return;
+                const snap = await getDocs(collection(db, "c&pProductList"));
+                let count = 0;
+                for (const docSnap of snap.docs) {
+                  const existing = docSnap.data().verticalLabelDesign || {};
+                  await updateDoc(doc(db, "c&pProductList", docSnap.id), {
+                    verticalLabelDesign: { ...DEFAULT_LABEL_DESIGN, ...existing, centerGap: 2, strengthPadY: 8, lotTop: 10, lotFontSize: 12 },
+                  });
+                  count++;
+                }
+                alert(`Done — patched on ${count} product(s).`);
+              }}
+            >
+              Patch Gap+PadY
+            </button>
             <button
               className="lot-id-product-pill"
               style={{ background: '#c0392b', color: '#fff', fontWeight: 800 }}
@@ -1903,11 +2265,16 @@ const LotIDTracker = ({ isGuest = false }) => {
             </button>
           </>
         )}
-        {products.map((p) => (
+        {products
+          .filter((p) =>
+            !vendorFilter ||
+            (productData[p.docId]?.coaList || []).some((c) => (c.vendor || "") === vendorFilter)
+          )
+          .map((p) => (
           <button
             key={p.docId}
             className={`lot-id-product-pill${selectedProductId === p.docId ? ' active' : ''}`}
-            onClick={() => setSelectedProductId(p.docId)}
+            onClick={() => { setSelectedProductId(p.docId); }}
           >
             {p.id || p.product}
           </button>
@@ -1933,10 +2300,16 @@ const LotIDTracker = ({ isGuest = false }) => {
             (data.coaList?.length || 0) + (data.currentCOA?.lot ? 1 : 0);
           const nextSeq = String(usedCount + 1).padStart(2, "0");
           const nextIdPreview = `CP${data.productID || p.id || "ID"}${todayChunk}${nextSeq}`;
-          const activePreviewLot =
-            data.coaList?.find((lot) => lot.lot === previewLotSelection[key]) ||
-            data.coaList?.[0] ||
-            null;
+          const activePreviewLot = (() => {
+            const visibleLots = vendorFilter
+              ? (data.coaList || []).filter((c) => (c.vendor || "") === vendorFilter)
+              : (data.coaList || []);
+            return (
+              visibleLots.find((lot) => lot.lot === previewLotSelection[key]) ||
+              visibleLots[0] ||
+              null
+            );
+          })();
           const designStyles = buildLabelDesignStyles(
             labelEditorOpen && labelEditorProductKey === key
               ? labelEditorMode === "vial"
@@ -2137,7 +2510,9 @@ const LotIDTracker = ({ isGuest = false }) => {
                 </div>
                 <ul className="lot-id-past-list">
                   {(() => {
-                    const lotList = data.coaList || [];
+                    const lotList = (data.coaList || []).filter(
+                      (c) => !vendorFilter || (c.vendor || "") === vendorFilter
+                    );
                     return lotList.length ? (
                       lotList.map((coa, i) => {
                           const isActive = activePreviewLot?.lot === coa.lot;
@@ -2856,6 +3231,10 @@ const LotIDTracker = ({ isGuest = false }) => {
                         <label className="lot-layout-field">
                           <span>Pad X</span>
                           <input type="number" value={labelDesignDraft.strengthPadX} onChange={(e) => updateLabelDesign("strengthPadX", e.target.value)} className="lot-modal-input" />
+                        </label>
+                        <label className="lot-layout-field">
+                          <span>Pad Y</span>
+                          <input type="number" value={labelDesignDraft.strengthPadY ?? 5} onChange={(e) => updateLabelDesign("strengthPadY", e.target.value)} className="lot-modal-input" />
                         </label>
                       </div>
                     </div>

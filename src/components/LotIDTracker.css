@@ -360,6 +360,7 @@
 .lot-id-top-bar {
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
@@ -992,6 +993,69 @@
   border-radius: 10px 10px 0 0;
   padding-bottom: 0.65rem;
   margin-bottom: 0;
+}
+
+.lot-id-vendor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  width: min(1600px, 100%);
+  margin: 0 auto 0.85rem auto;
+  padding: 0.55rem 0.75rem;
+  background: linear-gradient(180deg, #fefbf6 0%, #f7efe5 100%);
+  border: 1px solid #e9d8c5;
+  border-radius: 12px;
+}
+
+.lot-id-vendor-bar-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #9b8675;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-right: 0.25rem;
+  white-space: nowrap;
+}
+
+.lot-id-vendor-bar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #f3ece1;
+  border: 1.5px solid #dfd3c2;
+  border-radius: 999px;
+  padding: 0.28rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #5a4a39;
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  white-space: nowrap;
+}
+
+.lot-id-vendor-bar-pill:hover {
+  background: #ecdfc9;
+  border-color: #c9b89a;
+}
+
+.lot-id-vendor-bar-pill.active {
+  background: linear-gradient(135deg, #f0a15a 0%, #d9822c 100%);
+  border-color: #c9741c;
+  color: #2b1a0f;
+}
+
+.lot-id-vendor-bar-count {
+  background: rgba(0,0,0,0.12);
+  border-radius: 999px;
+  padding: 0.05rem 0.42rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.lot-id-vendor-bar-pill.active .lot-id-vendor-bar-count {
+  background: rgba(0,0,0,0.18);
 }
 
 
