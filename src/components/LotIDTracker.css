@@ -282,6 +282,7 @@
   border: 1px solid transparent;
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .lot-modal-btn.primary {
@@ -290,10 +291,22 @@
   border-color: #d5bd8f;
 }
 
+.lot-modal-btn.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e3c486, #d4aa6a);
+  box-shadow: 0 2px 8px rgba(180,140,60,0.25);
+}
+
 .lot-modal-btn.secondary {
   background: #fff;
   color: #3b2c1e;
   border-color: #d7c7b1;
+}
+
+.lot-modal-btn.secondary:hover:not(:disabled) {
+  background: #f5ede6;
+  border-color: #C85A3F;
+  color: #C85A3F;
+  box-shadow: 0 2px 8px rgba(200,90,63,0.15);
 }
 
 .lot-modal-btn.danger {
@@ -301,6 +314,17 @@
   background: #fff4f2;
   color: #a53622;
   border-color: #efc2ba;
+}
+
+.lot-modal-btn.danger:hover:not(:disabled) {
+  background: #fde8e4;
+  border-color: #a53622;
+  box-shadow: 0 2px 8px rgba(165,54,34,0.15);
+}
+
+.lot-modal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .lot-id-layout {
@@ -360,8 +384,35 @@
 .lot-id-top-bar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+.lot-id-vendor-guest-badge {
+  margin-right: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.lot-id-vendor-guest-name {
+  padding: 0.5rem 1.4rem;
+  border-radius: 10px;
+  background: #f5ede6;
+  border: 2px solid #C85A3F;
+  color: #C85A3F;
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lot-id-vendor-guest-count {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #C85A3F;
 }
 
 .lot-id-top-bar .lot-id-all-lots-btn {

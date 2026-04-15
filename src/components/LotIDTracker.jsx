@@ -1283,7 +1283,7 @@ const classifySidebarGroup = (p) => {
   return "Other";
 };
 
-const LotIDTracker = ({ isGuest = false }) => {
+const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [products, setProducts] = useState([]);
   const [productData, setProductData] = useState({});
   const [vendors, setVendors] = useState([]);
@@ -1301,7 +1301,7 @@ const LotIDTracker = ({ isGuest = false }) => {
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [allLotsOpen, setAllLotsOpen] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
-  const [vendorFilter, setVendorFilter] = useState("");
+  const [vendorFilter, setVendorFilter] = useState(() => vendorGuest || "");
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
     lot: "",
@@ -1359,6 +1359,11 @@ const LotIDTracker = ({ isGuest = false }) => {
     });
     return [...set].sort();
   }, [productData]);
+
+  // Lock vendorFilter when signed in as a vendor guest
+  useEffect(() => {
+    if (vendorGuest) setVendorFilter(vendorGuest);
+  }, [vendorGuest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When the vendor filter changes, auto-select the first product that has lots from that vendor
   useEffect(() => {
@@ -2163,6 +2168,17 @@ const LotIDTracker = ({ isGuest = false }) => {
     <>
     <div className="lot-id-tracker-container">
       <div className="lot-id-top-bar">
+        {vendorGuest && (
+          <div className="lot-id-vendor-guest-badge">
+            <span className="lot-id-vendor-guest-name">{vendorGuest}</span>
+            <span className="lot-id-vendor-guest-count">
+              {Object.values(productData).reduce(
+                (n, d) => n + (d.coaList || []).filter((c) => (c.vendor || "") === vendorGuest).length,
+                0
+              )} lots
+            </span>
+          </div>
+        )}
         <button
           className="lot-id-all-lots-btn"
           onClick={() => setAllLotsOpen(true)}
@@ -2179,7 +2195,7 @@ const LotIDTracker = ({ isGuest = false }) => {
           </button>
         )}
       </div>
-      {!isGuest && allVendors.length > 0 && (
+      {!isGuest && !vendorGuest && allVendors.length > 0 && (
         <div className="lot-id-vendor-bar">
           <span className="lot-id-vendor-bar-label">Vendor</span>
           <button
@@ -2510,11 +2526,13 @@ const LotIDTracker = ({ isGuest = false }) => {
                 </div>
                 <ul className="lot-id-past-list">
                   {(() => {
-                    const lotList = (data.coaList || []).filter(
+                    const fullList = data.coaList || [];
+                    const lotList = fullList.filter(
                       (c) => !vendorFilter || (c.vendor || "") === vendorFilter
                     );
                     return lotList.length ? (
                       lotList.map((coa, i) => {
+                          const realIndex = fullList.indexOf(coa);
                           const isActive = activePreviewLot?.lot === coa.lot;
                           const capAccent = isActive ? normalizeLabelAccentColor(getCapRenderColor(coa.capColor, coa.capShade)) : null;
                           return (
@@ -2542,10 +2560,10 @@ const LotIDTracker = ({ isGuest = false }) => {
                               {coa.lot || <i>no lot id</i>}
                               <span className="lot-id-card-copy-icon">⎘</span>
                             </button>
-                            {!isGuest && (
+                            {(!isGuest || (vendorGuest && (coa.vendor || "") === vendorGuest)) && (
                               <button
                                 className="lot-id-edit-toggle lot-id-card-edit-btn"
-                                onClick={() => openEditLotModal(key, i, coa)}
+                                onClick={() => openEditLotModal(key, realIndex, coa)}
                               >
                                 Edit
                               </button>
@@ -2731,14 +2749,18 @@ const LotIDTracker = ({ isGuest = false }) => {
               <h3>Edit Lot</h3>
               <p className="lot-modal-sub">Update the details for this lot entry.</p>
 
-              <label className="lot-modal-label">Lot ID</label>
-              <input
-                type="text"
-                value={editLotModal.lot}
-                onChange={(e) => setEditLotModal((prev) => ({ ...prev, lot: e.target.value }))}
-                className="lot-modal-input"
-                placeholder="Lot ID"
-              />
+              {!vendorGuest && (
+                <>
+                  <label className="lot-modal-label">Lot ID</label>
+                  <input
+                    type="text"
+                    value={editLotModal.lot}
+                    onChange={(e) => setEditLotModal((prev) => ({ ...prev, lot: e.target.value }))}
+                    className="lot-modal-input"
+                    placeholder="Lot ID"
+                  />
+                </>
+              )}
 
               <label className="lot-modal-label">Cap Color</label>
               <div className="lot-modal-color-row">
@@ -2800,23 +2822,29 @@ const LotIDTracker = ({ isGuest = false }) => {
                 </>
               )}
 
-              <label className="lot-modal-label">Note <span className="lot-modal-label-optional">(optional)</span></label>
-              <textarea
-                className="lot-modal-input lot-modal-textarea"
-                placeholder="Add a note about this lot..."
-                rows={2}
-                value={editLotModal.note}
-                onChange={(e) => setEditLotModal((prev) => ({ ...prev, note: e.target.value }))}
-              />
+              {!vendorGuest && (
+                <>
+                  <label className="lot-modal-label">Note <span className="lot-modal-label-optional">(optional)</span></label>
+                  <textarea
+                    className="lot-modal-input lot-modal-textarea"
+                    placeholder="Add a note about this lot..."
+                    rows={2}
+                    value={editLotModal.note}
+                    onChange={(e) => setEditLotModal((prev) => ({ ...prev, note: e.target.value }))}
+                  />
+                </>
+              )}
 
               <div className="lot-modal-actions">
-                <button
-                  type="button"
-                  className="lot-modal-btn danger"
-                  onClick={deleteEditLotModal}
-                >
-                  Delete Lot
-                </button>
+                {!vendorGuest && (
+                  <button
+                    type="button"
+                    className="lot-modal-btn danger"
+                    onClick={deleteEditLotModal}
+                  >
+                    Delete Lot
+                  </button>
+                )}
                 <button type="button" className="lot-modal-btn secondary" onClick={closeEditLotModal}>
                   Cancel
                 </button>
@@ -3333,7 +3361,8 @@ const LotIDTracker = ({ isGuest = false }) => {
                     products
                       .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
                       .forEach((p) => {
-                        const lots = productData[p.docId]?.coaList || [];
+                        const lots = (productData[p.docId]?.coaList || [])
+                          .filter((c) => !vendorGuest || (c.vendor || "") === vendorGuest);
                         lots.forEach((coa) => {
                           rows.push([
                             p.id || "",
@@ -3355,12 +3384,20 @@ const LotIDTracker = ({ isGuest = false }) => {
                 >
                   ↓ Download CSV
                 </button>
+                <button
+                  className="lot-modal-btn secondary"
+                  onClick={() => handlePrintAllVialLabels()}
+                  disabled={pdfGenerating}
+                >
+                  {pdfGenerating ? '⏳ Generating…' : '↓ Download Label PDF'}
+                </button>
                 <button className="lot-modal-btn secondary" onClick={() => setAllLotsOpen(false)}>Close</button>
               </div>
             </div>
             <div className="all-lots-modal-body">
               {products.filter((p) => !/^test$/i.test((p.id || p.product || "").trim())).map((p) => {
-                const lots = productData[p.docId]?.coaList || [];
+                const lots = (productData[p.docId]?.coaList || [])
+                  .filter((c) => !vendorGuest || (c.vendor || "") === vendorGuest);
                 if (!lots.length) return null;
                 return (
                   <div

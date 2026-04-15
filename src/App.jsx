@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import Modal from './components/Modal';
@@ -35,11 +35,17 @@ function App() {
   const [addUserEmail, setAddUserEmail] = useState('');
   const [addUserPassword, setAddUserPassword] = useState('');
   const [addUserLoading, setAddUserLoading] = useState(false);
+  const [vendorGuest, setVendorGuest] = useState(null);
+  const vendorGuestRef = useRef(null);
 
   const isGuest = Boolean(user?.isAnonymous);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser?.isAnonymous && vendorGuestRef.current) {
+        setVendorGuest(vendorGuestRef.current);
+        vendorGuestRef.current = null;
+      }
       setUser(currentUser);
       setLoading(false);
       if (currentUser) {
@@ -49,6 +55,7 @@ function App() {
         }
       } else {
         setStatus('Not authenticated');
+        setVendorGuest(null);
       }
     });
 
@@ -111,6 +118,7 @@ function App() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
+      setVendorGuest(null);
     } catch (error) {
       showModal('Sign out failed: ' + error.message, 'Error');
     }
@@ -209,6 +217,10 @@ function App() {
               <LoginForm 
                 onSuccess={showToast}
                 onError={showModal}
+                onVendorSuccess={(vendorName) => {
+                  vendorGuestRef.current = vendorName;
+                  setVendorGuest(vendorName);
+                }}
               />
             </div>
           </section>
@@ -240,7 +252,7 @@ function App() {
                 onError={showModal}
               />
             ) : activePage === 'lotid' ? (
-              <LotIDTracker isGuest={isGuest} />
+              <LotIDTracker isGuest={isGuest} vendorGuest={vendorGuest} />
             ) : (
               <>
                 <div className="orders-page-actions">
