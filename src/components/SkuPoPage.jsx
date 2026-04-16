@@ -71,8 +71,7 @@ const createOrderItem = (product, skuId, fallbackLabel) => ({
   id: `${skuId}-${product.productName || fallbackLabel}-${Math.random().toString(36).slice(2, 8)}`,
   skuCode: skuId,
   description: product.productName || fallbackLabel,
-  singlesPerKit: 10,
-  quantitySingles: 0,
+  quantityKits: 0,
 });
 
 const generatePoNumber = (skuId) => {
@@ -211,14 +210,13 @@ const SkuPoPage = ({ onSuccess, onError }) => {
 
     const itemLines = draft.items
       .map((item, index) => {
-        const kitValue = calculateKitValue(item.quantitySingles, item.singlesPerKit);
-        return `${index + 1}\t${item.skuCode}\t${item.description}\t${kitValue}\t${item.quantitySingles}`;
+        return `${index + 1}\t${item.skuCode}\t${item.description}\t${item.quantityKits ?? 0}`;
       })
       .join('\n');
 
     return [
       `SKU PO: ${draft.poNumber}`,
-      'Line\tSKU / Item Code\tDescription\tQuantity KIT\tQuantity SINGLES',
+      'Line\tSKU / Item Code\tDescription\tQuantity KIT',
       itemLines,
       '',
       `${formatShortDate(draft.orderDate)}\t\t\t\t`,
@@ -256,7 +254,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
           item.id === itemId
             ? {
                 ...item,
-                [field]: ['singlesPerKit', 'quantitySingles'].includes(field)
+                [field]: field === 'quantityKits'
                   ? Math.max(0, Number.parseInt(value, 10) || 0)
                   : value,
               }
@@ -374,7 +372,6 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                     <col className="sku-po-col-line" />
                     <col className="sku-po-col-sku" />
                     <col className="sku-po-col-description" />
-                    <col className="sku-po-col-singles" />
                     <col className="sku-po-col-kit" />
                   </colgroup>
                   <thead>
@@ -383,7 +380,6 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                       <th>SKU / Item Code</th>
                       <th>Description</th>
                       <th>Quantity KIT</th>
-                      <th>Quantity SINGLES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -398,13 +394,12 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                           />
                         </td>
                         <td className="sku-po-description-cell">{item.description}</td>
-                        <td className="sku-po-total-cell">{calculateKitValue(item.quantitySingles, item.singlesPerKit)}</td>
-                        <td>
+                        <td className="sku-po-total-cell">
                           <input
                             type="number"
                             min="0"
-                            value={item.quantitySingles}
-                            onChange={(event) => updateItem(item.id, 'quantitySingles', event.target.value)}
+                            value={item.quantityKits ?? 0}
+                            onChange={(event) => updateItem(item.id, 'quantityKits', event.target.value)}
                             onFocus={(event) => event.target.select()}
                           />
                         </td>
@@ -433,7 +428,6 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                       <col className="sku-po-print-col-sku" />
                       <col className="sku-po-print-col-description" />
                       <col className="sku-po-print-col-kit" />
-                      <col className="sku-po-print-col-singles" />
                     </colgroup>
                     <thead>
                       <tr>
@@ -441,7 +435,6 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                         <th>SKU / Item Code</th>
                         <th>Description</th>
                         <th>Quantity KIT</th>
-                        <th>Quantity SINGLES</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -450,8 +443,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                           <td>{index + 1}</td>
                           <td>{item.skuCode}</td>
                           <td>{item.description}</td>
-                          <td>{calculateKitValue(item.quantitySingles, item.singlesPerKit)}</td>
-                          <td>{item.quantitySingles}</td>
+                          <td>{item.quantityKits ?? 0}</td>
                         </tr>
                       ))}
                     </tbody>

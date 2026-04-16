@@ -160,6 +160,7 @@ const DEFAULT_LABEL_DESIGN = {
   lotLeft: 90,
   lotTop: 10,
   lotFontSize: 12,
+  backgroundOpacity: 100, // 0–100, scales gradient alpha
 };
 const KIT_PREVIEW_WIDTH = 240;
 const KIT_PREVIEW_HEIGHT = 360;
@@ -452,10 +453,11 @@ const buildFixedLogoPrintStyles = (design) => {
     },
   };
 };
-const buildLabelBackground = (value) => {
+const buildLabelBackground = (value, opacityPct = 100) => {
   const channels = getColorChannels(normalizeLabelAccentColor(value));
   if (!channels) return "transparent";
-  return `linear-gradient(0deg, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.88) 0%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.64) 9%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.4) 18%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.22) 30%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.1) 42%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0.03) 56%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0) 68%)`;
+  const o = (opacityPct ?? 100) / 100;
+  return `linear-gradient(0deg, rgba(${channels.r}, ${channels.g}, ${channels.b}, ${+(0.88 * o).toFixed(3)}) 0%, rgba(${channels.r}, ${channels.g}, ${channels.b}, ${+(0.64 * o).toFixed(3)}) 9%, rgba(${channels.r}, ${channels.g}, ${channels.b}, ${+(0.4 * o).toFixed(3)}) 18%, rgba(${channels.r}, ${channels.g}, ${channels.b}, ${+(0.22 * o).toFixed(3)}) 30%, rgba(${channels.r}, ${channels.g}, ${channels.b}, ${+(0.1 * o).toFixed(3)}) 42%, rgba(${channels.r}, ${channels.g}, ${channels.b}, ${+(0.03 * o).toFixed(3)}) 56%, rgba(${channels.r}, ${channels.g}, ${channels.b}, 0) 68%)`;
 };
 const buildKitLabelFade = (value) => {
   const channels = getColorChannels(normalizeLabelAccentColor(value));
@@ -1283,6 +1285,306 @@ const classifySidebarGroup = (p) => {
   return "Other";
 };
 
+// ---------------------------------------------------------------------------
+// DraggableLabelCanvas – interactive drag-to-position preview for the editor
+// ---------------------------------------------------------------------------
+const DRAG_CANVAS_SCALE = 2; // render at 2× the preview dimensions
+
+const VIAL_DRAG_ELEMENTS = [
+  { id: "logo",    label: "Logo",    color: "#3b7dd8", xField: "logoLeft",          yField: "logoTopPercent",    yMode: "percent" },
+  { id: "center",  label: "Stack",   color: "#d82d63", xField: "centerLeftPercent", yField: "centerTopPercent",  yMode: "percent", xMode: "percent" },
+  { id: "qr",     label: "QR",      color: "#2da87a", xField: "qrLeft",             yField: "qrTop" },
+  { id: "footer", label: "Footer",  color: "#a06b2d", xField: "footerLeft",         yField: "footerTop" },
+  { id: "lot",    label: "Lot ID",  color: "#6b2da0", xField: "lotLeft",            yField: "lotTop" },
+];
+
+const KIT_DRAG_ELEMENTS = [
+  { id: "lot",      label: "Lot ID",  color: "#6b2da0", xField: "lotLeft",      yField: "lotTop" },
+  { id: "qr",       label: "QR",      color: "#2da87a", xField: "qrLeft",        yField: "qrTop" },
+  { id: "logo",     label: "Logo",    color: "#3b7dd8", xField: "logoLeft",      yField: "logoBottom",    yMode: "bottom" },
+  { id: "product",  label: "Product", color: "#d82d63", xField: "productLeft",   yField: "productBottom", yMode: "bottom" },
+  { id: "strength", label: "Mass",    color: "#e08a00", xField: "strengthLeft",  yField: "strengthBottom",yMode: "bottom" },
+  { id: "footer",   label: "Footer",  color: "#a06b2d", xField: "footerRight",   yField: "footerBottom",  yMode: "bottom", xMode: "right" },
+];
+
+const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selectedEl, onSelect, canvasScale = DRAG_CANVAS_SCALE }) => {
+  const maxScale = canvasScale;
+  const isKit = mode === "kit";
+  const previewW = isKit ? KIT_PREVIEW_WIDTH : LABEL_PREVIEW_WIDTH;
+  const previewH = isKit ? KIT_PREVIEW_HEIGHT : LABEL_PREVIEW_HEIGHT;
+
+  const [S, setS] = React.useState(maxScale);
+  const wrapRef = useRef(null);
+
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const compute = () => {
+      const availH = el.clientHeight;
+      const availW = el.clientWidth;
+      if (availH < 10 || availW < 10) return;
+      const scaleH = availH / previewH;
+      const scaleW = availW / previewW;
+      setS(Math.min(maxScale, scaleH, scaleW));
+    };
+    const raf = requestAnimationFrame(compute);
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, [previewH, previewW, maxScale]);
+
+  const canvasW = previewW * S;
+  const canvasH = previewH * S;
+
+  const elements = isKit ? KIT_DRAG_ELEMENTS : VIAL_DRAG_ELEMENTS;
+  const dragState = useRef(null);
+  const containerRef = useRef(null);
+
+  const getHandlePos = (el) => {
+    const xMode = el.xMode || "left";
+    const yMode = el.yMode || "top";
+    const rawX = design[el.xField] ?? 0;
+    const rawY = design[el.yField] ?? 0;
+
+    let px = xMode === "percent" ? (rawX / 100) * canvasW
+           : xMode === "right"   ? canvasW - (rawX * S)
+           : rawX * S;
+    let py = yMode === "percent" ? (rawY / 100) * canvasH
+           : yMode === "bottom"  ? canvasH - (rawY * S)
+           : rawY * S;
+    return { px, py };
+  };
+
+  const onMouseDown = (e, el) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = containerRef.current.getBoundingClientRect();
+    dragState.current = {
+      el,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startX: design[el.xField] ?? 0,
+      startY: design[el.yField] ?? 0,
+      rectLeft: rect.left,
+      rectTop: rect.top,
+    };
+
+    const onMove = (moveEvt) => {
+      if (!dragState.current) return;
+      const { el: cel, startMouseX, startMouseY, startX, startY } = dragState.current;
+      const deltaMouseX = moveEvt.clientX - startMouseX;
+      const deltaMouseY = moveEvt.clientY - startMouseY;
+
+      const xMode = cel.xMode || "left";
+      const yMode = cel.yMode || "top";
+
+      let newX, newY;
+      if (xMode === "percent") {
+        newX = Math.max(0, Math.min(100, startX + (deltaMouseX / canvasW) * 100));
+      } else if (xMode === "right") {
+        newX = Math.max(0, startX - deltaMouseX / S);
+      } else {
+        newX = Math.max(0, startX + deltaMouseX / S);
+      }
+
+      if (yMode === "percent") {
+        newY = Math.max(0, Math.min(100, startY + (deltaMouseY / canvasH) * 100));
+      } else if (yMode === "bottom") {
+        newY = Math.max(0, startY - deltaMouseY / S);
+      } else {
+        newY = Math.max(0, startY + deltaMouseY / S);
+      }
+
+      onChange(cel.xField, Math.round(newX * 10) / 10);
+      onChange(cel.yField, Math.round(newY * 10) / 10);
+    };
+
+    const onUp = () => {
+      dragState.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Touch support
+  const onTouchStart = (e, el) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const rect = containerRef.current.getBoundingClientRect();
+    dragState.current = {
+      el,
+      startMouseX: touch.clientX,
+      startMouseY: touch.clientY,
+      startX: design[el.xField] ?? 0,
+      startY: design[el.yField] ?? 0,
+    };
+    const onMove = (moveEvt) => {
+      if (!dragState.current) return;
+      const t = moveEvt.touches[0];
+      const { el: cel, startMouseX, startMouseY, startX, startY } = dragState.current;
+      const dx = t.clientX - startMouseX;
+      const dy = t.clientY - startMouseY;
+      const xMode = cel.xMode || "left";
+      const yMode = cel.yMode || "top";
+      let newX = xMode === "percent" ? Math.max(0, Math.min(100, startX + (dx / canvasW) * 100))
+                : xMode === "right"  ? Math.max(0, startX - dx / S)
+                : Math.max(0, startX + dx / S);
+      let newY = yMode === "percent" ? Math.max(0, Math.min(100, startY + (dy / canvasH) * 100))
+                : yMode === "bottom" ? Math.max(0, startY - dy / S)
+                : Math.max(0, startY + dy / S);
+      onChange(cel.xField, Math.round(newX * 10) / 10);
+      onChange(cel.yField, Math.round(newY * 10) / 10);
+    };
+    const onEnd = () => {
+      dragState.current = null;
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+    };
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+  };
+
+  const centerElement = (el, axis) => {
+    if (axis === 'h') {
+      const xMode = el.xMode || "left";
+      let newX;
+      if (xMode === "percent") newX = 50;
+      else if (xMode === "right") newX = Math.round(previewW / 2);
+      else newX = Math.round(previewW / 2);
+      onChange(el.xField, newX);
+    } else {
+      const yMode = el.yMode || "top";
+      let newY;
+      if (yMode === "percent") newY = 50;
+      else if (yMode === "bottom") newY = Math.round(previewH / 2);
+      else newY = Math.round(previewH / 2);
+      onChange(el.yField, newY);
+    }
+  };
+
+  const capColorValue = normalizeLabelAccentColor(
+    lotEntry ? getCapRenderColor(lotEntry.capColor, lotEntry.capShade) : ""
+  );
+  const lotText = lotEntry?.lot || "LOT-ID";
+  const vds = buildLabelDesignStyles(mergeLabelDesign(design));
+  const kds = buildKitLabelDesignStyles(mergeKitLabelDesign(design));
+
+  const labelContent = isKit ? (
+    <div style={{ width: previewW, height: previewH, position: "relative", overflow: "hidden", background: "linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%)", fontFamily: "Arial,Helvetica,sans-serif", boxSizing: "border-box" }}>
+      <img src="/assets/silverBackground.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: kds.fade.height, background: buildKitLabelFade(capColorValue) }} />
+      <div style={{ position: "absolute", ...kds.lot, fontWeight: 900, color: "#23160d", textTransform: "uppercase", whiteSpace: "nowrap" }}>{lotText}</div>
+      <img src="/assets/coaQR.png" alt="" style={{ position: "absolute", ...kds.qr, objectFit: "contain", imageRendering: "pixelated" }} onError={(e) => { e.currentTarget.src = buildQrCodeUrl(lotText); }} />
+      <img src="/assets/labelLogo.png" alt="" style={{ position: "absolute", ...kds.logo, objectFit: "contain", transformOrigin: "left bottom", transform: "rotate(-90deg)" }} onError={(e) => { e.currentTarget.src = "/assets/logo.png"; }} />
+      <div style={{ position: "absolute", left: kds.product.left, bottom: kds.product.bottom, fontSize: kds.product.fontSize, lineHeight: kds.product.lineHeight, transformOrigin: "left bottom", transform: "rotate(-90deg)", fontWeight: 900, color: "#111", textTransform: "uppercase", whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
+      <div style={{ position: "absolute", display: "inline-flex", alignItems: "center", gap: 10, left: kds.strength.left, bottom: kds.strength.bottom, transformOrigin: "left bottom", transform: "rotate(-90deg)" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", fontSize: kds.strength.fontSize, padding: kds.strength.padding, borderRadius: kds.strength.borderRadius, color: kds.strength.color, fontWeight: 900, whiteSpace: "nowrap" }}>{product?.strength}</div>
+        <div style={{ fontSize: kds.strength.fontSize, fontWeight: 700, color: "#111", whiteSpace: "nowrap" }}>10 Vials</div>
+      </div>
+      <div style={{ position: "absolute", right: kds.footer.right, bottom: kds.footer.bottom, display: "inline-flex", alignItems: "center", gap: kds.footer.gap, fontSize: kds.footer.fontSize, transformOrigin: "right bottom", transform: "rotate(-90deg)", color: "#111", whiteSpace: "nowrap" }}>
+        <span>99% Purity</span><span>Research Use Only</span>
+      </div>
+    </div>
+  ) : (
+    <div style={{ width: previewW, height: previewH, position: "relative", overflow: "hidden", background: "linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%)", fontFamily: "Arial,Helvetica,sans-serif", boxSizing: "border-box" }}>
+      <img src="/assets/silverBackground.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+      {capColorValue && <div style={{ position: "absolute", inset: 0, background: buildLabelBackground(capColorValue, design.backgroundOpacity) }} />}
+      <div style={{ position: "absolute", ...vds.lot, lineHeight: 1, fontWeight: 800, color: "#2b1a0f", letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{lotText}</div>
+      <div style={{ position: "absolute", ...vds.qrWrap }}>
+        <img src="/assets/coaQR.png" alt="" style={{ ...vds.qr, objectFit: "contain", imageRendering: "pixelated" }} onError={(e) => { e.currentTarget.src = buildQrCodeUrl(lotText); }} />
+      </div>
+      <div style={{ position: "absolute", ...vds.logoWrap, display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <img src="/assets/labelLogo.png" alt="" style={{ ...vds.logo, objectFit: "contain" }} onError={(e) => { e.currentTarget.src = "/assets/logo.png"; }} />
+      </div>
+      <div style={{ position: "absolute", left: vds.center.left, top: vds.center.top, width: vds.center.width, gap: vds.center.gap, transform: "translate(-50%,-50%) rotate(-90deg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+        <div style={{ ...vds.name, fontWeight: 900, color: "#23160d", textTransform: "uppercase", whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
+        <div style={{ ...vds.strength, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", lineHeight: 1, fontWeight: 900, whiteSpace: "nowrap" }}>{product?.strength}</div>
+      </div>
+      <div style={{ position: "absolute", left: vds.footer.left, top: vds.footer.top, fontSize: vds.footer.fontSize, transform: "translate(-50%,-50%) rotate(-90deg)", lineHeight: 1.3, color: "#23160d", display: "flex", flexDirection: "column", gap: "0.5px", whiteSpace: "nowrap" }}>
+        <span style={{ display: "block", fontWeight: 500 }}>99% PURITY</span>
+        <span style={{ display: "block", fontWeight: 500 }}>FOR RESEARCH USE ONLY</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="lot-drag-canvas-wrap" ref={wrapRef}>
+      <div className="lot-drag-canvas-label">Drag elements to reposition</div>
+      <div
+        ref={containerRef}
+        className="lot-drag-canvas"
+        style={{ width: canvasW, height: canvasH, position: "relative", userSelect: "none" }}
+      >
+        {/* Scaled label preview (non-interactive) */}
+        <div style={{ position: "absolute", top: 0, left: 0, width: previewW, height: previewH, transform: `scale(${S})`, transformOrigin: "top left", pointerEvents: "none" }}>
+          {labelContent}
+        </div>
+        {/* Grid lines */}
+        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", opacity: 0.15 }}>
+          {[25, 50, 75].map((pct) => (
+            <React.Fragment key={pct}>
+              <line x1={`${pct}%`} y1="0" x2={`${pct}%`} y2="100%" stroke="#4a3825" strokeWidth="1" strokeDasharray="4 4" />
+              <line x1="0" y1={`${pct}%`} x2="100%" y2={`${pct}%`} stroke="#4a3825" strokeWidth="1" strokeDasharray="4 4" />
+            </React.Fragment>
+          ))}
+        </svg>
+
+        {/* Drag handles */}
+        {elements.map((el) => {
+          const { px: rawPx, py: rawPy } = getHandlePos(el);
+          // Offset handle to visual center of each element
+          let dx = 0, dy = 0;
+          if (isKit) {
+            const kd = mergeKitLabelDesign(design);
+            if (el.id === 'lot')      { dx = 25 * S; dy = 8 * S; }
+            else if (el.id === 'qr') { dx = (kd.qrSize / 2) * S; dy = (kd.qrSize / 2) * S; }
+            else if (el.id === 'logo') { dx = -(kd.logoHeight / 2) * S; dy = -(kd.logoWidth / 2) * S; }
+            else if (el.id === 'product') { dx = -15 * S; dy = -55 * S; }
+            else if (el.id === 'strength') { dx = -15 * S; dy = -28 * S; }
+            else if (el.id === 'footer') { dx = 0; dy = -15 * S; }
+          } else {
+            const vd = mergeLabelDesign(design);
+            if (el.id === 'logo')   { dx = 0; dy = (vd.logoHeight / 2 - vd.logoWidth / 2) * S; }
+            else if (el.id === 'qr') { dx = (vd.qrWidth / 2) * S; dy = (vd.qrWidth / 2) * S; }
+            else if (el.id === 'lot') { dx = 25 * S; dy = 6 * S; }
+            // center and footer already use translate(-50%,-50%) so no offset needed
+          }
+          const px = rawPx + dx;
+          const py = rawPy + dy;
+          const isSelected = selectedEl === el.id;
+          return (
+            <div
+              key={el.id}
+              className={`lot-drag-handle${isSelected ? " selected" : ""}`}
+              style={{
+                position: "absolute",
+                left: px,
+                top: py,
+                transform: "translate(-50%, -50%)",
+                background: el.color,
+                cursor: "grab",
+                zIndex: isSelected ? 30 : 20,
+                outline: isSelected ? `3px solid #fff` : "none",
+                boxShadow: isSelected ? `0 0 0 5px ${el.color}, 0 4px 16px rgba(0,0,0,0.36)` : undefined,
+              }}
+              onMouseDown={(e) => { onSelect(el.id); onMouseDown(e, el); }}
+              onTouchStart={(e) => { onSelect(el.id); onTouchStart(e, el); }}
+              onClick={(e) => { e.stopPropagation(); onSelect(el.id); }}
+              title={`Click to select / drag to move ${el.label}`}
+            >
+              <span className="lot-drag-handle-icon">⤢</span>
+              <span className="lot-drag-handle-label">{el.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [products, setProducts] = useState([]);
   const [productData, setProductData] = useState({});
@@ -1292,6 +1594,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [lotEditMode, setLotEditMode] = useState({});
   const [copyFlash, setCopyFlash] = useState({});
   const [labelEditorOpen, setLabelEditorOpen] = useState(false);
+  const [selectedEditorElement, setSelectedEditorElement] = useState(null);
+  const editorCanvasColRef = useRef(null);
   const [labelDesignDraft, setLabelDesignDraft] = useState(DEFAULT_LABEL_DESIGN);
   const [labelEditorMode, setLabelEditorMode] = useState("vial");
   const [labelEditorProductKey, setLabelEditorProductKey] = useState(null);
@@ -1910,6 +2214,42 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     }));
   };
 
+  // Arrow-key nudge when editor is open and an element is selected
+  useEffect(() => {
+    if (!labelEditorOpen || !selectedEditorElement) return;
+    const elements = labelEditorMode === "kit" ? KIT_DRAG_ELEMENTS : VIAL_DRAG_ELEMENTS;
+    const el = elements.find((e) => e.id === selectedEditorElement);
+    if (!el) return;
+
+    const onKeyDown = (e) => {
+      const arrowKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+      if (!arrowKeys.includes(e.key)) return;
+      // Only hijack when not typing in an input/textarea
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      const xMode = el.xMode || "left";
+      const yMode = el.yMode || "top";
+
+      setLabelDesignDraft((prev) => {
+        const updated = { ...prev };
+        if (e.key === "ArrowLeft") {
+          updated[el.xField] = Math.max(0, (prev[el.xField] ?? 0) - (xMode === "right" ? -step : step));
+        } else if (e.key === "ArrowRight") {
+          updated[el.xField] = Math.max(0, (prev[el.xField] ?? 0) + (xMode === "right" ? -step : step));
+        } else if (e.key === "ArrowUp") {
+          updated[el.yField] = Math.max(0, (prev[el.yField] ?? 0) - (yMode === "bottom" ? -step : step));
+        } else if (e.key === "ArrowDown") {
+          updated[el.yField] = Math.max(0, (prev[el.yField] ?? 0) + (yMode === "bottom" ? -step : step));
+        }
+        return updated;
+      });
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [labelEditorOpen, selectedEditorElement, labelEditorMode]);
+
   const openLabelEditor = (productKey, mode = "vial") => {
     setLabelEditorMode(mode);
     setLabelEditorProductKey(productKey);
@@ -1921,6 +2261,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           : mergeLabelDesign(productData[productKey]?.verticalLabelDesign)
     );
     setLabelEditorOpen(true);
+    setSelectedEditorElement(null);
   };
 
   const saveLabelDesign = async () => {
@@ -2859,491 +3200,247 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
 
       {labelEditorOpen &&
         createPortal(
-          <div className="lot-modal-backdrop lot-layout-backdrop" onClick={() => setLabelEditorOpen(false)}>
-            <div className="lot-modal lot-layout-editor" onClick={(e) => e.stopPropagation()}>
-              <div className="lot-layout-editor-header">
-                <div>
-                  <h3>
-                    {labelEditorMode === "kit"
-                      ? "Edit Kit Label Layout"
-                      : labelEditorMode === "test"
-                        ? "Edit Test Label Layout"
-                        : "Edit Label Layout"}
-                  </h3>
-                  <p className="lot-modal-sub">
-                    {labelEditorMode === "kit"
-                      ? "Adjust the dedicated 1.50 x 2.25 inch kit label."
-                      : labelEditorMode === "test"
-                        ? "Adjust the dedicated test labels that print in the single-label format."
-                        : "Adjust positions and sizes for the printed vial label."}
-                  </p>
-                  <p className="lot-layout-editor-note">
-                    Changes update the selected label preview on the page in real time.
-                  </p>
+          (() => {
+            const editorElements = labelEditorMode === "kit" ? KIT_DRAG_ELEMENTS : VIAL_DRAG_ELEMENTS;
+            const selEl = editorElements.find((e) => e.id === selectedEditorElement) || null;
+
+            // Per-element additional size/style fields shown in properties panel
+            const extraFields = {
+              logo: labelEditorMode === "kit"
+                ? [
+                    { key: "logoWidth", label: "Width", min: 20, max: 400 },
+                    { key: "logoHeight", label: "Height", min: 10, max: 200 },
+                  ]
+                : [
+                    { key: "logoWidth", label: "Width", min: 20, max: 400 },
+                    { key: "logoHeight", label: "Height", min: 10, max: 200 },
+                  ],
+              center: [
+                { key: "centerWidth", label: "Width", min: 50, max: 500 },
+                { key: "centerGap", label: "Gap", min: 0, max: 40 },
+                { key: "nameFontSize", label: "Name Font", min: 8, max: 80 },
+                { key: "nameLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 },
+                { key: "strengthFontSize", label: "Mass Font", min: 8, max: 60 },
+                { key: "strengthPadX", label: "Mass Pad X", min: 0, max: 40 },
+                { key: "strengthPadY", label: "Mass Pad Y", min: 0, max: 40 },
+              ],
+              qr: labelEditorMode === "kit"
+                ? [{ key: "qrSize", label: "Size", min: 20, max: 200 }]
+                : [
+                    { key: "qrWidth", label: "Width", min: 20, max: 200 },
+                    { key: "qrMaxHeight", label: "Max Height", min: 20, max: 300 },
+                  ],
+              footer: labelEditorMode === "kit"
+                ? [
+                    { key: "footerFontSize", label: "Font Size", min: 6, max: 30 },
+                    { key: "footerGap", label: "Gap", min: 0, max: 40 },
+                    { key: "bottomFadeHeight", label: "Fade Height", min: 0, max: 400 },
+                  ]
+                : [{ key: "footerFontSize", label: "Font Size", min: 6, max: 30 }],
+              lot: [{ key: "lotFontSize", label: "Font Size", min: 6, max: 30 }],
+              product: [
+                { key: "productFontSize", label: "Font Size", min: 8, max: 80 },
+                { key: "productLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 },
+              ],
+              strength: [
+                { key: "strengthFontSize", label: "Font Size", min: 8, max: 60 },
+                { key: "strengthPadX", label: "Pad X", min: 0, max: 40 },
+                { key: "strengthPadY", label: "Pad Y", min: 0, max: 40 },
+                { key: "strengthRadius", label: "Radius", min: 0, max: 40 },
+              ],
+            };
+
+            const SliderRow = ({ fieldKey, label, min, max, step = 1 }) => {
+              const val = labelDesignDraft[fieldKey] ?? 0;
+              return (
+                <div className="lot-props-row">
+                  <span className="lot-props-row-label">{label}</span>
+                  <input
+                    type="range"
+                    className="lot-props-slider"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={val}
+                    onChange={(e) => updateLabelDesign(fieldKey, e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    className="lot-props-number"
+                    value={val}
+                    step={step}
+                    onChange={(e) => updateLabelDesign(fieldKey, e.target.value)}
+                  />
                 </div>
-                <button
-                  type="button"
-                  className="lot-modal-btn secondary"
-                  onClick={() =>
-                    setLabelDesignDraft(
-                      labelEditorMode === "kit"
-                        ? DEFAULT_KIT_LABEL_DESIGN
-                        : labelEditorMode === "test"
-                          ? DEFAULT_TEST_LABEL_DESIGN
-                        : DEFAULT_LABEL_DESIGN
-                    )
-                  }
-                >
-                  Reset
-                </button>
-              </div>
+              );
+            };
 
-              <div className="lot-layout-grid">
-                {labelEditorMode === "kit" ? (
-                  <>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Lot ID</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.lotLeft} onChange={(e) => updateLabelDesign("lotLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top</span>
-                          <input type="number" value={labelDesignDraft.lotTop} onChange={(e) => updateLabelDesign("lotTop", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.lotFontSize} onChange={(e) => updateLabelDesign("lotFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">QR</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.qrLeft} onChange={(e) => updateLabelDesign("qrLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top</span>
-                          <input type="number" value={labelDesignDraft.qrTop} onChange={(e) => updateLabelDesign("qrTop", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Size</span>
-                          <input type="number" value={labelDesignDraft.qrSize} onChange={(e) => updateLabelDesign("qrSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Logo</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.logoLeft} onChange={(e) => updateLabelDesign("logoLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Bottom</span>
-                          <input type="number" value={labelDesignDraft.logoBottom} onChange={(e) => updateLabelDesign("logoBottom", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Width</span>
-                          <input type="number" value={labelDesignDraft.logoWidth} onChange={(e) => updateLabelDesign("logoWidth", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Height</span>
-                          <input type="number" value={labelDesignDraft.logoHeight} onChange={(e) => updateLabelDesign("logoHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Product</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.productLeft} onChange={(e) => updateLabelDesign("productLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Bottom</span>
-                          <input type="number" value={labelDesignDraft.productBottom} onChange={(e) => updateLabelDesign("productBottom", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.productFontSize} onChange={(e) => updateLabelDesign("productFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Line Height</span>
-                          <input type="number" step="0.01" value={labelDesignDraft.productLineHeight} onChange={(e) => updateLabelDesign("productLineHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Mass</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.strengthLeft} onChange={(e) => updateLabelDesign("strengthLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Bottom</span>
-                          <input type="number" value={labelDesignDraft.strengthBottom} onChange={(e) => updateLabelDesign("strengthBottom", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.strengthFontSize} onChange={(e) => updateLabelDesign("strengthFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Pad X</span>
-                          <input type="number" value={labelDesignDraft.strengthPadX} onChange={(e) => updateLabelDesign("strengthPadX", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Pad Y</span>
-                          <input type="number" value={labelDesignDraft.strengthPadY} onChange={(e) => updateLabelDesign("strengthPadY", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Radius</span>
-                          <input type="number" value={labelDesignDraft.strengthRadius} onChange={(e) => updateLabelDesign("strengthRadius", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Text Color</span>
-                          <div className="lot-modal-color-row">
-                            <input
-                              type="color"
-                              value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")}
-                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                              className="lot-modal-color-picker"
-                            />
-                            <input
-                              type="text"
-                              value={labelDesignDraft.massTextColor ?? "#ffffff"}
-                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                              className="lot-modal-input"
-                            />
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Footer</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Right</span>
-                          <input type="number" value={labelDesignDraft.footerRight} onChange={(e) => updateLabelDesign("footerRight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Bottom</span>
-                          <input type="number" value={labelDesignDraft.footerBottom} onChange={(e) => updateLabelDesign("footerBottom", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.footerFontSize} onChange={(e) => updateLabelDesign("footerFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Gap</span>
-                          <input type="number" value={labelDesignDraft.footerGap} onChange={(e) => updateLabelDesign("footerGap", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Fade Height</span>
-                          <input type="number" value={labelDesignDraft.bottomFadeHeight} onChange={(e) => updateLabelDesign("bottomFadeHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                  </>
-                ) : labelEditorMode === "test" ? (
-                  <>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Logo</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.logoLeft} onChange={(e) => updateLabelDesign("logoLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.logoTopPercent} onChange={(e) => updateLabelDesign("logoTopPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Width</span>
-                          <input type="number" value={labelDesignDraft.logoWidth} onChange={(e) => updateLabelDesign("logoWidth", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Height</span>
-                          <input type="number" value={labelDesignDraft.logoHeight} onChange={(e) => updateLabelDesign("logoHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Center Stack</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left %</span>
-                          <input type="number" value={labelDesignDraft.centerLeftPercent} onChange={(e) => updateLabelDesign("centerLeftPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.centerTopPercent} onChange={(e) => updateLabelDesign("centerTopPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Width</span>
-                          <input type="number" value={labelDesignDraft.centerWidth} onChange={(e) => updateLabelDesign("centerWidth", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Gap</span>
-                          <input type="number" value={labelDesignDraft.centerGap} onChange={(e) => updateLabelDesign("centerGap", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Product</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.nameFontSize} onChange={(e) => updateLabelDesign("nameFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Line Height</span>
-                          <input type="number" step="0.01" value={labelDesignDraft.nameLineHeight} onChange={(e) => updateLabelDesign("nameLineHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Mass</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.strengthFontSize} onChange={(e) => updateLabelDesign("strengthFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Text Color</span>
-                          <div className="lot-modal-color-row">
-                            <input
-                              type="color"
-                              value={colorValueToHex(labelDesignDraft.massTextColor, "#2b1a0f")}
-                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                              className="lot-modal-color-picker"
-                            />
-                            <input
-                              type="text"
-                              value={labelDesignDraft.massTextColor}
-                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                              className="lot-modal-input"
-                            />
-                          </div>
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Pad X</span>
-                          <input type="number" value={labelDesignDraft.strengthPadX} onChange={(e) => updateLabelDesign("strengthPadX", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Testing Variation</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.variantFontSize} onChange={(e) => updateLabelDesign("variantFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Margin Top</span>
-                          <input type="number" value={labelDesignDraft.variantMarginTop} onChange={(e) => updateLabelDesign("variantMarginTop", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Offset X</span>
-                          <input type="number" value={labelDesignDraft.variantOffsetX ?? 0} onChange={(e) => updateLabelDesign("variantOffsetX", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Offset Y</span>
-                          <input type="number" value={labelDesignDraft.variantOffsetY ?? 0} onChange={(e) => updateLabelDesign("variantOffsetY", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Lot ID</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.lotLeft} onChange={(e) => updateLabelDesign("lotLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top</span>
-                          <input type="number" value={labelDesignDraft.lotTop} onChange={(e) => updateLabelDesign("lotTop", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.lotFontSize} onChange={(e) => updateLabelDesign("lotFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Logo</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.logoLeft} onChange={(e) => updateLabelDesign("logoLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.logoTopPercent} onChange={(e) => updateLabelDesign("logoTopPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Width</span>
-                          <input type="number" value={labelDesignDraft.logoWidth} onChange={(e) => updateLabelDesign("logoWidth", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Height</span>
-                          <input type="number" value={labelDesignDraft.logoHeight} onChange={(e) => updateLabelDesign("logoHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Center Stack</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left %</span>
-                          <input type="number" value={labelDesignDraft.centerLeftPercent} onChange={(e) => updateLabelDesign("centerLeftPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top %</span>
-                          <input type="number" value={labelDesignDraft.centerTopPercent} onChange={(e) => updateLabelDesign("centerTopPercent", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Width</span>
-                          <input type="number" value={labelDesignDraft.centerWidth} onChange={(e) => updateLabelDesign("centerWidth", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Gap</span>
-                          <input type="number" value={labelDesignDraft.centerGap} onChange={(e) => updateLabelDesign("centerGap", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Product</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.nameFontSize} onChange={(e) => updateLabelDesign("nameFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Line Height</span>
-                          <input type="number" step="0.01" value={labelDesignDraft.nameLineHeight} onChange={(e) => updateLabelDesign("nameLineHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Mass</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.strengthFontSize} onChange={(e) => updateLabelDesign("strengthFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Text Color</span>
-                          <div className="lot-modal-color-row">
-                            <input
-                              type="color"
-                              value={colorValueToHex(labelDesignDraft.massTextColor, "#2b1a0f")}
-                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                              className="lot-modal-color-picker"
-                            />
-                            <input
-                              type="text"
-                              value={labelDesignDraft.massTextColor}
-                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                              className="lot-modal-input"
-                            />
-                          </div>
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Pad X</span>
-                          <input type="number" value={labelDesignDraft.strengthPadX} onChange={(e) => updateLabelDesign("strengthPadX", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Pad Y</span>
-                          <input type="number" value={labelDesignDraft.strengthPadY ?? 5} onChange={(e) => updateLabelDesign("strengthPadY", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Footer</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.footerLeft} onChange={(e) => updateLabelDesign("footerLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top</span>
-                          <input type="number" value={labelDesignDraft.footerTop} onChange={(e) => updateLabelDesign("footerTop", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.footerFontSize} onChange={(e) => updateLabelDesign("footerFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    {labelEditorMode !== "test" && (
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">QR</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.qrLeft} onChange={(e) => updateLabelDesign("qrLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Width</span>
-                          <input type="number" value={labelDesignDraft.qrWidth} onChange={(e) => updateLabelDesign("qrWidth", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Max Height</span>
-                          <input type="number" value={labelDesignDraft.qrMaxHeight} onChange={(e) => updateLabelDesign("qrMaxHeight", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    )}
-                    {labelEditorMode === "test" && (
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Testing Variation</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.variantFontSize} onChange={(e) => updateLabelDesign("variantFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                    )}
-                    <div className="lot-layout-section">
-                      <div className="lot-layout-section-title">Lot ID</div>
-                      <div className="lot-layout-section-grid">
-                        <label className="lot-layout-field">
-                          <span>Left</span>
-                          <input type="number" value={labelDesignDraft.lotLeft} onChange={(e) => updateLabelDesign("lotLeft", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Top</span>
-                          <input type="number" value={labelDesignDraft.lotTop} onChange={(e) => updateLabelDesign("lotTop", e.target.value)} className="lot-modal-input" />
-                        </label>
-                        <label className="lot-layout-field">
-                          <span>Font</span>
-                          <input type="number" value={labelDesignDraft.lotFontSize} onChange={(e) => updateLabelDesign("lotFontSize", e.target.value)} className="lot-modal-input" />
-                        </label>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+            // Position field ranges based on label size
+            const isKit = labelEditorMode === "kit";
+            const pw = isKit ? KIT_PREVIEW_WIDTH : LABEL_PREVIEW_WIDTH;
+            const ph = isKit ? KIT_PREVIEW_HEIGHT : LABEL_PREVIEW_HEIGHT;
 
-              <div className="lot-modal-actions">
-                <button type="button" className="lot-modal-btn secondary" onClick={() => setLabelEditorOpen(false)}>
-                  Cancel
-                </button>
-                <button type="button" className="lot-modal-btn primary" onClick={saveLabelDesign}>
-                  Save Layout
-                </button>
+            const centerElFn = (axis) => {
+              if (!selEl) return;
+              const xMode = selEl.xMode || "left";
+              const yMode = selEl.yMode || "top";
+              // For left/right-anchored elements we need to subtract half the element's
+              // own rendered size so the visual center lands at the canvas center.
+              const elSize = (() => {
+                if (!isKit) {
+                  const vd = mergeLabelDesign(labelDesignDraft);
+                  if (selEl.id === 'qr')     return { w: vd.qrWidth,   h: vd.qrWidth };
+                  if (selEl.id === 'logo')   return { w: vd.logoHeight, h: vd.logoWidth }; // rotated
+                  if (selEl.id === 'lot')    return { w: 0, h: 0 }; // translateX(-50%) already self-centering
+                }  else {
+                  const kd = mergeKitLabelDesign(labelDesignDraft);
+                  if (selEl.id === 'qr')       return { w: kd.qrSize,   h: kd.qrSize };
+                  if (selEl.id === 'logo')     return { w: kd.logoHeight, h: kd.logoWidth };
+                  if (selEl.id === 'product')  return { w: 0, h: 0 };
+                  if (selEl.id === 'strength') return { w: 0, h: 0 };
+                  if (selEl.id === 'footer')   return { w: 0, h: 0 };
+                  if (selEl.id === 'lot')      return { w: 0, h: 0 };
+                }
+                return { w: 0, h: 0 };
+              })();
+              if (axis === "h") {
+                let newX;
+                if (xMode === "percent") newX = 50;
+                else if (xMode === "right") newX = Math.round(pw / 2);
+                else newX = Math.round((pw - elSize.w) / 2);
+                updateLabelDesign(selEl.xField, newX);
+              } else {
+                let newY;
+                if (yMode === "percent") newY = 50;
+                else if (yMode === "bottom") newY = Math.round(ph / 2);
+                else newY = Math.round((ph - elSize.h) / 2);
+                updateLabelDesign(selEl.yField, newY);
+              }
+            };
+
+            return (
+              <div className="lot-layout-backdrop-new" onClick={() => setLabelEditorOpen(false)}>
+                <div className="lot-layout-editor-new" onClick={(e) => e.stopPropagation()}>
+                  {/* Header */}
+                  <div className="lot-layout-editor-new-header">
+                    <div className="lot-layout-editor-new-title">
+                      {labelEditorMode === "kit" ? "Edit Kit Label Layout" : labelEditorMode === "test" ? "Edit Test Label Layout" : "Edit Label Layout"}
+                    </div>
+                    <div className="lot-layout-editor-new-header-actions">
+                      <button
+                        type="button"
+                        className="lot-modal-btn secondary"
+                        onClick={() => setLabelDesignDraft(labelEditorMode === "kit" ? DEFAULT_KIT_LABEL_DESIGN : labelEditorMode === "test" ? DEFAULT_TEST_LABEL_DESIGN : DEFAULT_LABEL_DESIGN)}
+                      >
+                        Reset
+                      </button>
+                      <button type="button" className="lot-layout-editor-close-btn" onClick={() => setLabelEditorOpen(false)} aria-label="Close">✕</button>
+                    </div>
+                  </div>
+
+                  {/* Body: canvas + properties */}
+                  <div className="lot-layout-editor-new-body">
+                    {/* Left: canvas */}
+                    <div className="lot-layout-editor-new-canvas-col" ref={editorCanvasColRef}>
+                      <p className="lot-layout-editor-new-hint">Click an element to select it, then drag or adjust properties on the right.</p>
+                      <DraggableLabelCanvas
+                        design={labelDesignDraft}
+                        onChange={updateLabelDesign}
+                        mode={labelEditorMode}
+                        product={selectedProduct}
+                        lotEntry={selectedPreviewLot}
+                        selectedEl={selectedEditorElement}
+                        onSelect={setSelectedEditorElement}
+                      />
+                    </div>
+
+                    {/* Right: properties */}
+                    <div className="lot-layout-editor-new-props-col">
+                      {!selEl ? (
+                        <div className="lot-props-empty">
+                          <div className="lot-props-empty-icon">⇦</div>
+                          <div className="lot-props-empty-text">Click any element on the label to select it</div>
+                          <div className="lot-props-empty-sub">Each pill handle represents an element you can reposition and resize.</div>
+                        </div>
+                      ) : (
+                        <div className="lot-props-panel">
+                          <div className="lot-props-panel-header" style={{ background: selEl.color }}>
+                            <span className="lot-props-panel-name">{selEl.label}</span>
+                          </div>
+
+                          {/* Position */}
+                          <div className="lot-props-section">
+                            <div className="lot-props-section-title">Position</div>
+                            {SliderRow({
+                              fieldKey: selEl.xField,
+                              label: selEl.xMode === "percent" ? "X %" : selEl.xMode === "right" ? "Right" : "Left",
+                              min: 0,
+                              max: selEl.xMode === "percent" ? 100 : pw,
+                            })}
+                            {SliderRow({
+                              fieldKey: selEl.yField,
+                              label: selEl.yMode === "percent" ? "Y %" : selEl.yMode === "bottom" ? "Bottom" : "Top",
+                              min: 0,
+                              max: selEl.yMode === "percent" ? 100 : ph,
+                            })}
+                            <div className="lot-props-center-btns">
+                              <button className="lot-props-center-btn" onClick={() => centerElFn("h")}>↔ Center H</button>
+                              <button className="lot-props-center-btn" onClick={() => centerElFn("v")}>↕ Center V</button>
+                            </div>
+                          </div>
+
+                          {/* Size / Style */}
+                          {(extraFields[selEl.id] || []).length > 0 && (
+                            <div className="lot-props-section">
+                              <div className="lot-props-section-title">Size &amp; Style</div>
+                              {(extraFields[selEl.id] || []).map((f) => (
+                                <React.Fragment key={f.key}>
+                                  {SliderRow({ fieldKey: f.key, label: f.label, min: f.min, max: f.max, step: f.step })}
+                                </React.Fragment>
+                              ))}
+                              {/* Mass text color */}
+                              {(selEl.id === "center" || selEl.id === "strength") && (
+                                <div className="lot-props-row">
+                                  <span className="lot-props-row-label">Text Color</span>
+                                  <input
+                                    type="color"
+                                    value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")}
+                                    onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                                    className="lot-modal-color-picker"
+                                    style={{ height: 32, flex: 1 }}
+                                  />
+                                  <input
+                                    type="text"
+                                    value={labelDesignDraft.massTextColor ?? "#ffffff"}
+                                    onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
+                                    className="lot-props-number"
+                                    style={{ width: 80 }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Background gradient — always shown */}
+                      <div className="lot-props-section" style={{ margin: selEl ? "0" : "auto 0 0" }}>
+                        <div className="lot-props-section-title">Background Gradient</div>
+                        {labelEditorMode !== "kit" && SliderRow({ fieldKey: "backgroundOpacity", label: "Intensity", min: 0, max: 100, step: 1 })}
+                        {labelEditorMode === "kit" && SliderRow({ fieldKey: "bottomFadeHeight", label: "Fade Height", min: 0, max: 400, step: 1 })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="lot-layout-editor-new-footer">
+                    <button type="button" className="lot-modal-btn secondary" onClick={() => setLabelEditorOpen(false)}>Cancel</button>
+                    <button type="button" className="lot-modal-btn primary" onClick={saveLabelDesign}>Save Layout</button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>,
+            );
+          })(),
           document.body
         )}
     </div>
