@@ -565,8 +565,13 @@
 .sku-po-history-item-top {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 0.5rem;
+}
+
+.sku-po-history-item-title {
+  display: grid;
+  gap: 0.15rem;
 }
 
 .sku-po-history-item-top strong {
@@ -576,6 +581,12 @@
 .sku-po-history-item-top span {
   color: #7a6a58;
   font-size: 0.82rem;
+}
+
+.sku-po-history-remove-btn {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+  align-self: flex-start;
 }
 
 .sku-po-history-item p {

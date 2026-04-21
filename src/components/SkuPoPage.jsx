@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  setDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './SkuPoPage.css';
 
@@ -51,8 +61,8 @@ const sortBySkuSuffix = (leftSku, rightSku) => {
 
 const SORTED_SKU_CATALOG = [...SKU_CATALOG].sort(sortBySkuSuffix);
 const SKU_COLLECTION_NAME = 'c&pSKUIDs';
+const PRINT_HISTORY_COLLECTION_NAME = 'c&pSKUPrintHistory';
 const DRAFT_STORAGE_KEY = 'skuPoDraft';
-const PRINT_HISTORY_STORAGE_KEY = 'skuPoPrintHistory';
 const MAX_PRINT_HISTORY_ITEMS = 30;
 
 const normalizeSkuFromDoc = (docId, rawData) => {
@@ -125,6 +135,19 @@ const createPrintHistoryEntry = (draft) => ({
     quantityKits: item.quantityKits ?? 0,
   })),
 });
+const normalizePrintHistoryFromDoc = (docId, rawData) => ({
+  id: docId,
+  poNumber: rawData?.poNumber || '',
+  orderDate: rawData?.orderDate || '',
+  printedAt: rawData?.printedAt || '',
+  items: Array.isArray(rawData?.items)
+    ? rawData.items.map((item) => ({
+        skuCode: item?.skuCode || '',
+        description: item?.description || '',
+        quantityKits: Number(item?.quantityKits) || 0,
+      }))
+    : [],
+});
 
 const SkuPoPage = ({ onSuccess, onError }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -145,16 +168,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
       return null;
     }
   });
-  const [printHistory, setPrintHistory] = useState(() => {
-    try {
-      const saved = localStorage.getItem(PRINT_HISTORY_STORAGE_KEY);
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [printHistory, setPrintHistory] = useState([]);
     // Auto-save draft to localStorage on every change
     useEffect(() => {
       if (draft) {
@@ -163,10 +177,6 @@ const SkuPoPage = ({ onSuccess, onError }) => {
         localStorage.removeItem(DRAFT_STORAGE_KEY);
       }
     }, [draft]);
-
-    useEffect(() => {
-      localStorage.setItem(PRINT_HISTORY_STORAGE_KEY, JSON.stringify(printHistory));
-    }, [printHistory]);
 
     // Keep orderDate in sync with today unless user has changed it
     useEffect(() => {
@@ -223,6 +233,38 @@ const SkuPoPage = ({ onSuccess, onError }) => {
         setSkuCatalog(SORTED_SKU_CATALOG);
       }
       onError?.('Unable to load SKU IDs from Firebase. Using local fallback list.', 'Error');
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [onError]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadPrintHistory = async () => {
+      const historyCollectionRef = collection(db, PRINT_HISTORY_COLLECTION_NAME);
+      const historyQuery = query(
+        historyCollectionRef,
+        orderBy('printedAt', 'desc'),
+        limit(MAX_PRINT_HISTORY_ITEMS)
+      );
+      const snapshot = await getDocs(historyQuery);
+      const historyItems = snapshot.docs.map((historyDoc) =>
+        normalizePrintHistoryFromDoc(historyDoc.id, historyDoc.data())
+      );
+
+      if (isActive) {
+        setPrintHistory(historyItems);
+      }
+    };
+
+    loadPrintHistory().catch(() => {
+      if (isActive) {
+        setPrintHistory([]);
+      }
+      onError?.('Unable to load shared print history.', 'Error');
     });
 
     return () => {
@@ -319,17 +361,48 @@ const SkuPoPage = ({ onSuccess, onError }) => {
     }
   };
 
-  const printLabel = () => {
+  const printLabel = async () => {
     if (!draft) return;
+
     const historyEntry = createPrintHistoryEntry(draft);
-    setPrintHistory((currentHistory) => [historyEntry, ...currentHistory].slice(0, MAX_PRINT_HISTORY_ITEMS));
+
+    try {
+      await setDoc(doc(db, PRINT_HISTORY_COLLECTION_NAME, historyEntry.id), historyEntry);
+      setPrintHistory((currentHistory) => [historyEntry, ...currentHistory].slice(0, MAX_PRINT_HISTORY_ITEMS));
+      onSuccess?.('Label printed and saved to shared history.');
+    } catch {
+      onError?.('Unable to save to shared history. Label will still print.', 'Error');
+    }
+
     window.print();
-    onSuccess?.('Label printed and saved to history.');
   };
 
-  const clearPrintHistory = () => {
-    setPrintHistory([]);
-    onSuccess?.('Print history cleared.');
+  const clearPrintHistory = async () => {
+    if (printHistory.length === 0) return;
+
+    try {
+      const batch = writeBatch(db);
+      printHistory.forEach((entry) => {
+        batch.delete(doc(db, PRINT_HISTORY_COLLECTION_NAME, entry.id));
+      });
+      await batch.commit();
+      setPrintHistory([]);
+      onSuccess?.('Print history cleared.');
+    } catch {
+      onError?.('Unable to clear shared print history.', 'Error');
+    }
+  };
+
+  const removeHistoryEntry = async (entryId) => {
+    try {
+      await deleteDoc(doc(db, PRINT_HISTORY_COLLECTION_NAME, entryId));
+      setPrintHistory((currentHistory) =>
+        currentHistory.filter((entry) => entry.id !== entryId)
+      );
+      onSuccess?.('History item deleted.');
+    } catch {
+      onError?.('Unable to delete shared history item.', 'Error');
+    }
   };
 
   return (
@@ -522,17 +595,23 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                 {printHistory.map((entry) => (
                   <article key={entry.id} className="sku-po-history-item">
                     <div className="sku-po-history-item-top">
-                      <strong>{entry.poNumber}</strong>
-                      <span>{formatDateTime(entry.printedAt)}</span>
+                      <div className="sku-po-history-item-title">
+                        <strong>{formatDateTime(entry.printedAt)}</strong>
+                        <span>Order Date {formatShortDate(entry.orderDate)} | {entry.items.length} Item{entry.items.length === 1 ? '' : 's'}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="sku-po-remove-btn sku-po-history-remove-btn"
+                        onClick={() => removeHistoryEntry(entry.id)}
+                        aria-label={`Delete history entry printed ${formatDateTime(entry.printedAt)}`}
+                      >
+                        Delete
+                      </button>
                     </div>
-                    <p>
-                      Order Date {formatShortDate(entry.orderDate)} | {entry.items.length} Item
-                      {entry.items.length === 1 ? '' : 's'}
-                    </p>
                     <ul className="sku-po-history-lines">
                       {entry.items.map((item, index) => (
                         <li key={`${entry.id}-${item.skuCode}-${index}`}>
-                          <span>{index + 1}. {item.skuCode} - {item.description}</span>
+                          <span>{index + 1}. {item.skuCode}</span>
                           <strong>{item.quantityKits ?? 0} KIT</strong>
                         </li>
                       ))}
