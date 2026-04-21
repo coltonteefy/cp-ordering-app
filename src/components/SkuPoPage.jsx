@@ -51,6 +51,9 @@ const sortBySkuSuffix = (leftSku, rightSku) => {
 
 const SORTED_SKU_CATALOG = [...SKU_CATALOG].sort(sortBySkuSuffix);
 const SKU_COLLECTION_NAME = 'c&pSKUIDs';
+const DRAFT_STORAGE_KEY = 'skuPoDraft';
+const PRINT_HISTORY_STORAGE_KEY = 'skuPoPrintHistory';
+const MAX_PRINT_HISTORY_ITEMS = 30;
 
 const normalizeSkuFromDoc = (docId, rawData) => {
   const label = rawData?.label || docId;
@@ -89,6 +92,13 @@ const formatShortDate = (value) => {
   return `${month}/${day}/${year.slice(-2)}`;
 };
 
+const formatDateTime = (value) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+};
+
 const calculateKitValue = (quantitySingles, singlesPerKit) => {
   const singles = Number(quantitySingles) || 0;
   const unitsPerKit = Number(singlesPerKit) || 0;
@@ -104,12 +114,23 @@ const buildDraftFromSku = (sku) => ({
 
 const buildItemsFromSku = (sku) => sku.products.map((product) => createOrderItem(product, sku.id, sku.label));
 const skuIsInDraft = (draft, skuId) => draft?.items.some((item) => item.skuCode === skuId) || false;
+const createPrintHistoryEntry = (draft) => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  poNumber: draft.poNumber,
+  orderDate: draft.orderDate,
+  printedAt: new Date().toISOString(),
+  items: draft.items.map((item) => ({
+    skuCode: item.skuCode,
+    description: item.description,
+    quantityKits: item.quantityKits ?? 0,
+  })),
+});
 
 const SkuPoPage = ({ onSuccess, onError }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [draft, setDraft] = useState(() => {
     try {
-      const saved = localStorage.getItem('skuPoDraft');
+      const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         // Always update orderDate to today if not user-modified
@@ -124,14 +145,28 @@ const SkuPoPage = ({ onSuccess, onError }) => {
       return null;
     }
   });
+  const [printHistory, setPrintHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(PRINT_HISTORY_STORAGE_KEY);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
     // Auto-save draft to localStorage on every change
     useEffect(() => {
       if (draft) {
-        localStorage.setItem('skuPoDraft', JSON.stringify(draft));
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
       } else {
-        localStorage.removeItem('skuPoDraft');
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
       }
     }, [draft]);
+
+    useEffect(() => {
+      localStorage.setItem(PRINT_HISTORY_STORAGE_KEY, JSON.stringify(printHistory));
+    }, [printHistory]);
 
     // Keep orderDate in sync with today unless user has changed it
     useEffect(() => {
@@ -286,7 +321,15 @@ const SkuPoPage = ({ onSuccess, onError }) => {
 
   const printLabel = () => {
     if (!draft) return;
+    const historyEntry = createPrintHistoryEntry(draft);
+    setPrintHistory((currentHistory) => [historyEntry, ...currentHistory].slice(0, MAX_PRINT_HISTORY_ITEMS));
     window.print();
+    onSuccess?.('Label printed and saved to history.');
+  };
+
+  const clearPrintHistory = () => {
+    setPrintHistory([]);
+    onSuccess?.('Print history cleared.');
   };
 
   return (
@@ -455,8 +498,50 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                   </div>
                 </div>
               </div>
+
             </>
           )}
+
+          <section className="sku-po-history-section" aria-label="Print history">
+            <div className="sku-po-section-heading compact">
+              <div>
+                <h3>Print History</h3>
+                <p>Each time you click Print 4x6 Label, that snapshot is saved here.</p>
+              </div>
+              {printHistory.length > 0 && (
+                <button type="button" className="sku-po-secondary-btn" onClick={clearPrintHistory}>
+                  Clear History
+                </button>
+              )}
+            </div>
+
+            {printHistory.length === 0 ? (
+              <p className="sku-po-history-empty">No printed lists yet.</p>
+            ) : (
+              <div className="sku-po-history-list">
+                {printHistory.map((entry) => (
+                  <article key={entry.id} className="sku-po-history-item">
+                    <div className="sku-po-history-item-top">
+                      <strong>{entry.poNumber}</strong>
+                      <span>{formatDateTime(entry.printedAt)}</span>
+                    </div>
+                    <p>
+                      Order Date {formatShortDate(entry.orderDate)} | {entry.items.length} Item
+                      {entry.items.length === 1 ? '' : 's'}
+                    </p>
+                    <ul className="sku-po-history-lines">
+                      {entry.items.map((item, index) => (
+                        <li key={`${entry.id}-${item.skuCode}-${index}`}>
+                          <span>{index + 1}. {item.skuCode} - {item.description}</span>
+                          <strong>{item.quantityKits ?? 0} KIT</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </section>
