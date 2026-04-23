@@ -45,6 +45,8 @@ const buildLabelProductHtml = (value) =>
     .map((line) => escapeHtml(line))
     .join("<br />");
 const TEST_LABEL_VARIANTS = ["TEST 1", "TEST 2", "TEST 3", "TEST 4", "TEST 5"];
+const TESTING_TABLE_ROW_COUNT = 12;
+const PRINT_TESTING_TABLE_ROW_COUNT = 13;
 const nextCapShadeFromText = (value, fallback = "") => {
   const resolved = resolveCapColorValue(value);
   return resolved ? colorValueToHex(resolved, fallback || "#c9c1b7") : fallback;
@@ -1605,6 +1607,10 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [allLotsOpen, setAllLotsOpen] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [testingQueue, setTestingQueue] = useState([]);
+  const [testingFormOpen, setTestingFormOpen] = useState(false);
+  const [testingContact, setTestingContact] = useState({ company: "", contact: "", phone: "", email: "", emailOptIn: false });
+  const [testingFormOptions, setTestingFormOptions] = useState({ combineCoa: false, comments: "" });
   const [vendorFilter, setVendorFilter] = useState(() => vendorGuest || "");
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
@@ -2101,6 +2107,188 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     printWindow.document.write(markup);
     printWindow.document.close();
   };
+
+  const addToTestingQueue = (product, coa) => {
+    const entryId = `${product.docId}-${coa.lot}`;
+    setTestingQueue((prev) => {
+      if (prev.some((entry) => entry.id === entryId)) return prev;
+      return [
+        ...prev,
+        {
+          id: entryId,
+          sampleName: product.product || "",
+          expectedMg: product.strength || "",
+          lotNumber: coa.lot || "",
+          selectAll: false,
+          purityId: true,
+          netPeptide: false,
+          endotoxins: false,
+          conformityTest: false,
+          vialPhoto: false,
+        },
+      ];
+    });
+    setTestingFormOpen(true);
+  };
+
+  const removeTestingQueueItem = (entryId) => {
+    setTestingQueue((prev) => prev.filter((entry) => entry.id !== entryId));
+  };
+
+  const updateTestingQueueItem = (entryId, field, value) => {
+    setTestingQueue((prev) =>
+      prev.map((entry) => {
+        if (entry.id !== entryId) return entry;
+        const updated = { ...entry, [field]: value };
+        if (field === "selectAll") {
+          updated.purityId = value;
+          updated.netPeptide = value;
+          updated.endotoxins = value;
+          updated.conformityTest = value;
+          updated.vialPhoto = value;
+        } else if (["purityId", "netPeptide", "endotoxins", "conformityTest", "vialPhoto"].includes(field)) {
+          updated.selectAll =
+            updated.purityId && updated.netPeptide && updated.endotoxins && updated.conformityTest && updated.vialPhoto;
+        }
+        return updated;
+      })
+    );
+  };
+
+  const printTestingForm = () => {
+    const esc = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;");
+
+    const displayRows = Array.from(
+      { length: Math.max(PRINT_TESTING_TABLE_ROW_COUNT, testingQueue.length) },
+      (_, index) => testingQueue[index] || null
+    );
+
+    const checkboxCell = (checked) => `<span class="testing-print-box${checked ? " checked" : ""}">${checked ? "X" : ""}</span>`;
+    const today = new Date().toLocaleDateString("en-US");
+    const printLotClass = (lotNumber) => {
+      const len = String(lotNumber || "").length;
+      if (len > 16) return " testing-print-lot-tight";
+      if (len > 12) return " testing-print-lot-compact";
+      return "";
+    };
+    const tableRows = displayRows
+      .map(
+        (entry) => `
+          <tr>
+            <td class="testing-print-sample-col">${esc(entry?.sampleName || "")}</td>
+            <td class="testing-print-sample-col">${esc(entry?.expectedMg || "")}</td>
+            <td class="testing-print-sample-col testing-print-lot-cell${printLotClass(entry?.lotNumber)}">${esc(entry?.lotNumber || "")}</td>
+            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.selectAll))}</td>
+            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.purityId))}</td>
+            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.netPeptide))}</td>
+            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.endotoxins))}</td>
+            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.conformityTest))}</td>
+            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.vialPhoto))}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const win = window.open("", "_blank", "width=1400,height=900");
+    if (!win) return;
+
+    win.document.write(`
+      <html>
+        <head>
+          <title>Peptide Purity Testing Intake Form</title>
+          <style>
+            @page { size: 11in 8.5in; margin: 0.5in; }
+            html, body { margin: 0; padding: 0; }
+            body { font-family: Arial, sans-serif; color: #1a1a1a; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; padding: 0.06in; }
+            .testing-print-block { border: 1px solid #b9c4d2; width: 100%; max-width: 9.9in; box-sizing: border-box; page-break-inside: avoid; margin: 0 auto; }
+            .testing-print-header { display: grid; grid-template-columns: 58% 13% 29%; align-items: center; gap: 7px; padding: 8px 10px 7px; }
+            .testing-print-title { font-size: 24px; line-height: 1; font-weight: 800; letter-spacing: 0; color: #1f6aa6; margin: 0; text-transform: uppercase; white-space: nowrap; }
+            .testing-print-meta { font-size: 10px; font-weight: 700; }
+            .testing-print-meta-center { text-align: center; }
+            .testing-print-meta-right { text-align: left; line-height: 1.15; }
+            .testing-print-table { width: 100%; margin: 0; border-collapse: collapse; table-layout: fixed; }
+            .testing-print-table th, .testing-print-table td { border: 1px solid #c2c7cf; height: 24px; padding: 1px 4px; font-size: 9px; }
+            .testing-print-table th { background: #0c365b; color: #fff; font-weight: 700; text-align: center; line-height: 1.05; }
+            .testing-print-table th.left { text-align: left; }
+            .testing-print-table th small { display: block; font-size: 8px; font-weight: 600; line-height: 1.05; }
+            .testing-print-sample-col { background: #d5deea; }
+            .testing-print-lot-cell { white-space: nowrap; letter-spacing: 0.01em; }
+            .testing-print-lot-cell.testing-print-lot-compact { font-size: 8.5px; }
+            .testing-print-lot-cell.testing-print-lot-tight { font-size: 7.5px; }
+            .testing-print-check-col { background: #efefef; text-align: center; }
+            .testing-print-box { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #6d6d6d; font-size: 9px; font-weight: 700; color: #1e1e1e; background: #f7f7f7; }
+            .testing-print-box.checked { background: #ebf2fb; }
+            .testing-print-combine { font-size: 12px; line-height: 1.2; margin: 7px 10px 0; display: flex; align-items: center; gap: 6px; }
+            .testing-print-combine-box { width: 14px; height: 14px; border: 2px solid #394450; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
+            .testing-print-comments-label { font-size: 16px; font-weight: 700; margin: 7px 10px 0; }
+            .testing-print-comments-box { margin: 0 10px; height: 30px; background: #d5deea; }
+            .testing-print-ack-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 7px 10px 8px; align-items: start; }
+            .testing-print-ack-title { font-size: 11px; font-weight: 700; margin-bottom: 1px; }
+            .testing-print-ack-copy { font-size: 8px; line-height: 1.2; max-width: 320px; }
+            .testing-print-signature-line, .testing-print-date-line { border-bottom: 2px solid #6f6f6f; height: 18px; display: inline-flex; align-items: flex-end; min-width: 220px; }
+            .testing-print-signature-line { min-width: 290px; }
+            .testing-print-field { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 6px; }
+            .testing-print-date-fill { background: #d5deea; width: 100%; height: 100%; display: inline-flex; align-items: center; padding: 0 6px; box-sizing: border-box; font-size: 10px; font-weight: 600; }
+          </style>
+        </head>
+        <body>
+          <div class="testing-print-block">
+            <div class="testing-print-header">
+              <h1 class="testing-print-title">Sample Details & Testing Selection</h1>
+              <div class="testing-print-meta testing-print-meta-center">Select All Testing Options</div>
+              <div class="testing-print-meta testing-print-meta-right">Disclaimer: All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.</div>
+            </div>
+            <table class="testing-print-table">
+              <thead>
+                <tr>
+                  <th class="left" style="width:14%;">Sample Name / ID</th>
+                  <th class="left" style="width:10%;">Expected mg</th>
+                  <th class="left" style="width:14%;">Lot Number</th>
+                  <th style="width:7%;">Select All</th>
+                  <th style="width:8%;">Purity & ID<br/><small>($200)</small></th>
+                  <th style="width:11%;">Net Peptide (+$25)</th>
+                  <th style="width:12%;">Endotoxins ($175)<br/><small>(Additional Vial Needed)</small></th>
+                  <th style="width:12%;">Conformity Test<br/><small>(Additional 50.00 Per Vial)</small></th>
+                  <th style="width:12%;">Vial Photo<br/><small>(No Fee)</small></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableRows}
+              </tbody>
+            </table>
+            <div class="testing-print-combine">
+              <span class="testing-print-combine-box">${testingFormOptions.combineCoa ? "X" : ""}</span>
+              <span>Combine Endotoxin and/or Conformity test results with the primary Purity & Identification results on a single COA.</span>
+            </div>
+            <div class="testing-print-comments-label">Comments:</div>
+            <div class="testing-print-comments-box"></div>
+            <div class="testing-print-ack-wrap">
+              <div>
+                <div class="testing-print-ack-title">Acknowledgment</div>
+                <div class="testing-print-ack-copy">By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.</div>
+              </div>
+              <div>
+                <div class="testing-print-field">Signature: <span class="testing-print-signature-line"></span></div>
+                <div class="testing-print-field">Date: <span class="testing-print-date-line"><span class="testing-print-date-fill">${esc(today)}</span></span></div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+  };
+
   const handlePrintAllVialLabels = async () => {
     const labelEntries = products
       .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
@@ -2504,6 +2692,16 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       : labelEditorMode === "test"
         ? buildLabelDesignStyles(mergeLabelDesign(labelDesignDraft))
         : buildLabelDesignStyles(mergeLabelDesign(labelDesignDraft));
+    const testingDisplayRows = Array.from(
+      { length: Math.max(TESTING_TABLE_ROW_COUNT, testingQueue.length) },
+      (_, index) => testingQueue[index] || null
+    );
+    const getLotCellClassName = (lotNumber) => {
+      const len = String(lotNumber || "").length;
+      if (len > 16) return "lot-testing-lot-cell lot-testing-lot-cell-tight";
+      if (len > 12) return "lot-testing-lot-cell lot-testing-lot-cell-compact";
+      return "lot-testing-lot-cell";
+    };
 
   return (
     <>
@@ -2533,6 +2731,18 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
             disabled={pdfGenerating}
           >
             {pdfGenerating ? 'Generating PDF…' : vendorFilter ? `Download ${vendorFilter} Vial Labels` : 'Download All Vial Labels'}
+          </button>
+        )}
+        {!isGuest && !vendorGuest && (
+          <button
+            type="button"
+            className="lot-id-testing-queue-btn"
+            onClick={() => setTestingFormOpen(true)}
+          >
+            Testing Queue
+            {testingQueue.length > 0 && (
+              <span className="lot-id-testing-queue-badge">{testingQueue.length}</span>
+            )}
           </button>
         )}
       </div>
@@ -2909,6 +3119,18 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                                 Edit
                               </button>
                             )}
+                            {!isGuest && (
+                              <button
+                                type="button"
+                                className="lot-id-edit-toggle lot-id-card-testing-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToTestingQueue(p, coa);
+                                }}
+                              >
+                                Send for Testing
+                              </button>
+                            )}
                           </div>
                           {copyFlash[`${key}-lot-${i}`] && (
                             <span className="lot-id-copied">Copied!</span>
@@ -3191,6 +3413,188 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                 </button>
                 <button type="button" className="lot-modal-btn primary" onClick={saveEditLotModal}>
                   Save Changes
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {testingFormOpen &&
+        createPortal(
+          <div className="lot-modal-backdrop" onClick={() => setTestingFormOpen(false)}>
+            <div className="lot-modal lot-testing-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Peptide Purity Testing Intake Form</h3>
+              <p className="lot-modal-sub">Freedom Diagnostics sample detail form</p>
+
+              <div className="lot-testing-section">
+                <div className="lot-testing-section-title lot-testing-section-title-submission">Sample Submission Information</div>
+                <label className="lot-modal-label">Company / Organization Name</label>
+                <input
+                  type="text"
+                  className="lot-modal-input"
+                  value={testingContact.company}
+                  onChange={(e) => setTestingContact((prev) => ({ ...prev, company: e.target.value }))}
+                />
+                <label className="lot-modal-label">Contact Person</label>
+                <input
+                  type="text"
+                  className="lot-modal-input"
+                  value={testingContact.contact}
+                  onChange={(e) => setTestingContact((prev) => ({ ...prev, contact: e.target.value }))}
+                />
+                <div className="lot-testing-contact-grid">
+                  <div>
+                    <label className="lot-modal-label">Phone Number</label>
+                    <input
+                      type="text"
+                      className="lot-modal-input"
+                      value={testingContact.phone}
+                      onChange={(e) => setTestingContact((prev) => ({ ...prev, phone: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="lot-modal-label">Email Address</label>
+                    <input
+                      type="email"
+                      className="lot-modal-input"
+                      value={testingContact.email}
+                      onChange={(e) => setTestingContact((prev) => ({ ...prev, email: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <label className="lot-testing-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={testingContact.emailOptIn}
+                    onChange={(e) => setTestingContact((prev) => ({ ...prev, emailOptIn: e.target.checked }))}
+                  />
+                  Opt in to email updates from Freedom Diagnostics
+                </label>
+              </div>
+
+              <div className="lot-testing-section">
+                <div className="lot-testing-header-meta">
+                  <div className="lot-testing-header-title">Sample Details & Testing Selection</div>
+                  <div className="lot-testing-header-meta-center">Select All Testing Options</div>
+                  <div className="lot-testing-header-meta-right">Disclaimer: All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.</div>
+                </div>
+                <div className="lot-testing-table-wrap">
+                  <table className="lot-testing-table">
+                    <thead>
+                      <tr>
+                        <th className="lot-testing-col-left">Sample Name / ID</th>
+                        <th className="lot-testing-col-left">Expected mg</th>
+                        <th className="lot-testing-col-left">Lot Number</th>
+                        <th>Select All</th>
+                        <th>Purity &amp; ID <small>($200)</small></th>
+                        <th>Net Peptide (+$25)</th>
+                        <th>Endotoxins ($175) <small>(Additional Vial Needed)</small></th>
+                        <th>Conformity Test <small>(Additional 50.00 Per Vial)</small></th>
+                        <th>Vial Photo <small>(No Fee)</small></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {testingDisplayRows.map((entry, rowIndex) => (
+                        <tr key={entry?.id || `blank-${rowIndex}`}>
+                          <td className="lot-testing-sample-col">{entry?.sampleName || ""}</td>
+                          <td className="lot-testing-sample-col">
+                            {entry ? (
+                              <input
+                                type="text"
+                                className="lot-testing-cell-input"
+                                value={entry.expectedMg}
+                                onChange={(e) => updateTestingQueueItem(entry.id, "expectedMg", e.target.value)}
+                              />
+                            ) : null}
+                          </td>
+                          <td className={`lot-testing-sample-col ${getLotCellClassName(entry?.lotNumber)}`}>{entry?.lotNumber || ""}</td>
+                          <td className="lot-testing-check-col">
+                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.selectAll} onChange={(e) => updateTestingQueueItem(entry.id, "selectAll", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
+                          </td>
+                          <td className="lot-testing-check-col">
+                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.purityId} onChange={(e) => updateTestingQueueItem(entry.id, "purityId", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
+                          </td>
+                          <td className="lot-testing-check-col">
+                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.netPeptide} onChange={(e) => updateTestingQueueItem(entry.id, "netPeptide", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
+                          </td>
+                          <td className="lot-testing-check-col">
+                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.endotoxins} onChange={(e) => updateTestingQueueItem(entry.id, "endotoxins", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
+                          </td>
+                          <td className="lot-testing-check-col">
+                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.conformityTest} onChange={(e) => updateTestingQueueItem(entry.id, "conformityTest", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
+                          </td>
+                          <td className="lot-testing-check-col">
+                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.vialPhoto} onChange={(e) => updateTestingQueueItem(entry.id, "vialPhoto", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <label className="lot-testing-checkbox-row lot-testing-combine-row">
+                  <input
+                    type="checkbox"
+                    checked={testingFormOptions.combineCoa}
+                    onChange={(e) => setTestingFormOptions((prev) => ({ ...prev, combineCoa: e.target.checked }))}
+                  />
+                  Combine Endotoxin and/or Conformity results with primary Purity & Identification COA
+                </label>
+                <label className="lot-modal-label">Comments</label>
+                <textarea
+                  className="lot-modal-input lot-modal-textarea"
+                  rows={3}
+                  value={testingFormOptions.comments}
+                  onChange={(e) => setTestingFormOptions((prev) => ({ ...prev, comments: e.target.value }))}
+                />
+                {testingQueue.length === 0 ? (
+                  <div className="lot-testing-empty">No lots in queue. Use Send for Testing on any lot card.</div>
+                ) : (
+                  <div className="lot-testing-remove-list">
+                    {testingQueue.map((entry) => (
+                      <button
+                        key={`rm-${entry.id}`}
+                        type="button"
+                        className="lot-testing-remove-btn"
+                        onClick={() => removeTestingQueueItem(entry.id)}
+                      >
+                        Remove {entry.sampleName} ({entry.lotNumber})
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="lot-testing-ack-wrap">
+                  <div>
+                    <div className="lot-testing-ack-title">Acknowledgment</div>
+                    <div className="lot-testing-ack-copy">
+                      By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.
+                    </div>
+                  </div>
+                  <div className="lot-testing-signature-area">
+                    <div className="lot-testing-signature-row"><span>Signature:</span><span className="lot-testing-signature-line" /></div>
+                    <div className="lot-testing-signature-row"><span>Date:</span><span className="lot-testing-date-line" /></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="lot-modal-actions">
+                <button type="button" className="lot-modal-btn secondary" onClick={() => setTestingFormOpen(false)}>
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="lot-modal-btn danger"
+                  onClick={() => setTestingQueue([])}
+                >
+                  Clear Queue
+                </button>
+                <button
+                  type="button"
+                  className="lot-modal-btn primary"
+                  onClick={printTestingForm}
+                  disabled={!testingQueue.length}
+                >
+                  Print Form
                 </button>
               </div>
             </div>

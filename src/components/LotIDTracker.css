@@ -438,6 +438,41 @@
   opacity: 1;
 }
 
+.lot-id-testing-queue-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 1.1rem;
+  border-radius: 8px;
+  border: none;
+  background: #2f6f53;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(47, 111, 83, 0.3);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lot-id-testing-queue-btn:hover {
+  background: #275f47;
+}
+
+.lot-id-testing-queue-badge {
+  min-width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: #fff;
+  color: #275f47;
+  font-weight: 800;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.22rem;
+}
+
 /* All Lots Modal */
 .all-lots-modal {
   width: 100vw;
@@ -1140,7 +1175,299 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.lot-id-card-testing-btn {
+  color: #2f6f53;
+}
+
+.lot-id-card-testing-btn:hover {
+  color: #245640;
+}
+
+.lot-testing-modal {
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  background: #f6f7f9;
+}
+
+.lot-testing-section {
+  border: 1px solid #b9c4d2;
+  border-radius: 0;
+  background: #f3f4f7;
+  padding: 0;
+  margin-bottom: 0.85rem;
+}
+
+.lot-testing-section-title {
+  font-weight: 800;
+  margin: 0;
+}
+
+.lot-testing-section-title-submission {
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4a5a67;
+  padding: 0.7rem 0.9rem 0.2rem;
+}
+
+.lot-testing-section-title-details {
+  font-size: 2.05rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #1f6aa6;
+  line-height: 1;
+  padding: 0.75rem 0.9rem 0.2rem;
+}
+
+.lot-testing-header-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 46%) minmax(170px, 18%) minmax(0, 36%);
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.95rem 0.95rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1e2d3b;
+}
+
+.lot-testing-header-title {
+  font-size: 1.95rem;
+  line-height: 0.96;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #1f6aa6;
+  font-weight: 800;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+.lot-testing-header-meta-center {
+  text-align: center;
+  font-size: 0.84rem;
+  line-height: 1.15;
+  color: #101419;
+}
+
+.lot-testing-header-meta-right {
+  line-height: 1.2;
+  font-size: 0.82rem;
+  color: #121820;
+}
+
+.lot-testing-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.lot-testing-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #4a3825;
+  margin-top: 0.55rem;
+}
+
+.lot-testing-table-wrap {
+  overflow: auto;
+  border-top: 1px solid #b9c4d2;
+  border-bottom: 1px solid #b9c4d2;
+}
+
+.lot-testing-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.lot-testing-table th,
+.lot-testing-table td {
+  border: 1px solid #c2c7cf;
+  height: 2rem;
+  padding: 0.18rem 0.25rem;
+  font-size: 0.75rem;
+}
+
+.lot-testing-table th:nth-child(1),
+.lot-testing-table td:nth-child(1) {
+  width: 13%;
+}
+
+.lot-testing-table th:nth-child(2),
+.lot-testing-table td:nth-child(2) {
+  width: 11%;
+}
+
+.lot-testing-table th:nth-child(3),
+.lot-testing-table td:nth-child(3) {
+  width: 16%;
+}
+
+.lot-testing-table th {
+  background: #0c365b;
+  color: #fff;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.lot-testing-table th {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.lot-testing-table th small {
+  display: block;
+  font-size: 0.62rem;
+  line-height: 1.1;
+}
+
+.lot-testing-col-left {
+  text-align: left !important;
+}
+
+.lot-testing-sample-col {
+  background: #d5deea;
+}
+
+.lot-testing-lot-cell {
+  white-space: nowrap;
+  letter-spacing: 0;
+  font-size: 0.8rem;
+}
+
+.lot-testing-lot-cell-compact {
+  font-size: 0.72rem;
+}
+
+.lot-testing-lot-cell-tight {
+  font-size: 0.66rem;
+}
+
+.lot-testing-check-col {
+  background: #efefef;
+  text-align: center;
+}
+
+.lot-testing-grid-check {
+  appearance: none;
+  width: 1.22rem;
+  height: 1.22rem;
+  border: 2px solid #6d6d6d;
+  background: #f7f7f7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  cursor: pointer;
+}
+
+.lot-testing-grid-check:checked {
+  background: #e7eef8;
+}
+
+.lot-testing-grid-check:checked::after {
+  content: "X";
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #1f2b36;
+}
+
+.lot-testing-grid-check.static {
+  cursor: default;
+}
+
+.lot-testing-cell-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #b7c5d7;
+  border-radius: 0;
+  padding: 0.18rem 0.3rem;
+  font-size: 0.78rem;
+  background: #edf3fb;
+}
+
+.lot-testing-remove-btn {
+  border: 1px solid #aeb8c4;
+  background: #f4f5f7;
+  color: #2f3a45;
+  border-radius: 0;
+  padding: 0.24rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lot-testing-empty {
+  padding: 0.6rem 0.9rem 0;
+  color: #5c6975;
+  font-size: 0.76rem;
+}
+
+.lot-testing-combine-row {
+  margin: 0.4rem 0.9rem 0;
+  color: #253240;
+  font-size: 0.74rem;
+}
+
+.lot-testing-remove-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.55rem 0.9rem 0.7rem;
+}
+
+.lot-testing-ack-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 0.35rem 0.9rem 0.85rem;
+  align-items: start;
+}
+
+.lot-testing-ack-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.lot-testing-ack-copy {
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: #1e2b38;
+}
+
+.lot-testing-signature-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.lot-testing-signature-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+}
+
+.lot-testing-signature-line,
+.lot-testing-date-line {
+  border-bottom: 2px solid #6f6f6f;
+  min-width: 12rem;
+  height: 1.35rem;
+}
+
+.lot-testing-date-line {
+  background: #d5deea;
 }
 
 .lot-id-card-id {
@@ -2173,6 +2500,46 @@
   }
 
   .lot-layout-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lot-testing-contact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lot-testing-modal {
+    padding: 14px;
+  }
+
+  .lot-testing-section-title {
+    font-size: 1.3rem;
+  }
+
+  .lot-testing-section-title-submission {
+    font-size: 0.82rem;
+  }
+
+  .lot-testing-header-meta {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+    padding: 0.65rem 0.75rem 0.75rem;
+  }
+
+  .lot-testing-header-title {
+    font-size: 1.2rem;
+  }
+
+  .lot-testing-header-meta-center,
+  .lot-testing-header-meta-right {
+    font-size: 0.88rem;
+  }
+
+  .lot-testing-header-meta-center,
+  .lot-testing-header-meta-right {
+    text-align: left;
+  }
+
+  .lot-testing-ack-wrap {
     grid-template-columns: 1fr;
   }
 }
