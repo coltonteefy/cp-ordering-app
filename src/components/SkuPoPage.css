@@ -589,10 +589,112 @@
   align-self: flex-start;
 }
 
+.sku-po-history-item-controls {
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-start;
+}
+
+.sku-po-history-track-btn {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.55rem;
+}
+
 .sku-po-history-item p {
   margin: 0.35rem 0 0.6rem;
   color: #6f5f51;
   font-size: 0.86rem;
+}
+
+.sku-po-history-tracking-summary {
+  margin: 0.6rem 0 0.35rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.sku-po-history-tracking-summary span {
+  color: #6f5f51;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.sku-po-history-tracking-summary strong {
+  color: #2f2a26;
+  font-size: 0.85rem;
+}
+
+.sku-po-history-tracking-link {
+  color: #1d5e96;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+}
+
+.sku-po-history-tracking-link:hover {
+  color: #134874;
+}
+
+.sku-po-history-tracking-link:focus-visible {
+  outline: 2px solid #1d5e96;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sku-po-history-tracking-summary em {
+  color: #9b8d7f;
+  font-style: normal;
+  font-size: 0.84rem;
+}
+
+.sku-po-history-tracking-editor {
+  margin: 0.4rem 0 0.7rem;
+  border: 1px solid #eadfcc;
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: #fffcf7;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.sku-po-history-tracking-editor label {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.sku-po-history-tracking-editor label span {
+  color: #6f5f51;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sku-po-history-tracking-editor input,
+.sku-po-history-tracking-editor select {
+  width: 100%;
+  border: 1px solid #d9ccbb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2f2a26;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.sku-po-history-tracking-editor input:focus,
+.sku-po-history-tracking-editor select:focus {
+  outline: none;
+  border-color: #ad6a2f;
+  box-shadow: 0 0 0 3px rgba(173, 106, 47, 0.15);
+}
+
+.sku-po-history-tracking-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
 }
 
 .sku-po-history-lines {

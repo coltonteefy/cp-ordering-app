@@ -64,6 +64,7 @@ const SKU_COLLECTION_NAME = 'c&pSKUIDs';
 const PRINT_HISTORY_COLLECTION_NAME = 'c&pSKUPrintHistory';
 const DRAFT_STORAGE_KEY = 'skuPoDraft';
 const MAX_PRINT_HISTORY_ITEMS = 30;
+const TRACKING_CARRIERS = ['UPS', 'USPS', 'FedEx', 'DHL', 'Other'];
 
 const normalizeSkuFromDoc = (docId, rawData) => {
   const label = rawData?.label || docId;
@@ -129,17 +130,46 @@ const createPrintHistoryEntry = (draft) => ({
   poNumber: draft.poNumber,
   orderDate: draft.orderDate,
   printedAt: new Date().toISOString(),
+  trackingCarrier: '',
+  trackingNumber: '',
   items: draft.items.map((item) => ({
     skuCode: item.skuCode,
     description: item.description,
     quantityKits: item.quantityKits ?? 0,
   })),
 });
+
+const normalizeTrackingNumber = (value) => String(value || '').trim();
+const normalizeTrackingCarrier = (value) => String(value || '').trim();
+const buildTrackingUrl = (carrier, trackingNumber) => {
+  const normalizedCarrier = normalizeTrackingCarrier(carrier);
+  const normalizedTracking = normalizeTrackingNumber(trackingNumber);
+
+  if (!normalizedTracking) return '';
+
+  const encodedTracking = encodeURIComponent(normalizedTracking);
+
+  switch (normalizedCarrier) {
+    case 'UPS':
+      return `https://www.ups.com/track?tracknum=${encodedTracking}`;
+    case 'USPS':
+      return `https://tools.usps.com/go/TrackConfirmAction?qtc_tLabels1=${encodedTracking}`;
+    case 'FedEx':
+      return `https://www.fedex.com/fedextrack/?trknbr=${encodedTracking}`;
+    case 'DHL':
+      return `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${encodedTracking}`;
+    default:
+      return '';
+  }
+};
+
 const normalizePrintHistoryFromDoc = (docId, rawData) => ({
   id: docId,
   poNumber: rawData?.poNumber || '',
   orderDate: rawData?.orderDate || '',
   printedAt: rawData?.printedAt || '',
+  trackingCarrier: normalizeTrackingCarrier(rawData?.trackingCarrier),
+  trackingNumber: normalizeTrackingNumber(rawData?.trackingNumber),
   items: Array.isArray(rawData?.items)
     ? rawData.items.map((item) => ({
         skuCode: item?.skuCode || '',
@@ -169,6 +199,11 @@ const SkuPoPage = ({ onSuccess, onError }) => {
     }
   });
   const [printHistory, setPrintHistory] = useState([]);
+  const [trackingEditor, setTrackingEditor] = useState({
+    entryId: '',
+    trackingCarrier: TRACKING_CARRIERS[0],
+    trackingNumber: '',
+  });
     // Auto-save draft to localStorage on every change
     useEffect(() => {
       if (draft) {
@@ -405,6 +440,57 @@ const SkuPoPage = ({ onSuccess, onError }) => {
     }
   };
 
+  const updateEntryTrackingLocally = (entryId, values) => {
+    setPrintHistory((currentHistory) =>
+      currentHistory.map((entry) =>
+        entry.id === entryId
+          ? {
+              ...entry,
+              ...values,
+            }
+          : entry
+      )
+    );
+  };
+
+  const openTrackingEditor = (entry) => {
+    setTrackingEditor({
+      entryId: entry.id,
+      trackingCarrier: normalizeTrackingCarrier(entry.trackingCarrier) || TRACKING_CARRIERS[0],
+      trackingNumber: normalizeTrackingNumber(entry.trackingNumber),
+    });
+  };
+
+  const closeTrackingEditor = () => {
+    setTrackingEditor({
+      entryId: '',
+      trackingCarrier: TRACKING_CARRIERS[0],
+      trackingNumber: '',
+    });
+  };
+
+  const saveHistoryTracking = async (entryId, rawTrackingNumber, rawTrackingCarrier) => {
+    const trackingNumber = normalizeTrackingNumber(rawTrackingNumber);
+    const trackingCarrier = trackingNumber
+      ? normalizeTrackingCarrier(rawTrackingCarrier) || TRACKING_CARRIERS[0]
+      : '';
+
+    updateEntryTrackingLocally(entryId, { trackingNumber, trackingCarrier });
+
+    try {
+      await setDoc(
+        doc(db, PRINT_HISTORY_COLLECTION_NAME, entryId),
+        { trackingNumber, trackingCarrier },
+        { merge: true }
+      );
+      onSuccess?.('Package tracking saved.');
+      return true;
+    } catch {
+      onError?.('Unable to save package tracking.', 'Error');
+      return false;
+    }
+  };
+
   return (
     <section className="sku-po-page">
       <header className="sku-po-header">
@@ -599,15 +685,108 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                         <strong>{formatDateTime(entry.printedAt)}</strong>
                         <span>Order Date {formatShortDate(entry.orderDate)} | {entry.items.length} Item{entry.items.length === 1 ? '' : 's'}</span>
                       </div>
-                      <button
-                        type="button"
-                        className="sku-po-remove-btn sku-po-history-remove-btn"
-                        onClick={() => removeHistoryEntry(entry.id)}
-                        aria-label={`Delete history entry printed ${formatDateTime(entry.printedAt)}`}
-                      >
-                        Delete
-                      </button>
+                      <div className="sku-po-history-item-controls">
+                        <button
+                          type="button"
+                          className="sku-po-secondary-btn sku-po-history-track-btn"
+                          onClick={() => openTrackingEditor(entry)}
+                        >
+                          {entry.trackingNumber ? 'Edit Tracking' : 'Add Tracking'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sku-po-remove-btn sku-po-history-remove-btn"
+                          onClick={() => removeHistoryEntry(entry.id)}
+                          aria-label={`Delete history entry printed ${formatDateTime(entry.printedAt)}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
+                    <div className="sku-po-history-tracking-summary">
+                      <span>Package Tracking</span>
+                      {entry.trackingNumber ? (
+                        (() => {
+                          const trackingLabel = `${entry.trackingCarrier ? `${entry.trackingCarrier}: ` : ''}${entry.trackingNumber}`;
+                          const trackingUrl = buildTrackingUrl(entry.trackingCarrier, entry.trackingNumber);
+
+                          if (trackingUrl) {
+                            return (
+                              <a
+                                href={trackingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="sku-po-history-tracking-link"
+                                aria-label={`Track package via ${entry.trackingCarrier || 'carrier'}`}
+                              >
+                                {trackingLabel}
+                              </a>
+                            );
+                          }
+
+                          return <strong>{trackingLabel}</strong>;
+                        })()
+                      ) : (
+                        <em>Not added yet</em>
+                      )}
+                    </div>
+                    {trackingEditor.entryId === entry.id && (
+                      <div className="sku-po-history-tracking-editor">
+                        <label>
+                          <span>Carrier</span>
+                          <select
+                            value={trackingEditor.trackingCarrier}
+                            onChange={(event) =>
+                              setTrackingEditor((current) => ({
+                                ...current,
+                                trackingCarrier: event.target.value,
+                              }))
+                            }
+                          >
+                            {TRACKING_CARRIERS.map((carrier) => (
+                              <option key={carrier} value={carrier}>{carrier}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span>Tracking Number</span>
+                          <input
+                            type="text"
+                            value={trackingEditor.trackingNumber}
+                            onChange={(event) =>
+                              setTrackingEditor((current) => ({
+                                ...current,
+                                trackingNumber: event.target.value,
+                              }))
+                            }
+                            placeholder="Enter tracking number"
+                          />
+                        </label>
+                        <div className="sku-po-history-tracking-actions">
+                          <button
+                            type="button"
+                            className="sku-po-primary-btn"
+                            onClick={async () => {
+                              const saved = await saveHistoryTracking(
+                                entry.id,
+                                trackingEditor.trackingNumber,
+                                trackingEditor.trackingCarrier
+                              );
+                              if (saved) closeTrackingEditor();
+                            }}
+                          >
+                            Save Tracking
+                          </button>
+                          <button
+                            type="button"
+                            className="sku-po-secondary-btn"
+                            onClick={closeTrackingEditor}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <ul className="sku-po-history-lines">
                       {entry.items.map((item, index) => (
                         <li key={`${entry.id}-${item.skuCode}-${index}`}>
