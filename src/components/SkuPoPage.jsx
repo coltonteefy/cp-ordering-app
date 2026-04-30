@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   collection,
   deleteDoc,
@@ -59,31 +60,156 @@ const sortBySkuSuffix = (leftSku, rightSku) => {
   return leftSuffix.localeCompare(rightSuffix, undefined, { numeric: true });
 };
 
-const SORTED_SKU_CATALOG = [...SKU_CATALOG].sort(sortBySkuSuffix);
-const SKU_COLLECTION_NAME = 'c&pSKUIDs';
+const PRODUCT_COLLECTION_NAME = 'c&pProductList';
 const PRINT_HISTORY_COLLECTION_NAME = 'c&pSKUPrintHistory';
 const DRAFT_STORAGE_KEY = 'skuPoDraft';
 const MAX_PRINT_HISTORY_ITEMS = 30;
 const TRACKING_CARRIERS = ['UPS', 'USPS', 'FedEx', 'DHL', 'Other'];
+const EMPTY_LOT_PICKER = {
+  itemId: '',
+  itemDescription: '',
+  selectedLot: '',
+  options: [],
+};
 
-const normalizeSkuFromDoc = (docId, rawData) => {
-  const label = rawData?.label || docId;
-  const products = Array.isArray(rawData?.products) && rawData.products.length > 0
-    ? rawData.products.map((product) => ({
-        productName: product?.productName || label,
-      }))
-    : [{ productName: label }];
+const normalizeLookupKey = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+const buildLookupKeyVariants = (value) => {
+  const base = normalizeLookupKey(value);
+  if (!base) return [];
+
+  const variants = [base];
+  const hasWhitespace = /\s/.test(base);
+
+  if (!hasWhitespace) {
+    if (base.startsWith('cp-')) {
+      variants.push(base.slice(3));
+    } else {
+      variants.push(`cp-${base}`);
+    }
+
+    const compact = base.replace(/[^a-z0-9]/g, '');
+    if (compact && compact !== base) variants.push(compact);
+    if (compact.startsWith('cp')) variants.push(compact.slice(2));
+  }
+
+  return [...new Set(variants.filter(Boolean))];
+};
+
+const toCompactKey = (value) =>
+  normalizeLookupKey(value).replace(/[^a-z0-9]/g, '');
+
+const uniqueLots = (lots) => {
+  const seen = new Set();
+  const deduped = [];
+  lots.forEach((lot) => {
+    const normalized = String(lot || '').trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    deduped.push(normalized);
+  });
+  return deduped;
+};
+
+const mergeLotEntries = (entries) => {
+  const merged = new Map();
+
+  entries.forEach((entry) => {
+    const lot = String(entry?.lot || '').trim();
+    if (!lot) return;
+
+    const normalizedEntry = {
+      lot,
+      kits: Number(entry?.kits) || 0,
+      vendor: String(entry?.vendor || '').trim(),
+      capColor: String(entry?.capColor || '').trim(),
+      capShade: String(entry?.capShade || '').trim(),
+      note: String(entry?.note || '').trim(),
+      isCurrent: Boolean(entry?.isCurrent),
+    };
+
+    if (!merged.has(lot)) {
+      merged.set(lot, normalizedEntry);
+      return;
+    }
+
+    const previous = merged.get(lot);
+    merged.set(lot, {
+      lot,
+      kits: Math.max(previous.kits || 0, normalizedEntry.kits || 0),
+      vendor: previous.vendor || normalizedEntry.vendor,
+      capColor: previous.capColor || normalizedEntry.capColor,
+      capShade: previous.capShade || normalizedEntry.capShade,
+      note: previous.note || normalizedEntry.note,
+      isCurrent: previous.isCurrent || normalizedEntry.isCurrent,
+    });
+  });
+
+  return [...merged.values()];
+};
+
+const getLotsFromProductDoc = (rawData) => {
+  const coaList = Array.isArray(rawData?.coaList) ? rawData.coaList : [];
+  const currentCoa = rawData?.currentCoa || {};
+  const currentLot = String(currentCoa?.lot || '').trim();
+
+  const normalizedEntries = coaList.map((entry) => ({
+    lot: entry?.lot,
+    kits: entry?.kits,
+    vendor: entry?.vendor,
+    capColor: entry?.capColor,
+    capShade: entry?.capShade,
+    note: entry?.note,
+    isCurrent: currentLot ? String(entry?.lot || '').trim() === currentLot : false,
+  }));
+
+  if (currentLot) {
+    normalizedEntries.unshift({
+      lot: currentLot,
+      kits: currentCoa?.kits,
+      vendor: currentCoa?.vendor,
+      capColor: currentCoa?.capColor,
+      capShade: currentCoa?.capShade,
+      note: currentCoa?.note,
+      isCurrent: true,
+    });
+  }
+
+  return mergeLotEntries(normalizedEntries);
+};
+
+const buildProductDescription = (rawData) => {
+  const product = String(rawData?.product || '').trim();
+  const strength = String(rawData?.strength || '').trim();
+
+  if (product && strength) {
+    const productLower = product.toLowerCase();
+    const strengthLower = strength.toLowerCase();
+    return productLower.includes(strengthLower) ? product : `${product} ${strength}`;
+  }
+
+  return product || strength || String(rawData?.id || '').trim();
+};
+
+const normalizeProductFromDoc = (docId, rawData) => {
+  const id = String(rawData?.id || docId).trim();
+  const description = buildProductDescription(rawData);
 
   return {
-    id: docId,
-    label,
-    products,
+    id,
+    label: description,
+    products: [{ productName: description }],
   };
 };
 
 const createOrderItem = (product, skuId, fallbackLabel) => ({
   id: `${skuId}-${product.productName || fallbackLabel}-${Math.random().toString(36).slice(2, 8)}`,
   skuCode: skuId,
+  lot: '',
   description: product.productName || fallbackLabel,
   quantityKits: 0,
 });
@@ -134,6 +260,7 @@ const createPrintHistoryEntry = (draft) => ({
   trackingNumber: '',
   items: draft.items.map((item) => ({
     skuCode: item.skuCode,
+    lot: item.lot || '',
     description: item.description,
     quantityKits: item.quantityKits ?? 0,
   })),
@@ -173,6 +300,7 @@ const normalizePrintHistoryFromDoc = (docId, rawData) => ({
   items: Array.isArray(rawData?.items)
     ? rawData.items.map((item) => ({
         skuCode: item?.skuCode || '',
+        lot: item?.lot || '',
         description: item?.description || '',
         quantityKits: Number(item?.quantityKits) || 0,
       }))
@@ -186,6 +314,9 @@ const SkuPoPage = ({ onSuccess, onError }) => {
       const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        parsed.items = Array.isArray(parsed.items)
+          ? parsed.items.map((item) => ({ ...item, lot: item?.lot || '' }))
+          : [];
         // Always update orderDate to today if not user-modified
         const today = todayValue();
         if (!parsed._userSetOrderDate && parsed.orderDate !== today) {
@@ -204,6 +335,9 @@ const SkuPoPage = ({ onSuccess, onError }) => {
     trackingCarrier: TRACKING_CARRIERS[0],
     trackingNumber: '',
   });
+  const [lotPicker, setLotPicker] = useState(EMPTY_LOT_PICKER);
+  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [pendingPrintHistoryEntry, setPendingPrintHistoryEntry] = useState(null);
     // Auto-save draft to localStorage on every change
     useEffect(() => {
       if (draft) {
@@ -221,53 +355,102 @@ const SkuPoPage = ({ onSuccess, onError }) => {
         setDraft((d) => d ? { ...d, orderDate: today } : d);
       }
     }, [draft]);
-  const [skuCatalog, setSkuCatalog] = useState(SORTED_SKU_CATALOG);
+  const [skuCatalog, setSkuCatalog] = useState([]);
+  const [lotCatalogByProduct, setLotCatalogByProduct] = useState({});
+  const [lotCatalogRecords, setLotCatalogRecords] = useState([]);
+
+  useEffect(() => {
+    if (!lotPicker.itemId) return undefined;
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setLotPicker(EMPTY_LOT_PICKER);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [lotPicker.itemId]);
 
   useEffect(() => {
     let isActive = true;
 
     const loadSkuCatalog = async () => {
-      const skuCollectionRef = collection(db, SKU_COLLECTION_NAME);
-      const snapshot = await getDocs(skuCollectionRef);
+      const productCollectionRef = collection(db, PRODUCT_COLLECTION_NAME);
+      const snapshot = await getDocs(productCollectionRef);
+      const liveProducts = snapshot.docs
+        .map((productDoc) => normalizeProductFromDoc(productDoc.id, productDoc.data()))
+        .filter((product) => Boolean(product.id) && Boolean(product.label))
+        .sort(sortBySkuSuffix);
 
-      if (snapshot.empty) {
-        await Promise.all(
-          SORTED_SKU_CATALOG.map((sku) =>
-            setDoc(doc(db, SKU_COLLECTION_NAME, sku.id), sku)
-          )
-        );
-        if (isActive) {
-          setSkuCatalog(SORTED_SKU_CATALOG);
-        }
-        return;
-      }
-
-      const firebaseSkus = snapshot.docs.map((skuDoc) =>
-        normalizeSkuFromDoc(skuDoc.id, skuDoc.data())
-      );
-
-      const existingIds = new Set(firebaseSkus.map((sku) => sku.id));
-      const missingSkus = SORTED_SKU_CATALOG.filter((sku) => !existingIds.has(sku.id));
-
-      if (missingSkus.length > 0) {
-        await Promise.all(
-          missingSkus.map((sku) =>
-            setDoc(doc(db, SKU_COLLECTION_NAME, sku.id), sku)
-          )
-        );
-      }
-
-      const mergedSkus = [...firebaseSkus, ...missingSkus].sort(sortBySkuSuffix);
       if (isActive) {
-        setSkuCatalog(mergedSkus);
+        setSkuCatalog(liveProducts);
       }
     };
 
     loadSkuCatalog().catch(() => {
       if (isActive) {
-        setSkuCatalog(SORTED_SKU_CATALOG);
+        setSkuCatalog([]);
       }
-      onError?.('Unable to load SKU IDs from Firebase. Using local fallback list.', 'Error');
+      onError?.('Unable to load product list from Firebase.', 'Error');
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [onError]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadLotCatalog = async () => {
+      const productCollectionRef = collection(db, PRODUCT_COLLECTION_NAME);
+      const snapshot = await getDocs(productCollectionRef);
+      const lotMap = {};
+      const records = [];
+
+      snapshot.forEach((productDoc) => {
+        const data = productDoc.data();
+        const lots = getLotsFromProductDoc(data);
+        const productName = String(data?.product || '').trim();
+        const strength = String(data?.strength || '').trim();
+        const productWithStrength = [productName, strength].filter(Boolean).join(' ').trim();
+        const keyCandidates = [
+          productDoc.id,
+          data?.id,
+          productName,
+          productWithStrength,
+        ]
+          .flatMap((value) => buildLookupKeyVariants(value))
+          .filter(Boolean);
+
+        keyCandidates.forEach((key) => {
+          lotMap[key] = mergeLotEntries([...(lotMap[key] || []), ...lots]);
+        });
+
+        records.push({
+          lots,
+          keyVariants: keyCandidates,
+          productCompact: toCompactKey(productName),
+          strengthCompact: toCompactKey(strength),
+          combinedCompact: toCompactKey(productWithStrength),
+        });
+      });
+
+      if (isActive) {
+        setLotCatalogByProduct(lotMap);
+        setLotCatalogRecords(records);
+      }
+    };
+
+    loadLotCatalog().catch(() => {
+      if (isActive) {
+        setLotCatalogByProduct({});
+        setLotCatalogRecords([]);
+      }
+      onError?.('Unable to load lot IDs for products.', 'Error');
     });
 
     return () => {
@@ -322,18 +505,67 @@ const SkuPoPage = ({ onSuccess, onError }) => {
 
     const itemLines = draft.items
       .map((item, index) => {
-        return `${index + 1}\t${item.skuCode}\t${item.description}\t${item.quantityKits ?? 0}`;
+        return `${index + 1}\t${item.lot || ''}\t${item.description}\t${item.quantityKits ?? 0}`;
       })
       .join('\n');
 
     return [
       `SKU PO: ${draft.poNumber}`,
-      'Line\tSKU / Item Code\tDescription\tQuantity KIT',
+      'Line\tLOT\tDescription\tQuantity KIT',
       itemLines,
       '',
       `${formatShortDate(draft.orderDate)}\t\t\t\t`,
     ].join('\n');
   }, [draft]);
+
+  const getLotsForItem = (item) => {
+    const keyCandidates = [
+      item?.skuCode,
+      item?.description,
+    ]
+      .flatMap((value) => buildLookupKeyVariants(value))
+      .filter(Boolean);
+
+    const compactDescription = toCompactKey(item?.description);
+    const compactSku = toCompactKey(item?.skuCode);
+
+    const directLots = keyCandidates.flatMap((key) => lotCatalogByProduct[key] || []);
+    const fuzzyLots = lotCatalogRecords.flatMap((record) => {
+      const skuMatched = compactSku
+        ? record.keyVariants.some((variant) => toCompactKey(variant) === compactSku)
+        : false;
+      const descriptionMatched = compactDescription
+        ? (
+          (record.combinedCompact && compactDescription.includes(record.combinedCompact)) ||
+          (record.productCompact && compactDescription.includes(record.productCompact) &&
+            (!record.strengthCompact || compactDescription.includes(record.strengthCompact)))
+        )
+        : false;
+
+      return skuMatched || descriptionMatched ? record.lots : [];
+    });
+
+    const mergedLots = [...directLots, ...fuzzyLots];
+    return mergeLotEntries(mergedLots);
+  };
+
+  const openLotPicker = (item) => {
+    setLotPicker({
+      itemId: item.id,
+      itemDescription: item.description,
+      selectedLot: item.lot || '',
+      options: getLotsForItem(item),
+    });
+  };
+
+  const closeLotPicker = () => {
+    setLotPicker(EMPTY_LOT_PICKER);
+  };
+
+  const chooseLot = (lotValue) => {
+    updateItem(lotPicker.itemId, 'lot', lotValue);
+    closeLotPicker();
+  };
 
   const selectSku = (sku) => {
     setDraft((currentDraft) => {
@@ -400,16 +632,39 @@ const SkuPoPage = ({ onSuccess, onError }) => {
     if (!draft) return;
 
     const historyEntry = createPrintHistoryEntry(draft);
+    window.print();
 
-    try {
-      await setDoc(doc(db, PRINT_HISTORY_COLLECTION_NAME, historyEntry.id), historyEntry);
-      setPrintHistory((currentHistory) => [historyEntry, ...currentHistory].slice(0, MAX_PRINT_HISTORY_ITEMS));
-      onSuccess?.('Label printed and saved to shared history.');
-    } catch {
-      onError?.('Unable to save to shared history. Label will still print.', 'Error');
+    setPendingPrintHistoryEntry(historyEntry);
+    setPrintConfirmOpen(true);
+  };
+
+  const cancelPrintSave = () => {
+    setPrintConfirmOpen(false);
+    setPendingPrintHistoryEntry(null);
+    onSuccess?.('Label not saved to history.');
+  };
+
+  const confirmPrintSave = async () => {
+    if (!pendingPrintHistoryEntry) {
+      setPrintConfirmOpen(false);
+      return;
     }
 
-    window.print();
+    try {
+      await setDoc(
+        doc(db, PRINT_HISTORY_COLLECTION_NAME, pendingPrintHistoryEntry.id),
+        pendingPrintHistoryEntry
+      );
+      setPrintHistory((currentHistory) =>
+        [pendingPrintHistoryEntry, ...currentHistory].slice(0, MAX_PRINT_HISTORY_ITEMS)
+      );
+      onSuccess?.('Label saved to shared history.');
+    } catch {
+      onError?.('Unable to save to shared history.', 'Error');
+    } finally {
+      setPrintConfirmOpen(false);
+      setPendingPrintHistoryEntry(null);
+    }
   };
 
   const clearPrintHistory = async () => {
@@ -498,11 +753,11 @@ const SkuPoPage = ({ onSuccess, onError }) => {
           <p className="sku-po-eyebrow">Restock Intake</p>
           <h1>SKU PO</h1>
           <p className="sku-po-intro">
-            Click a SKU to add it into the PO list. Click the same SKU again to remove it.
+            Click a product to add it into the PO list. Click the same product again to remove it.
           </p>
         </div>
         <div className="sku-po-header-card">
-          <span className="sku-po-header-label">Loaded SKUs</span>
+          <span className="sku-po-header-label">Loaded Products</span>
           <strong>{skuCatalog.length}</strong>
           <span className="sku-po-header-subtitle">Ready to build PO drafts</span>
         </div>
@@ -511,13 +766,13 @@ const SkuPoPage = ({ onSuccess, onError }) => {
       <div className="sku-po-layout">
         <aside className="sku-po-catalog">
           <div className="sku-po-search-wrap">
-            <label htmlFor="sku-search">Find SKU</label>
+            <label htmlFor="sku-search">Find Product</label>
             <input
               id="sku-search"
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search by SKU or product"
+              placeholder="Search by product ID or name"
             />
           </div>
 
@@ -526,7 +781,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
             <span>{draft?.items.length || 0} in PO</span>
           </div>
 
-          <div className="sku-po-list" role="list" aria-label="SKU catalog">
+          <div className="sku-po-list" role="list" aria-label="Product catalog">
             {filteredSkus.map((sku) => (
               <button
                 key={sku.id}
@@ -544,8 +799,8 @@ const SkuPoPage = ({ onSuccess, onError }) => {
         <div className="sku-po-draft-panel">
           {!draft ? (
             <div className="sku-po-empty-state">
-              <h2>Click a SKU to start</h2>
-              <p>Use the SKU list to add items to the PO. Click a SKU again if you want to remove it.</p>
+              <h2>Click a Product to start</h2>
+              <p>Use the product list to add items to the PO. Click the same product again if you want to remove it.</p>
             </div>
           ) : (
             <>
@@ -553,7 +808,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                 <div>
                   <p className="sku-po-draft-badge">PO Draft</p>
                   <h2>{draft.items.length} Item{draft.items.length === 1 ? '' : 's'} in PO</h2>
-                  <p>Manage the list directly from the SKU selector on the left.</p>
+                  <p>Manage the list directly from the product selector on the left.</p>
                 </div>
                 <div className="sku-po-draft-actions">
                   <button type="button" className="sku-po-secondary-btn" onClick={resetDraft}>
@@ -572,41 +827,52 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                 <table className="sku-po-table-inputs">
                   <colgroup>
                     <col className="sku-po-col-line" />
-                    <col className="sku-po-col-sku" />
+                    <col className="sku-po-col-lot" />
                     <col className="sku-po-col-description" />
                     <col className="sku-po-col-kit" />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>Line</th>
-                      <th>SKU / Item Code</th>
+                      <th>LOT</th>
                       <th>Description</th>
                       <th>Quantity KIT</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {draft.items.map((item, index) => (
-                      <tr key={item.id}>
-                        <td className="sku-po-line-cell">{index + 1}</td>
-                        <td>
-                          <input
-                            type="text"
-                            value={item.skuCode}
-                            onChange={(event) => updateItem(item.id, 'skuCode', event.target.value)}
-                          />
-                        </td>
-                        <td className="sku-po-description-cell">{item.description}</td>
-                        <td className="sku-po-total-cell">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.quantityKits ?? 0}
-                            onChange={(event) => updateItem(item.id, 'quantityKits', event.target.value)}
-                            onFocus={(event) => event.target.select()}
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {draft.items.map((item, index) => {
+                      const lotOptions = getLotsForItem(item);
+                      const selectedLot = lotOptions.find((lot) => lot.lot === item.lot);
+                      return (
+                        <tr key={item.id}>
+                          <td className="sku-po-line-cell">{index + 1}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="sku-po-lot-picker-btn"
+                              onClick={() => openLotPicker(item)}
+                            >
+                              <strong>{item.lot || 'Select lot'}</strong>
+                              <span>
+                                {selectedLot
+                                  ? `${selectedLot.capColor || selectedLot.capShade || 'No cap color'}`
+                                  : `${lotOptions.length} available`}
+                              </span>
+                            </button>
+                          </td>
+                          <td className="sku-po-description-cell">{item.description}</td>
+                          <td className="sku-po-total-cell">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.quantityKits ?? 0}
+                              onChange={(event) => updateItem(item.id, 'quantityKits', event.target.value)}
+                              onFocus={(event) => event.target.select()}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 <div className="sku-po-date-input-row">
@@ -627,27 +893,37 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                   <table className="sku-po-print-table">
                     <colgroup>
                       <col className="sku-po-print-col-line" />
-                      <col className="sku-po-print-col-sku" />
+                      <col className="sku-po-print-col-lot" />
                       <col className="sku-po-print-col-description" />
                       <col className="sku-po-print-col-kit" />
                     </colgroup>
                     <thead>
                       <tr>
                         <th>Line</th>
-                        <th>SKU / Item Code</th>
+                        <th>LOT</th>
                         <th>Description</th>
                         <th>Quantity KIT</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {draft.items.map((item, index) => (
-                        <tr key={`${item.id}-print`}>
-                          <td>{index + 1}</td>
-                          <td>{item.skuCode}</td>
-                          <td>{item.description}</td>
-                          <td>{item.quantityKits ?? 0}</td>
-                        </tr>
-                      ))}
+                      {draft.items.map((item, index) => {
+                        const selectedLot = getLotsForItem(item).find((option) => option.lot === item.lot);
+                        const capColor = selectedLot?.capColor || selectedLot?.capShade || '-';
+
+                        return (
+                          <tr key={`${item.id}-print`}>
+                            <td>{index + 1}</td>
+                            <td>
+                              <div className="sku-po-print-lot-wrap">
+                                <span>{item.lot || '-'}</span>
+                                <small>{capColor}</small>
+                              </div>
+                            </td>
+                            <td>{item.description}</td>
+                            <td>{item.quantityKits ?? 0}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   <div className="sku-po-print-meta-bar bottom">
@@ -658,6 +934,81 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                 </div>
               </div>
 
+              {lotPicker.itemId && createPortal(
+                <div className="sku-po-lot-modal-backdrop" onClick={closeLotPicker}>
+                  <div className="sku-po-lot-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+                    <div className="sku-po-lot-modal-header">
+                      <div>
+                        <h3>Select LOT</h3>
+                        <p>{lotPicker.itemDescription}</p>
+                      </div>
+                      <button type="button" className="sku-po-secondary-btn" onClick={closeLotPicker}>Close</button>
+                    </div>
+
+                    {lotPicker.options.length === 0 ? (
+                      <p className="sku-po-lot-modal-empty">No lots found for this product.</p>
+                    ) : (
+                      <div className="sku-po-lot-modal-list">
+                        {lotPicker.options.map((option) => (
+                          <button
+                            key={`${lotPicker.itemId}-${option.lot}`}
+                            type="button"
+                            className={`sku-po-lot-option ${lotPicker.selectedLot === option.lot ? 'active' : ''}`}
+                            onClick={() => chooseLot(option.lot)}
+                          >
+                            <div className="sku-po-lot-option-top">
+                              <strong>{option.lot}</strong>
+                              {option.isCurrent && <span className="sku-po-lot-current-badge">Current</span>}
+                            </div>
+                            <div className="sku-po-lot-option-meta">
+                              <span>{option.kits} kits</span>
+                              <span>{option.vendor || 'No vendor'}</span>
+                              <span className={`sku-po-capchip${option.capColor || option.capShade ? '' : ' empty'}`}>
+                                <span
+                                  className="sku-po-capchip-swatch"
+                                  style={{ backgroundColor: option.capShade || option.capColor || '#e7dfd3' }}
+                                />
+                                <span className="sku-po-capchip-text">
+                                  {option.capColor || option.capShade || 'No cap color'}
+                                </span>
+                              </span>
+                            </div>
+                            {option.note && <p>{option.note}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>,
+                document.body
+              )}
+
+              {printConfirmOpen && createPortal(
+                <div className="sku-po-print-confirm-backdrop" onClick={cancelPrintSave}>
+                  <div
+                    className="sku-po-print-confirm-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Confirm print save"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <h3>Save this print to history?</h3>
+                    <p>
+                      Save only if this label printed correctly.
+                    </p>
+                    <div className="sku-po-print-confirm-actions">
+                      <button type="button" className="sku-po-secondary-btn" onClick={cancelPrintSave}>
+                        Do Not Save
+                      </button>
+                      <button type="button" className="sku-po-primary-btn" onClick={confirmPrintSave}>
+                        Save to History
+                      </button>
+                    </div>
+                  </div>
+                </div>,
+                document.body
+              )}
+
             </>
           )}
 
@@ -665,7 +1016,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
             <div className="sku-po-section-heading compact">
               <div>
                 <h3>Print History</h3>
-                <p>Each time you click Print 4x6 Label, that snapshot is saved here.</p>
+                <p>After printing, confirm success to save that snapshot here.</p>
               </div>
               {printHistory.length > 0 && (
                 <button type="button" className="sku-po-secondary-btn" onClick={clearPrintHistory}>
@@ -789,9 +1140,9 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                     )}
                     <ul className="sku-po-history-lines">
                       {entry.items.map((item, index) => (
-                        <li key={`${entry.id}-${item.skuCode}-${index}`}>
-                          <span>{index + 1}. {item.skuCode}</span>
-                          <strong>{item.quantityKits ?? 0} KIT</strong>
+                        <li key={`${entry.id}-${item.skuCode || item.description}-${index}`}>
+                          <span>{index + 1}. {item.description}</span>
+                          <strong>{item.lot ? `${item.lot} | ` : ''}{item.quantityKits ?? 0} KIT</strong>
                         </li>
                       ))}
                     </ul>
