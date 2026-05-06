@@ -8,14 +8,7 @@ const createEmptyCOA = () => ({ lot: "", url: "", capColor: "", capShade: "" });
 const coaListSafe = (arr) => (Array.isArray(arr) ? arr : []);
 const buildCoaUrl = (id) => (id ? `https://coffeeandpeppers.com/${id}` : "");
 const LABEL_ASSET_BASE = `${window.location.origin}/assets`;
-const LABEL_LOGO_SRC = `${LABEL_ASSET_BASE}/labelLogo.png`;
-const LABEL_QR_SRC = `${LABEL_ASSET_BASE}/coaQR.png`;
-const LABEL_BACKGROUND_IMAGE = `${LABEL_ASSET_BASE}/silverBackground.png`;
-const APP_LOGO_SRC = `${window.location.origin}/assets/logo.png`;
-const buildQrCodeUrl = (lot) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(
-    buildCoaUrl(lot)
-  )}`;
+const LABEL_BACKGROUND_IMAGE = `${LABEL_ASSET_BASE}/labelbackground.png`;
 const escapeHtml = (value) =>
   String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -139,13 +132,24 @@ const DEFAULT_LABEL_DESIGN = {
   centerTopPercent: 50,
   centerWidth: 235,
   centerGap: 2,
+  stackRotate: -90,
   nameFontSize: 37,
   nameLineHeight: 0.79,
+  nameColor: "#23160d",
+  nameFontWeight: 900,
+  nameLetterSpacing: 0,
+  nameUppercase: true,
+  nameOffsetX: 0,
+  nameOffsetY: 0,
   strengthFontSize: 22,
   massTextColor: "#ffffff",
   strengthPadY: 8,
   strengthPadX: 12,
   strengthRadius: FIXED_MASS_RADIUS,
+  strengthFontWeight: 900,
+  strengthLetterSpacing: 0,
+  strengthOffsetX: 0,
+  strengthOffsetY: 0,
   // Footer — rotated -90°, bottom-right area
   footerLeft: 156,
   footerTop: 310,
@@ -162,7 +166,17 @@ const DEFAULT_LABEL_DESIGN = {
   lotLeft: 90,
   lotTop: 10,
   lotFontSize: 12,
+  lotColor: "#2b1a0f",
+  lotFontWeight: 800,
+  lotLetterSpacing: 0.03,
+  lotRotate: 0,
+  lotOffsetX: 0,
+  lotOffsetY: 0,
+  lotUppercase: true,
   backgroundOpacity: 100, // 0–100, scales gradient alpha
+  nameTextAlign: "center",
+  lotTextAlign: "center",
+  tintColorOverride: "", // empty = use cap color
 };
 const KIT_PREVIEW_WIDTH = 240;
 const KIT_PREVIEW_HEIGHT = 360;
@@ -172,6 +186,11 @@ const DEFAULT_KIT_LABEL_DESIGN = {
   lotLeft: 15,
   lotTop: 10,
   lotFontSize: 15,
+  lotColor: "#23160d",
+  lotFontWeight: 900,
+  lotLetterSpacing: 0,
+  lotRotate: 0,
+  lotUppercase: true,
   qrLeft: 15,
   qrTop: 30,
   qrSize: 95,
@@ -183,18 +202,27 @@ const DEFAULT_KIT_LABEL_DESIGN = {
   productBottom: 18,
   productFontSize: 46,
   productLineHeight: 0.86,
+  productColor: "#111111",
+  productFontWeight: 900,
+  productLetterSpacing: 0,
+  productUppercase: true,
   strengthLeft: 193,
   strengthBottom: 20,
   strengthFontSize: 35,
   strengthPadX: 18,
   strengthPadY: 14,
   strengthRadius: 8,
+  strengthFontWeight: 900,
+  strengthLetterSpacing: 0,
   footerRight: 18,
   footerBottom: 250,
   footerFontSize: 15,
   footerGap: 20,
   bottomFadeHeight: 250,
   massTextColor: "#ffffff",
+  lotTextAlign: "center",
+  productTextAlign: "left",
+  tintColorOverride: "",
 };
 const DEFAULT_TEST_LABEL_DESIGN = {
   ...DEFAULT_LABEL_DESIGN,
@@ -241,17 +269,26 @@ const buildLabelDesignStyles = (design) => ({
     top: `${design.centerTopPercent}%`,
     width: `${design.centerWidth}px`,
     gap: `${design.centerGap}px`,
-    transform: 'translate(-50%, -50%) rotate(-90deg)',
+    transform: `translate(-50%, -50%) rotate(${design.stackRotate ?? -90}deg)`,
   },
   name: {
     fontSize: `${design.nameFontSize}px`,
     lineHeight: design.nameLineHeight,
+    color: design.nameColor || '#23160d',
+    fontWeight: design.nameFontWeight ?? 900,
+    letterSpacing: `${design.nameLetterSpacing ?? 0}em`,
+    textTransform: design.nameUppercase === false ? 'none' : 'uppercase',
+    textAlign: design.nameTextAlign || 'center',
+    transform: `translate(${design.nameOffsetX ?? 0}px, ${design.nameOffsetY ?? 0}px)`,
   },
   strength: {
     fontSize: `${design.strengthFontSize}px`,
     padding: `${design.strengthPadY ?? FIXED_MASS_PAD_Y}px ${design.strengthPadX}px`,
     borderRadius: `${design.strengthRadius}px`,
     color: design.massTextColor || FIXED_MASS_TEXT_COLOR,
+    fontWeight: design.strengthFontWeight ?? 900,
+    letterSpacing: `${design.strengthLetterSpacing ?? 0}em`,
+    transform: `translate(${design.strengthOffsetX ?? 0}px, ${design.strengthOffsetY ?? 0}px)`,
   },
   footer: {
     left: `${design.footerLeft}px`,
@@ -271,7 +308,12 @@ const buildLabelDesignStyles = (design) => ({
     left: `${design.lotLeft}px`,
     top: `${design.lotTop}px`,
     fontSize: `${design.lotFontSize}px`,
-    transform: 'translateX(-50%)',
+    color: design.lotColor || '#2b1a0f',
+    fontWeight: design.lotFontWeight ?? 800,
+    letterSpacing: `${design.lotLetterSpacing ?? 0.03}em`,
+    textTransform: design.lotUppercase === false ? 'none' : 'uppercase',
+    textAlign: design.lotTextAlign || 'center',
+    transform: `translateX(-50%) translate(${design.lotOffsetX ?? 0}px, ${design.lotOffsetY ?? 0}px) rotate(${design.lotRotate ?? 0}deg)`,
   },
 });
 const buildKitLabelDesignStyles = (design) => ({
@@ -279,6 +321,13 @@ const buildKitLabelDesignStyles = (design) => ({
     left: `${design.lotLeft}px`,
     top: `${design.lotTop}px`,
     fontSize: `${design.lotFontSize}px`,
+    color: design.lotColor || '#23160d',
+    fontWeight: design.lotFontWeight ?? 900,
+    letterSpacing: `${design.lotLetterSpacing ?? 0}em`,
+    textTransform: design.lotUppercase === false ? 'none' : 'uppercase',
+    textAlign: design.lotTextAlign || 'center',
+    transform: `rotate(${design.lotRotate ?? 0}deg)`,
+    transformOrigin: 'left top',
   },
   qr: {
     left: `${design.qrLeft}px`,
@@ -297,6 +346,11 @@ const buildKitLabelDesignStyles = (design) => ({
     bottom: `${design.productBottom}px`,
     fontSize: `${design.productFontSize}px`,
     lineHeight: design.productLineHeight,
+    color: design.productColor || '#111111',
+    fontWeight: design.productFontWeight ?? 900,
+    letterSpacing: `${design.productLetterSpacing ?? 0}em`,
+    textTransform: design.productUppercase === false ? 'none' : 'uppercase',
+    textAlign: design.productTextAlign || 'left',
   },
   strength: {
     left: `${design.strengthLeft}px`,
@@ -305,6 +359,8 @@ const buildKitLabelDesignStyles = (design) => ({
     padding: `${design.strengthPadY}px ${design.strengthPadX}px`,
     borderRadius: `${design.strengthRadius}px`,
     color: design.massTextColor || FIXED_MASS_TEXT_COLOR,
+    fontWeight: design.strengthFontWeight ?? 900,
+    letterSpacing: `${design.strengthLetterSpacing ?? 0}em`,
   },
   footer: {
     right: `${design.footerRight}px`,
@@ -371,7 +427,11 @@ const scaleLabelDesignForPrint = (design) => {
     centerWidth: merged.centerWidth * scaleX,
     centerGap: merged.centerGap * scaleY,
     nameFontSize: merged.nameFontSize * scale,
+    nameOffsetX: (merged.nameOffsetX ?? 0) * scaleX,
+    nameOffsetY: (merged.nameOffsetY ?? 0) * scaleY,
     strengthFontSize: merged.strengthFontSize * scale,
+    strengthOffsetX: (merged.strengthOffsetX ?? 0) * scaleX,
+    strengthOffsetY: (merged.strengthOffsetY ?? 0) * scaleY,
     strengthPadY: (merged.strengthPadY ?? FIXED_MASS_PAD_Y) * scaleY,
     strengthPadX: merged.strengthPadX * scaleX,
     strengthRadius: FIXED_MASS_RADIUS * scale,
@@ -387,6 +447,8 @@ const scaleLabelDesignForPrint = (design) => {
     lotLeft: merged.lotLeft * scaleX,
     lotTop: merged.lotTop * scaleY,
     lotFontSize: merged.lotFontSize * scale,
+    lotOffsetX: (merged.lotOffsetX ?? 0) * scaleX,
+    lotOffsetY: (merged.lotOffsetY ?? 0) * scaleY,
   };
 };
 const scaleKitLabelDesignForPrint = (design) => {
@@ -468,11 +530,9 @@ const buildKitLabelFade = (value) => {
 };
 const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor, design }) => {
   const capColorValue = normalizeLabelAccentColor(capColor);
-  const capTextColor = getReadableTextColor(capColorValue);
-  const qrCodeUrl = buildQrCodeUrl(lot);
-  const labelBackground = buildLabelBackground(capColorValue);
   const labelDesign = scaleLabelDesignForPrint(design);
-  const printLogo = buildFixedLogoPrintStyles(labelDesign);
+  const effectiveTint = labelDesign.tintColorOverride || capColorValue;
+  const labelBackground = buildLabelBackground(effectiveTint, labelDesign.backgroundOpacity);
   return `<!doctype html>
 <html>
   <head>
@@ -519,63 +579,38 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         position: absolute;
         left: ${labelDesign.lotLeft}px;
         top: ${labelDesign.lotTop}px;
-        transform: translateX(-50%);
+        transform: translateX(-50%) translate(${labelDesign.lotOffsetX ?? 0}px, ${labelDesign.lotOffsetY ?? 0}px) rotate(${labelDesign.lotRotate ?? 0}deg);
         font-size: ${labelDesign.lotFontSize}px;
         line-height: 1;
-        font-weight: 800;
-        color: #2b1a0f;
-        letter-spacing: 0.03em;
+        font-weight: ${labelDesign.lotFontWeight ?? 800};
+        color: ${escapeHtml(labelDesign.lotColor || "#2b1a0f")};
+        letter-spacing: ${labelDesign.lotLetterSpacing ?? 0.03}em;
+        text-transform: ${labelDesign.lotUppercase === false ? "none" : "uppercase"};
+        text-align: ${labelDesign.lotTextAlign || "center"};
         white-space: nowrap;
-      }
-      .qr-wrap {
-        position: absolute;
-        left: ${labelDesign.qrLeft}px;
-        top: ${labelDesign.qrTop}px;
-        display: flex;
-      }
-      .qr {
-        width: ${labelDesign.qrWidth}px;
-        height: ${labelDesign.qrWidth}px;
-        object-fit: contain;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
-        -ms-interpolation-mode: nearest-neighbor;
-      }
-      .logo-wrap {
-        position: absolute;
-        left: ${printLogo.wrap.left}px;
-        top: ${printLogo.wrap.topPercent}%;
-        transform-origin: left center;
-        transform: rotate(-90deg);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      .logo {
-        width: ${printLogo.size.width}px;
-        height: ${printLogo.size.height}px;
-        object-fit: contain;
       }
       .center-stack {
         position: absolute;
         left: ${labelDesign.centerLeftPercent}%;
         top: ${labelDesign.centerTopPercent}%;
-        transform: translate(-50%, -50%) rotate(-90deg);
+        transform: translate(-50%, -50%) rotate(${labelDesign.stackRotate ?? -90}deg);
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: ${labelDesign.centerGap}px;
         width: ${labelDesign.centerWidth}px;
-        text-align: center;
+        text-align: ${labelDesign.nameTextAlign || "center"};
       }
       .name {
-        text-align: center;
+        text-align: ${labelDesign.nameTextAlign || "center"};
+        transform: translate(${labelDesign.nameOffsetX ?? 0}px, ${labelDesign.nameOffsetY ?? 0}px);
         font-size: ${labelDesign.nameFontSize}px;
         line-height: ${labelDesign.nameLineHeight};
-        font-weight: 900;
-        color: #23160d;
-        text-transform: uppercase;
+        font-weight: ${labelDesign.nameFontWeight ?? 900};
+        color: ${escapeHtml(labelDesign.nameColor || "#23160d")};
+        letter-spacing: ${labelDesign.nameLetterSpacing ?? 0}em;
+        text-transform: ${labelDesign.nameUppercase === false ? "none" : "uppercase"};
         white-space: nowrap;
       }
       .strength {
@@ -588,25 +623,10 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         padding: ${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;
         font-size: ${labelDesign.strengthFontSize}px;
         line-height: 1;
-        font-weight: 900;
+        font-weight: ${labelDesign.strengthFontWeight ?? 900};
+        letter-spacing: ${labelDesign.strengthLetterSpacing ?? 0}em;
+        transform: translate(${labelDesign.strengthOffsetX ?? 0}px, ${labelDesign.strengthOffsetY ?? 0}px);
         white-space: nowrap;
-      }
-      .footer {
-        position: absolute;
-        left: ${labelDesign.footerLeft}px;
-        top: ${labelDesign.footerTop}px;
-        transform: translate(-50%, -50%) rotate(-90deg);
-        font-size: ${labelDesign.footerFontSize}px;
-        line-height: 1.3;
-        color: #23160d;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5px;
-        white-space: nowrap;
-      }
-      .footer strong {
-        display: block;
-        font-weight: 500;
       }
     </style>
   </head>
@@ -615,27 +635,15 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
       <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
       <div class="bg-tint"></div>
       <div class="lot">${escapeHtml(lot || "")}</div>
-      <div class="qr-wrap">
-        <img class="qr" src="${escapeHtml(LABEL_QR_SRC)}" onerror="this.onerror=null;this.src='${escapeHtml(qrCodeUrl)}';" alt="QR code" />
-      </div>
-      <div class="logo-wrap">
-        <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(APP_LOGO_SRC)}';" />
-      </div>
       <div class="center-stack">
         <div class="name">${buildLabelProductHtml(productName || "")}</div>
         <div class="strength">${escapeHtml(strength || "")}</div>
-      </div>
-      <div class="footer">
-        <strong>99% PURITY</strong>
-        <strong>FOR RESEARCH USE ONLY</strong>
       </div>
     </div>
     <script>
       window.onload = function () {
         var assets = [
-          "${escapeHtml(LABEL_BACKGROUND_IMAGE)}",
-          "${escapeHtml(LABEL_LOGO_SRC)}",
-          "${escapeHtml(LABEL_QR_SRC)}"
+          "${escapeHtml(LABEL_BACKGROUND_IMAGE)}"
         ];
         var settled = false;
         var remaining = assets.length;
@@ -672,9 +680,9 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
 };
 const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, design }) => {
   const capColorValue = normalizeLabelAccentColor(capColor);
-  const labelBackground = buildLabelBackground(capColorValue);
   const d = scaleLabelDesignForPrint(design);
-  const printLogo = buildFixedLogoPrintStyles(d);
+  const effectiveTint = d.tintColorOverride || capColorValue;
+  const labelBackground = buildLabelBackground(effectiveTint, d.backgroundOpacity);
   const pages = TEST_LABEL_VARIANTS.map(
     (variant) => `
       <section class="label-page">
@@ -682,9 +690,6 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
           <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
           <div class="bg-tint"></div>
           <div class="lot">${escapeHtml(lot || "")}</div>
-          <div class="logo-wrap">
-            <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(APP_LOGO_SRC)}';" />
-          </div>
           <div class="center-stack">
             <div class="name">${buildLabelProductHtml(productName || "")}</div>
             <div class="strength">${escapeHtml(strength || "")}</div>
@@ -748,49 +753,38 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         position: absolute;
         left: ${d.lotLeft}px;
         top: ${d.lotTop}px;
-        transform: translateX(-50%);
+        transform: translateX(-50%) translate(${d.lotOffsetX ?? 0}px, ${d.lotOffsetY ?? 0}px) rotate(${d.lotRotate ?? 0}deg);
         font-size: ${d.lotFontSize}px;
         line-height: 1;
-        font-weight: 800;
-        color: #2b1a0f;
-        letter-spacing: 0.03em;
+        font-weight: ${d.lotFontWeight ?? 800};
+        color: ${escapeHtml(d.lotColor || "#2b1a0f")};
+        letter-spacing: ${d.lotLetterSpacing ?? 0.03}em;
+        text-transform: ${d.lotUppercase === false ? "none" : "uppercase"};
+        text-align: ${d.lotTextAlign || "center"};
         white-space: nowrap;
-      }
-      .logo-wrap {
-        position: absolute;
-        left: ${printLogo.wrap.left}px;
-        top: ${printLogo.wrap.topPercent}%;
-        transform-origin: left center;
-        transform: rotate(-90deg);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      .logo {
-        width: ${printLogo.size.width}px;
-        height: ${printLogo.size.height}px;
-        object-fit: contain;
       }
       .center-stack {
         position: absolute;
         left: ${d.centerLeftPercent}%;
         top: ${d.centerTopPercent}%;
-        transform: translate(-50%, -50%) rotate(-90deg);
+        transform: translate(-50%, -50%) rotate(${d.stackRotate ?? -90}deg);
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: ${d.centerGap}px;
         width: ${d.centerWidth}px;
-        text-align: center;
+        text-align: ${d.nameTextAlign || "center"};
       }
       .name {
-        text-align: center;
+        text-align: ${d.nameTextAlign || "center"};
+        transform: translate(${d.nameOffsetX ?? 0}px, ${d.nameOffsetY ?? 0}px);
         font-size: ${d.nameFontSize}px;
         line-height: ${d.nameLineHeight};
-        font-weight: 900;
-        color: #23160d;
-        text-transform: uppercase;
+        font-weight: ${d.nameFontWeight ?? 900};
+        color: ${escapeHtml(d.nameColor || "#23160d")};
+        letter-spacing: ${d.nameLetterSpacing ?? 0}em;
+        text-transform: ${d.nameUppercase === false ? "none" : "uppercase"};
         white-space: nowrap;
       }
       .strength {
@@ -803,7 +797,9 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         padding: ${d.strengthPadY}px ${d.strengthPadX}px;
         font-size: ${d.strengthFontSize}px;
         line-height: 1;
-        font-weight: 900;
+        font-weight: ${d.strengthFontWeight ?? 900};
+        letter-spacing: ${d.strengthLetterSpacing ?? 0}em;
+        transform: translate(${d.strengthOffsetX ?? 0}px, ${d.strengthOffsetY ?? 0}px);
         white-space: nowrap;
       }
       .variant {
@@ -823,8 +819,7 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
     <script>
       window.onload = function () {
         var assets = [
-          "${escapeHtml(LABEL_BACKGROUND_IMAGE)}",
-          "${escapeHtml(LABEL_LOGO_SRC)}"
+          "${escapeHtml(LABEL_BACKGROUND_IMAGE)}"
         ];
         var settled = false;
         var remaining = assets.length;
@@ -855,29 +850,18 @@ const buildAllVialLabelsPrintMarkup = (labelEntries) => {
   // labelEntries: [{ productName, strength, lot, capColor, design }]
   const pages = labelEntries.map(({ productName, strength, lot, capColor, design }) => {
     const capColorValue = normalizeLabelAccentColor(capColor);
-    const qrCodeUrl = buildQrCodeUrl(lot);
-    const labelBackground = buildLabelBackground(capColorValue);
     const labelDesign = scaleLabelDesignForPrint(design);
-    const printLogo = buildFixedLogoPrintStyles(labelDesign);
+    const effectiveTint = labelDesign.tintColorOverride || capColorValue;
+    const labelBackground = buildLabelBackground(effectiveTint, labelDesign.backgroundOpacity);
     return `
       <section class="label-page" data-lot="${escapeHtml(lot)}">
         <div class="label" style="background: linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%);">
           <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
           <div class="bg-tint" style="background:${escapeHtml(labelBackground)};"></div>
-          <div class="lot" style="left:${labelDesign.lotLeft}px;top:${labelDesign.lotTop}px;font-size:${labelDesign.lotFontSize}px;">${escapeHtml(lot || "")}</div>
-          <div class="qr-wrap" style="left:${labelDesign.qrLeft}px;top:${labelDesign.qrTop}px;">
-            <img class="qr" style="width:${labelDesign.qrWidth}px;height:${labelDesign.qrWidth}px;" src="${escapeHtml(LABEL_QR_SRC)}" onerror="this.onerror=null;this.src='${escapeHtml(qrCodeUrl)}';" alt="QR" />
-          </div>
-          <div class="logo-wrap" style="left:${printLogo.wrap.left}px;top:${printLogo.wrap.topPercent}%;">
-            <img class="logo" style="width:${printLogo.size.width}px;height:${printLogo.size.height}px;" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(APP_LOGO_SRC)}';" />
-          </div>
-          <div class="center-stack" style="left:${labelDesign.centerLeftPercent}%;top:${labelDesign.centerTopPercent}%;width:${labelDesign.centerWidth}px;gap:${labelDesign.centerGap}px;">
-            <div class="name" style="font-size:${labelDesign.nameFontSize}px;line-height:${labelDesign.nameLineHeight};">${buildLabelProductHtml(productName || "")}</div>
-            <div class="strength" style="background:${escapeHtml(capColorValue)};color:${escapeHtml(labelDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};border-radius:${labelDesign.strengthRadius}px;padding:${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;font-size:${labelDesign.strengthFontSize}px;">${escapeHtml(strength || "")}</div>
-          </div>
-          <div class="footer" style="left:${labelDesign.footerLeft}px;top:${labelDesign.footerTop}px;font-size:${labelDesign.footerFontSize}px;">
-            <strong>99% PURITY</strong>
-            <strong>FOR RESEARCH USE ONLY</strong>
+          <div class="lot" style="left:${labelDesign.lotLeft}px;top:${labelDesign.lotTop}px;font-size:${labelDesign.lotFontSize}px;color:${escapeHtml(labelDesign.lotColor || "#2b1a0f")};font-weight:${labelDesign.lotFontWeight ?? 800};letter-spacing:${labelDesign.lotLetterSpacing ?? 0.03}em;text-transform:${labelDesign.lotUppercase === false ? "none" : "uppercase"};text-align:${labelDesign.lotTextAlign || "center"};transform:translateX(-50%) translate(${labelDesign.lotOffsetX ?? 0}px, ${labelDesign.lotOffsetY ?? 0}px) rotate(${labelDesign.lotRotate ?? 0}deg);">${escapeHtml(lot || "")}</div>
+          <div class="center-stack" style="left:${labelDesign.centerLeftPercent}%;top:${labelDesign.centerTopPercent}%;width:${labelDesign.centerWidth}px;gap:${labelDesign.centerGap}px;transform:translate(-50%, -50%) rotate(${labelDesign.stackRotate ?? -90}deg);text-align:${labelDesign.nameTextAlign || "center"};">
+            <div class="name" style="font-size:${labelDesign.nameFontSize}px;line-height:${labelDesign.nameLineHeight};color:${escapeHtml(labelDesign.nameColor || "#23160d")};font-weight:${labelDesign.nameFontWeight ?? 900};letter-spacing:${labelDesign.nameLetterSpacing ?? 0}em;text-transform:${labelDesign.nameUppercase === false ? "none" : "uppercase"};text-align:${labelDesign.nameTextAlign || "center"};transform:translate(${labelDesign.nameOffsetX ?? 0}px, ${labelDesign.nameOffsetY ?? 0}px);">${buildLabelProductHtml(productName || "")}</div>
+            <div class="strength" style="background:${escapeHtml(capColorValue)};color:${escapeHtml(labelDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};border-radius:${labelDesign.strengthRadius}px;padding:${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;font-size:${labelDesign.strengthFontSize}px;font-weight:${labelDesign.strengthFontWeight ?? 900};letter-spacing:${labelDesign.strengthLetterSpacing ?? 0}em;transform:translate(${labelDesign.strengthOffsetX ?? 0}px, ${labelDesign.strengthOffsetY ?? 0}px);">${escapeHtml(strength || "")}</div>
           </div>
         </div>
       </section>`;
@@ -934,37 +918,11 @@ const buildAllVialLabelsPrintMarkup = (labelEntries) => {
       }
       .lot {
         position: absolute;
-        transform: translateX(-50%);
         line-height: 1;
-        font-weight: 800;
-        color: #2b1a0f;
-        letter-spacing: 0.03em;
         white-space: nowrap;
-      }
-      .qr-wrap {
-        position: absolute;
-        display: flex;
-      }
-      .qr {
-        object-fit: contain;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
-        -ms-interpolation-mode: nearest-neighbor;
-      }
-      .logo-wrap {
-        position: absolute;
-        transform-origin: left center;
-        transform: rotate(-90deg);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      .logo {
-        object-fit: contain;
       }
       .center-stack {
         position: absolute;
-        transform: translate(-50%, -50%) rotate(-90deg);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -973,9 +931,6 @@ const buildAllVialLabelsPrintMarkup = (labelEntries) => {
       }
       .name {
         text-align: center;
-        font-weight: 900;
-        color: #23160d;
-        text-transform: uppercase;
         white-space: nowrap;
       }
       .strength {
@@ -983,22 +938,7 @@ const buildAllVialLabelsPrintMarkup = (labelEntries) => {
         align-items: center;
         justify-content: center;
         line-height: 1;
-        font-weight: 900;
         white-space: nowrap;
-      }
-      .footer {
-        position: absolute;
-        transform: translate(-50%, -50%) rotate(-90deg);
-        line-height: 1.3;
-        color: #23160d;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5px;
-        white-space: nowrap;
-      }
-      .footer strong {
-        display: block;
-        font-weight: 500;
       }
     </style>
   </head>
@@ -1010,7 +950,6 @@ const buildAllVialLabelsPrintMarkup = (labelEntries) => {
 
 const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capColor, design }) => {
   const accentColor = normalizeLabelAccentColor(capColor);
-  const qrCodeUrl = buildQrCodeUrl(lot);
   const kitDesign = scaleKitLabelDesignForPrint(design);
   const bottomFade = buildKitLabelFade(accentColor);
   return `<!doctype html>
@@ -1062,30 +1001,13 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         top: ${kitDesign.lotTop}px;
         font-size: ${kitDesign.lotFontSize}px;
         line-height: 1;
-        font-weight: 900;
-        color: #23160d;
-        text-transform: uppercase;
-      }
-      .qr {
-        position: absolute;
-        left: ${kitDesign.qrLeft}px;
-        top: ${kitDesign.qrTop}px;
-        width: ${kitDesign.qrSize}px;
-        height: ${kitDesign.qrSize}px;
-        object-fit: contain;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
-        -ms-interpolation-mode: nearest-neighbor;
-      }
-      .logo {
-        position: absolute;
-        left: ${kitDesign.logoLeft}px;
-        bottom: ${kitDesign.logoBottom}px;
-        width: ${kitDesign.logoWidth}px;
-        height: ${kitDesign.logoHeight}px;
-        object-fit: contain;
-        transform-origin: left bottom;
-        transform: rotate(-90deg);
+        font-weight: ${kitDesign.lotFontWeight ?? 900};
+        color: ${escapeHtml(kitDesign.lotColor || "#23160d")};
+        letter-spacing: ${kitDesign.lotLetterSpacing ?? 0}em;
+        text-transform: ${kitDesign.lotUppercase === false ? "none" : "uppercase"};
+        text-align: ${kitDesign.lotTextAlign || "center"};
+        transform: rotate(${kitDesign.lotRotate ?? 0}deg);
+        transform-origin: left top;
       }
       .product {
         position: absolute;
@@ -1096,9 +1018,11 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         width: 220px;
         font-size: ${kitDesign.productFontSize}px;
         line-height: ${kitDesign.productLineHeight};
-        font-weight: 900;
-        color: #111111;
-        text-transform: uppercase;
+        font-weight: ${kitDesign.productFontWeight ?? 900};
+        color: ${escapeHtml(kitDesign.productColor || "#111111")};
+        letter-spacing: ${kitDesign.productLetterSpacing ?? 0}em;
+        text-transform: ${kitDesign.productUppercase === false ? "none" : "uppercase"};
+        text-align: ${kitDesign.productTextAlign || "left"};
         white-space: normal;
         overflow: hidden;
         display: -webkit-box;
@@ -1127,7 +1051,8 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         border-radius: ${kitDesign.strengthRadius}px;
         font-size: ${kitDesign.strengthFontSize}px;
         line-height: 1;
-        font-weight: 900;
+        font-weight: ${kitDesign.strengthFontWeight ?? 900};
+        letter-spacing: ${kitDesign.strengthLetterSpacing ?? 0}em;
         text-transform: uppercase;
         white-space: nowrap;
       }
@@ -1138,23 +1063,6 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         color: #111111;
         white-space: nowrap;
       }
-      .footer {
-        position: absolute;
-        right: ${kitDesign.footerRight}px;
-        bottom: ${kitDesign.footerBottom}px;
-        transform-origin: right bottom;
-        transform: rotate(-90deg);
-        display: inline-flex;
-        align-items: center;
-        gap: ${kitDesign.footerGap}px;
-        font-size: ${kitDesign.footerFontSize}px;
-        line-height: 1;
-        color: #111111;
-        white-space: nowrap;
-      }
-      .footer span:last-child {
-        font-weight: 500;
-      }
     </style>
   </head>
   <body>
@@ -1162,28 +1070,16 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
       <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
       <div class="bottom-fade"></div>
       <div class="lot">${escapeHtml(lot || productId || "")}</div>
-      <img class="qr" src="${escapeHtml(LABEL_QR_SRC)}" onerror="this.onerror=null;this.src='${escapeHtml(
-        qrCodeUrl
-      )}';" alt="QR code for ${escapeHtml(productId || lot || "kit label")}" />
-      <img class="logo" src="${escapeHtml(LABEL_LOGO_SRC)}" alt="Coffee and Peppers" onerror="this.onerror=null;this.src='${escapeHtml(
-        APP_LOGO_SRC
-      )}';" />
       <div class="product">${buildLabelProductHtml(productName || "")}</div>
       <div class="strength-group">
         <div class="strength">${escapeHtml(strength || "")}</div>
         <div class="count">10 Vials</div>
       </div>
-      <div class="footer">
-        <span>99% Purity</span>
-        <span>Research Use Only</span>
-      </div>
     </div>
     <script>
       window.onload = function () {
         var assets = [
-          "${escapeHtml(LABEL_BACKGROUND_IMAGE)}",
-          "${escapeHtml(LABEL_LOGO_SRC)}",
-          "${escapeHtml(LABEL_QR_SRC)}"
+          "${escapeHtml(LABEL_BACKGROUND_IMAGE)}"
         ];
         var settled = false;
         var remaining = assets.length;
@@ -1221,32 +1117,19 @@ const styleObjToCss = (obj) =>
 const createLabelDomForCapture = ({ productName, strength, lot, capColor, design }) => {
   const ds = buildLabelDesignStyles(mergeLabelDesign(design));
   const capColorValue = normalizeLabelAccentColor(capColor);
-  const labelBg = buildLabelBackground(capColorValue);
-  const qrFallbackSrc = buildQrCodeUrl(lot);
+  const mergedDesign = mergeLabelDesign(design);
+  const effectiveTint = mergedDesign.tintColorOverride || capColorValue;
+  const labelBg = buildLabelBackground(effectiveTint, mergedDesign.backgroundOpacity);
   const el = document.createElement('div');
   el.style.cssText = `width:${LABEL_PREVIEW_WIDTH}px;height:${LABEL_PREVIEW_HEIGHT}px;position:relative;overflow:hidden;background:linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%);font-family:Arial,Helvetica,sans-serif;box-sizing:border-box;`;
   el.innerHTML = `
-    <img src="/assets/silverBackground.png" crossorigin="anonymous"
+    <img src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" crossorigin="anonymous"
       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;" />
     <div style="position:absolute;inset:0;background:${escapeHtml(labelBg)};pointer-events:none;"></div>
-    <div style="position:absolute;${styleObjToCss(ds.lot)};line-height:1;font-weight:800;color:#2b1a0f;letter-spacing:0.03em;white-space:nowrap;">${escapeHtml(lot || '')}</div>
-    <div style="position:absolute;${styleObjToCss(ds.qrWrap)};">
-      <img src="/assets/coaQR.png" crossorigin="anonymous"
-        style="${styleObjToCss(ds.qr)};object-fit:contain;image-rendering:pixelated;"
-        onerror="this.onerror=null;this.src='${escapeHtml(qrFallbackSrc)}'" />
-    </div>
-    <div style="position:absolute;${styleObjToCss(ds.logoWrap)};display:flex;justify-content:center;align-items:center;">
-      <img src="/assets/labelLogo.png" crossorigin="anonymous"
-        style="${styleObjToCss(ds.logo)};object-fit:contain;"
-        onerror="this.onerror=null;this.src='/assets/logo.png'" />
-    </div>
-    <div style="position:absolute;left:${ds.center.left};top:${ds.center.top};width:${ds.center.width};gap:${ds.center.gap};transform:translate(-50%,-50%) rotate(-90deg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
-      <div style="${styleObjToCss(ds.name)};font-weight:900;color:#23160d;text-transform:uppercase;white-space:nowrap;">${buildLabelProductHtml(productName || '')}</div>
-      <div style="${styleObjToCss(ds.strength)};display:inline-flex;align-items:center;justify-content:center;background:${escapeHtml(capColorValue)};line-height:1;font-weight:900;white-space:nowrap;">${escapeHtml(strength || '')}</div>
-    </div>
-    <div style="position:absolute;left:${ds.footer.left};top:${ds.footer.top};font-size:${ds.footer.fontSize};transform:translate(-50%,-50%) rotate(-90deg);line-height:1.3;color:#23160d;display:flex;flex-direction:column;gap:0.5px;white-space:nowrap;">
-      <span style="display:block;font-weight:500;">99% PURITY</span>
-      <span style="display:block;font-weight:500;">FOR RESEARCH USE ONLY</span>
+    <div style="position:absolute;${styleObjToCss(ds.lot)};line-height:1;white-space:nowrap;">${escapeHtml(lot || '')}</div>
+    <div style="position:absolute;left:${ds.center.left};top:${ds.center.top};width:${ds.center.width};gap:${ds.center.gap};transform:${ds.center.transform};display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+      <div style="${styleObjToCss(ds.name)};white-space:nowrap;">${buildLabelProductHtml(productName || '')}</div>
+      <div style="${styleObjToCss(ds.strength)};display:inline-flex;align-items:center;justify-content:center;background:${escapeHtml(capColorValue)};line-height:1;white-space:nowrap;">${escapeHtml(strength || '')}</div>
     </div>
   `;
   return el;
@@ -1293,20 +1176,14 @@ const classifySidebarGroup = (p) => {
 const DRAG_CANVAS_SCALE = 2; // render at 2× the preview dimensions
 
 const VIAL_DRAG_ELEMENTS = [
-  { id: "logo",    label: "Logo",    color: "#3b7dd8", xField: "logoLeft",          yField: "logoTopPercent",    yMode: "percent" },
   { id: "center",  label: "Stack",   color: "#d82d63", xField: "centerLeftPercent", yField: "centerTopPercent",  yMode: "percent", xMode: "percent" },
-  { id: "qr",     label: "QR",      color: "#2da87a", xField: "qrLeft",             yField: "qrTop" },
-  { id: "footer", label: "Footer",  color: "#a06b2d", xField: "footerLeft",         yField: "footerTop" },
   { id: "lot",    label: "Lot ID",  color: "#6b2da0", xField: "lotLeft",            yField: "lotTop" },
 ];
 
 const KIT_DRAG_ELEMENTS = [
   { id: "lot",      label: "Lot ID",  color: "#6b2da0", xField: "lotLeft",      yField: "lotTop" },
-  { id: "qr",       label: "QR",      color: "#2da87a", xField: "qrLeft",        yField: "qrTop" },
-  { id: "logo",     label: "Logo",    color: "#3b7dd8", xField: "logoLeft",      yField: "logoBottom",    yMode: "bottom" },
   { id: "product",  label: "Product", color: "#d82d63", xField: "productLeft",   yField: "productBottom", yMode: "bottom" },
   { id: "strength", label: "Mass",    color: "#e08a00", xField: "strengthLeft",  yField: "strengthBottom",yMode: "bottom" },
-  { id: "footer",   label: "Footer",  color: "#a06b2d", xField: "footerRight",   yField: "footerBottom",  yMode: "bottom", xMode: "right" },
 ];
 
 const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selectedEl, onSelect, canvasScale = DRAG_CANVAS_SCALE }) => {
@@ -1476,38 +1353,23 @@ const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selec
 
   const labelContent = isKit ? (
     <div style={{ width: previewW, height: previewH, position: "relative", overflow: "hidden", background: "linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%)", fontFamily: "Arial,Helvetica,sans-serif", boxSizing: "border-box" }}>
-      <img src="/assets/silverBackground.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+      <img src={LABEL_BACKGROUND_IMAGE} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: kds.fade.height, background: buildKitLabelFade(capColorValue) }} />
-      <div style={{ position: "absolute", ...kds.lot, fontWeight: 900, color: "#23160d", textTransform: "uppercase", whiteSpace: "nowrap" }}>{lotText}</div>
-      <img src="/assets/coaQR.png" alt="" style={{ position: "absolute", ...kds.qr, objectFit: "contain", imageRendering: "pixelated" }} onError={(e) => { e.currentTarget.src = buildQrCodeUrl(lotText); }} />
-      <img src="/assets/labelLogo.png" alt="" style={{ position: "absolute", ...kds.logo, objectFit: "contain", transformOrigin: "left bottom", transform: "rotate(-90deg)" }} onError={(e) => { e.currentTarget.src = "/assets/logo.png"; }} />
-      <div style={{ position: "absolute", left: kds.product.left, bottom: kds.product.bottom, fontSize: kds.product.fontSize, lineHeight: kds.product.lineHeight, transformOrigin: "left bottom", transform: "rotate(-90deg)", fontWeight: 900, color: "#111", textTransform: "uppercase", whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
+      <div style={{ position: "absolute", ...kds.lot, whiteSpace: "nowrap" }}>{lotText}</div>
+      <div style={{ position: "absolute", left: kds.product.left, bottom: kds.product.bottom, fontSize: kds.product.fontSize, lineHeight: kds.product.lineHeight, transformOrigin: "left bottom", transform: "rotate(-90deg)", fontWeight: kds.product.fontWeight, color: kds.product.color, letterSpacing: kds.product.letterSpacing, textTransform: kds.product.textTransform, whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
       <div style={{ position: "absolute", display: "inline-flex", alignItems: "center", gap: 10, left: kds.strength.left, bottom: kds.strength.bottom, transformOrigin: "left bottom", transform: "rotate(-90deg)" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", fontSize: kds.strength.fontSize, padding: kds.strength.padding, borderRadius: kds.strength.borderRadius, color: kds.strength.color, fontWeight: 900, whiteSpace: "nowrap" }}>{product?.strength}</div>
+        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", fontSize: kds.strength.fontSize, padding: kds.strength.padding, borderRadius: kds.strength.borderRadius, color: kds.strength.color, fontWeight: kds.strength.fontWeight, letterSpacing: kds.strength.letterSpacing, whiteSpace: "nowrap" }}>{product?.strength}</div>
         <div style={{ fontSize: kds.strength.fontSize, fontWeight: 700, color: "#111", whiteSpace: "nowrap" }}>10 Vials</div>
-      </div>
-      <div style={{ position: "absolute", right: kds.footer.right, bottom: kds.footer.bottom, display: "inline-flex", alignItems: "center", gap: kds.footer.gap, fontSize: kds.footer.fontSize, transformOrigin: "right bottom", transform: "rotate(-90deg)", color: "#111", whiteSpace: "nowrap" }}>
-        <span>99% Purity</span><span>Research Use Only</span>
       </div>
     </div>
   ) : (
     <div style={{ width: previewW, height: previewH, position: "relative", overflow: "hidden", background: "linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%)", fontFamily: "Arial,Helvetica,sans-serif", boxSizing: "border-box" }}>
-      <img src="/assets/silverBackground.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-      {capColorValue && <div style={{ position: "absolute", inset: 0, background: buildLabelBackground(capColorValue, design.backgroundOpacity) }} />}
-      <div style={{ position: "absolute", ...vds.lot, lineHeight: 1, fontWeight: 800, color: "#2b1a0f", letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{lotText}</div>
-      <div style={{ position: "absolute", ...vds.qrWrap }}>
-        <img src="/assets/coaQR.png" alt="" style={{ ...vds.qr, objectFit: "contain", imageRendering: "pixelated" }} onError={(e) => { e.currentTarget.src = buildQrCodeUrl(lotText); }} />
-      </div>
-      <div style={{ position: "absolute", ...vds.logoWrap, display: "flex", justifyContent: "center", alignItems: "center" }}>
-        <img src="/assets/labelLogo.png" alt="" style={{ ...vds.logo, objectFit: "contain" }} onError={(e) => { e.currentTarget.src = "/assets/logo.png"; }} />
-      </div>
-      <div style={{ position: "absolute", left: vds.center.left, top: vds.center.top, width: vds.center.width, gap: vds.center.gap, transform: "translate(-50%,-50%) rotate(-90deg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-        <div style={{ ...vds.name, fontWeight: 900, color: "#23160d", textTransform: "uppercase", whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
-        <div style={{ ...vds.strength, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", lineHeight: 1, fontWeight: 900, whiteSpace: "nowrap" }}>{product?.strength}</div>
-      </div>
-      <div style={{ position: "absolute", left: vds.footer.left, top: vds.footer.top, fontSize: vds.footer.fontSize, transform: "translate(-50%,-50%) rotate(-90deg)", lineHeight: 1.3, color: "#23160d", display: "flex", flexDirection: "column", gap: "0.5px", whiteSpace: "nowrap" }}>
-        <span style={{ display: "block", fontWeight: 500 }}>99% PURITY</span>
-        <span style={{ display: "block", fontWeight: 500 }}>FOR RESEARCH USE ONLY</span>
+      <img src={LABEL_BACKGROUND_IMAGE} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+      {(capColorValue || design.tintColorOverride) && <div style={{ position: "absolute", inset: 0, background: buildLabelBackground(design.tintColorOverride || capColorValue, design.backgroundOpacity) }} />}
+      <div style={{ position: "absolute", ...vds.lot, lineHeight: 1, whiteSpace: "nowrap" }}>{lotText}</div>
+      <div style={{ position: "absolute", left: vds.center.left, top: vds.center.top, width: vds.center.width, gap: vds.center.gap, transform: vds.center.transform, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: vds.name.textAlign || "center" }}>
+        <div style={{ ...vds.name, whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
+        <div style={{ ...vds.strength, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", lineHeight: 1, whiteSpace: "nowrap" }}>{product?.strength}</div>
       </div>
     </div>
   );
@@ -1542,16 +1404,11 @@ const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selec
           if (isKit) {
             const kd = mergeKitLabelDesign(design);
             if (el.id === 'lot')      { dx = 25 * S; dy = 8 * S; }
-            else if (el.id === 'qr') { dx = (kd.qrSize / 2) * S; dy = (kd.qrSize / 2) * S; }
-            else if (el.id === 'logo') { dx = -(kd.logoHeight / 2) * S; dy = -(kd.logoWidth / 2) * S; }
             else if (el.id === 'product') { dx = -15 * S; dy = -55 * S; }
             else if (el.id === 'strength') { dx = -15 * S; dy = -28 * S; }
-            else if (el.id === 'footer') { dx = 0; dy = -15 * S; }
           } else {
             const vd = mergeLabelDesign(design);
-            if (el.id === 'logo')   { dx = 0; dy = (vd.logoHeight / 2 - vd.logoWidth / 2) * S; }
-            else if (el.id === 'qr') { dx = (vd.qrWidth / 2) * S; dy = (vd.qrWidth / 2) * S; }
-            else if (el.id === 'lot') { dx = 25 * S; dy = 6 * S; }
+            if (el.id === 'lot') { dx = 25 * S; dy = 6 * S; }
             // center and footer already use translate(-50%,-50%) so no offset needed
           }
           const px = rawPx + dx;
@@ -2498,31 +2355,13 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       className="lot-id-print-label"
       style={{ background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)" }}
     >
-      <img src="/assets/silverBackground.png" alt="" className="lot-id-print-label-bg" />
+      <img src={LABEL_BACKGROUND_IMAGE} alt="" className="lot-id-print-label-bg" />
       <div
         className="lot-id-print-label-tint"
         style={{ background: buildLabelBackground(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)) }}
       />
       <div className="lot-id-print-label-lot" style={designStyles.lot}>
         {lotEntry.lot}
-      </div>
-      <div className="lot-id-print-label-qr-wrap" style={designStyles.qrWrap}>
-        <img
-          src="/assets/coaQR.png"
-          alt={`QR for ${lotEntry.lot}`}
-          className="lot-id-print-label-qr"
-          style={designStyles.qr}
-          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = buildQrCodeUrl(lotEntry.lot); }}
-        />
-      </div>
-      <div className="lot-id-print-label-logo-wrap" style={designStyles.logoWrap}>
-        <img
-          src="/assets/labelLogo.png"
-          alt="Coffee and Peppers"
-          className="lot-id-print-label-logo"
-          style={designStyles.logo}
-          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/assets/logo.png"; }}
-        />
       </div>
       <div className="lot-id-print-label-center" style={designStyles.center}>
         <div className="lot-id-print-label-name" style={designStyles.name}>
@@ -2538,16 +2377,12 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           {product.strength}
         </div>
       </div>
-      <div className="lot-id-print-label-footer" style={designStyles.footer}>
-        <span>99% PURITY</span>
-        <span>FOR RESEARCH USE ONLY</span>
-      </div>
     </div>
   );
   const renderKitLabelPreview = (product, lotEntry, designStyles) => (
     <div className="lot-id-print-label-kit">
       <img
-        src="/assets/silverBackground.png"
+        src={LABEL_BACKGROUND_IMAGE}
         alt=""
         className="lot-id-print-label-bg"
       />
@@ -2561,26 +2396,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       <div className="lot-id-print-label-kit-lot" style={designStyles.lot}>
         {lotEntry.lot}
       </div>
-      <img
-        src="/assets/coaQR.png"
-        alt={`QR for ${lotEntry.lot}`}
-        className="lot-id-print-label-kit-qr"
-        style={designStyles.qr}
-        onError={(e) => {
-          e.currentTarget.onerror = null;
-          e.currentTarget.src = buildQrCodeUrl(lotEntry.lot);
-        }}
-      />
-      <img
-        src="/assets/labelLogo.png"
-        alt="Coffee and Peppers"
-        className="lot-id-print-label-kit-logo"
-        style={designStyles.logo}
-        onError={(e) => {
-          e.currentTarget.onerror = null;
-          e.currentTarget.src = "/assets/logo.png";
-        }}
-      />
       <div className="lot-id-print-label-kit-product" style={designStyles.product}>
         {renderLabelProductName(product.product)}
       </div>
@@ -2601,6 +2416,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
               getCapRenderColor(lotEntry.capColor, lotEntry.capShade)
             ),
             color: designStyles.strength.color,
+            fontWeight: designStyles.strength.fontWeight,
+            letterSpacing: designStyles.strength.letterSpacing,
           }}
         >
           {product.strength}
@@ -2614,10 +2431,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           10 Vials
         </div>
       </div>
-      <div className="lot-id-print-label-kit-footer" style={designStyles.footer}>
-        <span>99% Purity</span>
-        <span>Research Use Only</span>
-      </div>
     </div>
   );
   const renderTestLabelPreview = (product, lotEntry, designStyles, variantText, design) => (
@@ -2625,22 +2438,13 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       className="lot-id-print-label lot-id-print-label-test"
       style={{ background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)" }}
     >
-      <img src="/assets/silverBackground.png" alt="" className="lot-id-print-label-bg" />
+      <img src={LABEL_BACKGROUND_IMAGE} alt="" className="lot-id-print-label-bg" />
       <div
         className="lot-id-print-label-tint"
         style={{ background: buildLabelBackground(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)) }}
       />
       <div className="lot-id-print-label-lot" style={designStyles.lot}>
         {lotEntry.lot}
-      </div>
-      <div className="lot-id-print-label-logo-wrap" style={designStyles.logoWrap}>
-        <img
-          src="/assets/labelLogo.png"
-          alt="Coffee and Peppers"
-          className="lot-id-print-label-logo"
-          style={designStyles.logo}
-          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/assets/logo.png"; }}
-        />
       </div>
       <div className="lot-id-print-label-center" style={designStyles.center}>
         <div className="lot-id-print-label-name" style={designStyles.name}>
@@ -3622,11 +3426,16 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
               center: [
                 { key: "centerWidth", label: "Width", min: 50, max: 500 },
                 { key: "centerGap", label: "Gap", min: 0, max: 40 },
+                { key: "stackRotate", label: "Rotation", min: -180, max: 180 },
                 { key: "nameFontSize", label: "Name Font", min: 8, max: 80 },
                 { key: "nameLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 },
+                { key: "nameFontWeight", label: "Name Weight", min: 300, max: 900, step: 100 },
+                { key: "nameLetterSpacing", label: "Name Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
                 { key: "strengthFontSize", label: "Mass Font", min: 8, max: 60 },
                 { key: "strengthPadX", label: "Mass Pad X", min: 0, max: 40 },
                 { key: "strengthPadY", label: "Mass Pad Y", min: 0, max: 40 },
+                { key: "strengthFontWeight", label: "Mass Weight", min: 300, max: 900, step: 100 },
+                { key: "strengthLetterSpacing", label: "Mass Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
               ],
               qr: labelEditorMode === "kit"
                 ? [{ key: "qrSize", label: "Size", min: 20, max: 200 }]
@@ -3641,16 +3450,31 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                     { key: "bottomFadeHeight", label: "Fade Height", min: 0, max: 400 },
                   ]
                 : [{ key: "footerFontSize", label: "Font Size", min: 6, max: 30 }],
-              lot: [{ key: "lotFontSize", label: "Font Size", min: 6, max: 30 }],
+              lot: [
+                { key: "lotFontSize", label: "Font Size", min: 6, max: 40 },
+                { key: "lotFontWeight", label: "Font Weight", min: 300, max: 900, step: 100 },
+                { key: "lotLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
+                { key: "lotRotate", label: "Rotation", min: -180, max: 180 },
+                ...(labelEditorMode === "kit"
+                  ? []
+                  : [
+                      { key: "lotOffsetX", label: "Offset X", min: -120, max: 120 },
+                      { key: "lotOffsetY", label: "Offset Y", min: -120, max: 120 },
+                    ]),
+              ],
               product: [
                 { key: "productFontSize", label: "Font Size", min: 8, max: 80 },
                 { key: "productLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 },
+                { key: "productFontWeight", label: "Font Weight", min: 300, max: 900, step: 100 },
+                { key: "productLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
               ],
               strength: [
                 { key: "strengthFontSize", label: "Font Size", min: 8, max: 60 },
                 { key: "strengthPadX", label: "Pad X", min: 0, max: 40 },
                 { key: "strengthPadY", label: "Pad Y", min: 0, max: 40 },
                 { key: "strengthRadius", label: "Radius", min: 0, max: 40 },
+                { key: "strengthFontWeight", label: "Font Weight", min: 300, max: 900, step: 100 },
+                { key: "strengthLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
               ],
             };
 
@@ -3746,7 +3570,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                   <div className="lot-layout-editor-new-body">
                     {/* Left: canvas */}
                     <div className="lot-layout-editor-new-canvas-col" ref={editorCanvasColRef}>
-                      <p className="lot-layout-editor-new-hint">Click an element to select it, then drag or adjust properties on the right.</p>
+                      <p className="lot-layout-editor-new-hint">Drag elements on the canvas to reposition. Adjust all style controls in the panel on the right.</p>
                       <DraggableLabelCanvas
                         design={labelDesignDraft}
                         onChange={updateLabelDesign}
@@ -3758,81 +3582,186 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                       />
                     </div>
 
-                    {/* Right: properties */}
+                    {/* Right: properties — always-visible sections */}
                     <div className="lot-layout-editor-new-props-col">
-                      {!selEl ? (
-                        <div className="lot-props-empty">
-                          <div className="lot-props-empty-icon">⇦</div>
-                          <div className="lot-props-empty-text">Click any element on the label to select it</div>
-                          <div className="lot-props-empty-sub">Each pill handle represents an element you can reposition and resize.</div>
+
+                      {/* ── BACKGROUND ─────────────────────────────── */}
+                      <div className="lot-props-section lot-props-section--bg">
+                        <div className="lot-props-section-title lot-props-section-title--bg">Background</div>
+                        <div className="lot-props-row">
+                          <span className="lot-props-row-label">Tint Color</span>
+                          <input
+                            type="color"
+                            value={colorValueToHex(labelDesignDraft.tintColorOverride, "#888888")}
+                            onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, tintColorOverride: e.target.value }))}
+                            className="lot-modal-color-picker"
+                            style={{ height: 32, flex: 1 }}
+                          />
+                          <input
+                            type="text"
+                            value={labelDesignDraft.tintColorOverride ?? ""}
+                            onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, tintColorOverride: e.target.value }))}
+                            placeholder="(cap color)"
+                            className="lot-props-number"
+                            style={{ width: 72 }}
+                          />
+                          <button
+                            className="lot-props-clear-btn"
+                            title="Reset to cap color"
+                            onClick={() => setLabelDesignDraft((prev) => ({ ...prev, tintColorOverride: "" }))}
+                          >✕</button>
                         </div>
-                      ) : (
-                        <div className="lot-props-panel">
-                          <div className="lot-props-panel-header" style={{ background: selEl.color }}>
-                            <span className="lot-props-panel-name">{selEl.label}</span>
-                          </div>
-
-                          {/* Position */}
-                          <div className="lot-props-section">
-                            <div className="lot-props-section-title">Position</div>
-                            {SliderRow({
-                              fieldKey: selEl.xField,
-                              label: selEl.xMode === "percent" ? "X %" : selEl.xMode === "right" ? "Right" : "Left",
-                              min: 0,
-                              max: selEl.xMode === "percent" ? 100 : pw,
-                            })}
-                            {SliderRow({
-                              fieldKey: selEl.yField,
-                              label: selEl.yMode === "percent" ? "Y %" : selEl.yMode === "bottom" ? "Bottom" : "Top",
-                              min: 0,
-                              max: selEl.yMode === "percent" ? 100 : ph,
-                            })}
-                            <div className="lot-props-center-btns">
-                              <button className="lot-props-center-btn" onClick={() => centerElFn("h")}>↔ Center H</button>
-                              <button className="lot-props-center-btn" onClick={() => centerElFn("v")}>↕ Center V</button>
-                            </div>
-                          </div>
-
-                          {/* Size / Style */}
-                          {(extraFields[selEl.id] || []).length > 0 && (
-                            <div className="lot-props-section">
-                              <div className="lot-props-section-title">Size &amp; Style</div>
-                              {(extraFields[selEl.id] || []).map((f) => (
-                                <React.Fragment key={f.key}>
-                                  {SliderRow({ fieldKey: f.key, label: f.label, min: f.min, max: f.max, step: f.step })}
-                                </React.Fragment>
-                              ))}
-                              {/* Mass text color */}
-                              {(selEl.id === "center" || selEl.id === "strength") && (
-                                <div className="lot-props-row">
-                                  <span className="lot-props-row-label">Text Color</span>
-                                  <input
-                                    type="color"
-                                    value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")}
-                                    onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                                    className="lot-modal-color-picker"
-                                    style={{ height: 32, flex: 1 }}
-                                  />
-                                  <input
-                                    type="text"
-                                    value={labelDesignDraft.massTextColor ?? "#ffffff"}
-                                    onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))}
-                                    className="lot-props-number"
-                                    style={{ width: 80 }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Background gradient — always shown */}
-                      <div className="lot-props-section" style={{ margin: selEl ? "0" : "auto 0 0" }}>
-                        <div className="lot-props-section-title">Background Gradient</div>
                         {labelEditorMode !== "kit" && SliderRow({ fieldKey: "backgroundOpacity", label: "Intensity", min: 0, max: 100, step: 1 })}
                         {labelEditorMode === "kit" && SliderRow({ fieldKey: "bottomFadeHeight", label: "Fade Height", min: 0, max: 400, step: 1 })}
                       </div>
+
+                      {/* ── STACK (vial / test only) ────────────────── */}
+                      {labelEditorMode !== "kit" && (
+                        <div className="lot-props-section lot-props-section--stack">
+                          <div className="lot-props-section-title lot-props-section-title--stack">Stack</div>
+
+                          <div className="lot-props-subsection-label">Position</div>
+                          {SliderRow({ fieldKey: "centerLeftPercent", label: "X %", min: 0, max: 100 })}
+                          {SliderRow({ fieldKey: "centerTopPercent", label: "Y %", min: 0, max: 100 })}
+                          <div className="lot-props-center-btns">
+                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("centerLeftPercent", 50)}>↔ Center H</button>
+                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("centerTopPercent", 50)}>↕ Center V</button>
+                          </div>
+
+                          <div className="lot-props-subsection-label">Layout</div>
+                          {SliderRow({ fieldKey: "centerWidth", label: "Width", min: 50, max: 500 })}
+                          {SliderRow({ fieldKey: "centerGap", label: "Gap", min: 0, max: 40 })}
+                          {SliderRow({ fieldKey: "stackRotate", label: "Rotation", min: -180, max: 180 })}
+
+                          <div className="lot-props-subsection-label">Name Text</div>
+                          {SliderRow({ fieldKey: "nameFontSize", label: "Font Size", min: 8, max: 80 })}
+                          {SliderRow({ fieldKey: "nameLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 })}
+                          {SliderRow({ fieldKey: "nameFontWeight", label: "Weight", min: 300, max: 900, step: 100 })}
+                          {SliderRow({ fieldKey: "nameLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 })}
+                          {SliderRow({ fieldKey: "nameOffsetX", label: "Offset X", min: -120, max: 120 })}
+                          {SliderRow({ fieldKey: "nameOffsetY", label: "Offset Y", min: -120, max: 120 })}
+                          <div className="lot-props-row">
+                            <span className="lot-props-row-label">Color</span>
+                            <input type="color" value={colorValueToHex(labelDesignDraft.nameColor, "#23160d")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, nameColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
+                            <input type="text" value={labelDesignDraft.nameColor ?? "#23160d"} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, nameColor: e.target.value }))} className="lot-props-number" style={{ width: 72 }} />
+                          </div>
+                          <div className="lot-props-row">
+                            <span className="lot-props-row-label">Align</span>
+                            <div className="lot-props-align-btns">
+                              {["left", "center", "right"].map((a) => (
+                                <button key={a} className={`lot-props-align-btn${(labelDesignDraft.nameTextAlign || "center") === a ? " active" : ""}`} onClick={() => setLabelDesignDraft((prev) => ({ ...prev, nameTextAlign: a }))}>
+                                  {a === "left" ? "⇤" : a === "center" ? "⇔" : "⇥"}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <label className="lot-props-row" style={{ alignItems: "center", gap: 8 }}>
+                            <span className="lot-props-row-label">Uppercase</span>
+                            <input type="checkbox" checked={labelDesignDraft.nameUppercase !== false} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, nameUppercase: e.target.checked }))} />
+                          </label>
+
+                          <div className="lot-props-subsection-label">Mass Badge</div>
+                          {SliderRow({ fieldKey: "strengthFontSize", label: "Font Size", min: 8, max: 60 })}
+                          {SliderRow({ fieldKey: "strengthFontWeight", label: "Weight", min: 300, max: 900, step: 100 })}
+                          {SliderRow({ fieldKey: "strengthLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 })}
+                          {SliderRow({ fieldKey: "strengthPadX", label: "Pad X", min: 0, max: 40 })}
+                          {SliderRow({ fieldKey: "strengthPadY", label: "Pad Y", min: 0, max: 40 })}
+                          {SliderRow({ fieldKey: "strengthOffsetX", label: "Offset X", min: -120, max: 120 })}
+                          {SliderRow({ fieldKey: "strengthOffsetY", label: "Offset Y", min: -120, max: 120 })}
+                          <div className="lot-props-row">
+                            <span className="lot-props-row-label">Text Color</span>
+                            <input type="color" value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
+                            <input type="text" value={labelDesignDraft.massTextColor ?? "#ffffff"} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))} className="lot-props-number" style={{ width: 72 }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── PRODUCT (kit only) ──────────────────────── */}
+                      {labelEditorMode === "kit" && (
+                        <div className="lot-props-section lot-props-section--stack">
+                          <div className="lot-props-section-title lot-props-section-title--stack">Product</div>
+
+                          <div className="lot-props-subsection-label">Position</div>
+                          {SliderRow({ fieldKey: "productLeft", label: "Left", min: 0, max: pw })}
+                          {SliderRow({ fieldKey: "productBottom", label: "Bottom", min: 0, max: ph })}
+
+                          <div className="lot-props-subsection-label">Typography</div>
+                          {SliderRow({ fieldKey: "productFontSize", label: "Font Size", min: 8, max: 80 })}
+                          {SliderRow({ fieldKey: "productLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 })}
+                          {SliderRow({ fieldKey: "productFontWeight", label: "Weight", min: 300, max: 900, step: 100 })}
+                          {SliderRow({ fieldKey: "productLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 })}
+                          <div className="lot-props-row">
+                            <span className="lot-props-row-label">Color</span>
+                            <input type="color" value={colorValueToHex(labelDesignDraft.productColor, "#111111")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, productColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
+                            <input type="text" value={labelDesignDraft.productColor ?? "#111111"} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, productColor: e.target.value }))} className="lot-props-number" style={{ width: 72 }} />
+                          </div>
+                          <div className="lot-props-row">
+                            <span className="lot-props-row-label">Align</span>
+                            <div className="lot-props-align-btns">
+                              {["left", "center", "right"].map((a) => (
+                                <button key={a} className={`lot-props-align-btn${(labelDesignDraft.productTextAlign || "left") === a ? " active" : ""}`} onClick={() => setLabelDesignDraft((prev) => ({ ...prev, productTextAlign: a }))}>
+                                  {a === "left" ? "⇤" : a === "center" ? "⇔" : "⇥"}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <label className="lot-props-row" style={{ alignItems: "center", gap: 8 }}>
+                            <span className="lot-props-row-label">Uppercase</span>
+                            <input type="checkbox" checked={labelDesignDraft.productUppercase !== false} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, productUppercase: e.target.checked }))} />
+                          </label>
+
+                          <div className="lot-props-subsection-label">Mass Badge</div>
+                          {SliderRow({ fieldKey: "strengthLeft", label: "Left", min: 0, max: pw })}
+                          {SliderRow({ fieldKey: "strengthBottom", label: "Bottom", min: 0, max: ph })}
+                          {SliderRow({ fieldKey: "strengthFontSize", label: "Font Size", min: 8, max: 60 })}
+                          {SliderRow({ fieldKey: "strengthFontWeight", label: "Weight", min: 300, max: 900, step: 100 })}
+                          {SliderRow({ fieldKey: "strengthLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 })}
+                          {SliderRow({ fieldKey: "strengthPadX", label: "Pad X", min: 0, max: 40 })}
+                          {SliderRow({ fieldKey: "strengthPadY", label: "Pad Y", min: 0, max: 40 })}
+                          <div className="lot-props-row">
+                            <span className="lot-props-row-label">Text Color</span>
+                            <input type="color" value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
+                            <input type="text" value={labelDesignDraft.massTextColor ?? "#ffffff"} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))} className="lot-props-number" style={{ width: 72 }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── LOT ID ──────────────────────────────────── */}
+                      <div className="lot-props-section lot-props-section--lot">
+                        <div className="lot-props-section-title lot-props-section-title--lot">Lot ID</div>
+
+                        <div className="lot-props-subsection-label">Position</div>
+                        {SliderRow({ fieldKey: "lotLeft", label: "Left", min: 0, max: pw })}
+                        {SliderRow({ fieldKey: "lotTop", label: "Top", min: 0, max: ph })}
+                        {labelEditorMode !== "kit" && SliderRow({ fieldKey: "lotOffsetX", label: "Offset X", min: -120, max: 120 })}
+                        {labelEditorMode !== "kit" && SliderRow({ fieldKey: "lotOffsetY", label: "Offset Y", min: -120, max: 120 })}
+
+                        <div className="lot-props-subsection-label">Typography</div>
+                        {SliderRow({ fieldKey: "lotFontSize", label: "Font Size", min: 6, max: 40 })}
+                        {SliderRow({ fieldKey: "lotFontWeight", label: "Weight", min: 300, max: 900, step: 100 })}
+                        {SliderRow({ fieldKey: "lotLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 })}
+                        {SliderRow({ fieldKey: "lotRotate", label: "Rotation", min: -180, max: 180 })}
+                        <div className="lot-props-row">
+                          <span className="lot-props-row-label">Color</span>
+                          <input type="color" value={colorValueToHex(labelDesignDraft.lotColor, "#2b1a0f")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, lotColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
+                          <input type="text" value={labelDesignDraft.lotColor ?? "#2b1a0f"} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, lotColor: e.target.value }))} className="lot-props-number" style={{ width: 72 }} />
+                        </div>
+                        <div className="lot-props-row">
+                          <span className="lot-props-row-label">Align</span>
+                          <div className="lot-props-align-btns">
+                            {["left", "center", "right"].map((a) => (
+                              <button key={a} className={`lot-props-align-btn${(labelDesignDraft.lotTextAlign || "center") === a ? " active" : ""}`} onClick={() => setLabelDesignDraft((prev) => ({ ...prev, lotTextAlign: a }))}>
+                                {a === "left" ? "⇤" : a === "center" ? "⇔" : "⇥"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <label className="lot-props-row" style={{ alignItems: "center", gap: 8 }}>
+                          <span className="lot-props-row-label">Uppercase</span>
+                          <input type="checkbox" checked={labelDesignDraft.lotUppercase !== false} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, lotUppercase: e.target.checked }))} />
+                        </label>
+                      </div>
+
                     </div>
                   </div>
 
