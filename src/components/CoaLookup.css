@@ -1,0 +1,256 @@
+.coa-lookup-container {
+  padding: 1.5rem 1rem 3rem;
+  width: 100%;
+}
+
+.coa-lookup-header {
+  margin-bottom: 1.5rem;
+}
+
+.coa-lookup-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #2c1a0e;
+  margin: 0 0 0.3rem;
+}
+
+.coa-lookup-subtitle {
+  font-size: 0.88rem;
+  color: #7a6352;
+  margin: 0;
+}
+
+/* Drop Zone */
+.coa-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 2px dashed #d4b896;
+  border-radius: 12px;
+  background: #fdf8f3;
+  padding: 2.5rem 1.5rem;
+  cursor: pointer;
+  transition: border-color 0.18s, background 0.18s;
+  outline: none;
+  user-select: none;
+}
+
+.coa-drop-zone:hover,
+.coa-drop-zone:focus {
+  border-color: #b07d4a;
+  background: #faf2e8;
+}
+
+.coa-drop-zone.dragging {
+  border-color: #8c5a22;
+  background: #f5e9d8;
+}
+
+.coa-file-input {
+  display: none;
+}
+
+.coa-drop-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.coa-drop-text {
+  font-size: 0.95rem;
+  color: #4a3525;
+  margin: 0;
+}
+
+.coa-drop-link {
+  color: #8c5a22;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.coa-drop-hint {
+  font-size: 0.78rem;
+  color: #9e8571;
+  margin: 0;
+}
+
+/* Results Section */
+.coa-results-section {
+  margin-top: 1.75rem;
+}
+
+.coa-results-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.coa-results-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #5c3f1d;
+}
+
+.coa-clear-btn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.85rem;
+  border: 1px solid #d4b896;
+  border-radius: 8px;
+  background: #fff;
+  color: #7a4f2a;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.coa-clear-btn:hover {
+  background: #fdf2e5;
+  border-color: #b07d4a;
+}
+
+/* Table */
+.coa-table-wrapper {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid #e8d9c5;
+  box-shadow: 0 1px 4px rgba(80, 40, 0, 0.06);
+}
+
+.coa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  color: #2c1a0e;
+  background: #fff;
+}
+
+.coa-table thead tr {
+  background: #f5ede1;
+}
+
+.coa-table th {
+  padding: 0.65rem 1rem;
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7a4f2a;
+  white-space: nowrap;
+  border-bottom: 1px solid #e8d9c5;
+}
+
+.coa-cell {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid #f0e6d6;
+  vertical-align: top;
+  max-width: 220px;
+}
+
+.coa-cell--filename {
+  font-weight: 600;
+  color: #3b2c1e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.coa-cell--product {
+  max-width: 260px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.coa-table tbody tr:last-child .coa-cell {
+  border-bottom: none;
+}
+
+.coa-row--processing {
+  opacity: 0.75;
+}
+
+.coa-processing {
+  color: #a07840;
+  font-style: italic;
+  font-size: 0.82rem;
+}
+
+.coa-empty {
+  color: #bba98e;
+}
+
+/* COA Link */
+.coa-link {
+  color: #8c5a22;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.coa-link:hover {
+  text-decoration: underline;
+  color: #5c3a12;
+}
+
+.coa-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.coa-copy-btn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid #d7b78f;
+  background: #fff8ef;
+  color: #6d431d;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+}
+
+.coa-copy-btn:hover {
+  background: #f4e4cf;
+  border-color: #b07d4a;
+}
+
+.coa-copy-feedback {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2a7a45;
+}
+
+/* Status Badges */
+.coa-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.coa-badge--processing {
+  background: #fef3de;
+  color: #a07020;
+  border: 1px solid #f0d890;
+}
+
+.coa-badge--done {
+  background: #e4f5ea;
+  color: #2a7a45;
+  border: 1px solid #b2dfc0;
+}
+
+.coa-badge--error {
+  background: #fde9e9;
+  color: #b03030;
+  border: 1px solid #f0b0b0;
+  cursor: help;
+}

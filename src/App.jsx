@@ -11,6 +11,7 @@ import LotIDTracker from './components/LotIDTracker';
 import PaymentTracker from './components/PaymentTracker';
 import IncomingProducts from './components/IncomingProducts';
 import SkuPoPage from './components/SkuPoPage';
+import CoaLookup from './components/CoaLookup';
 import './App.css';
 
 function App() {
@@ -19,7 +20,7 @@ function App() {
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
   const [toast, setToast] = useState({ visible: false, message: '' });
-  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po'];
+  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -193,6 +194,7 @@ function App() {
                 <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
                 <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
                 <button onClick={() => goToPage('sku-po')} className={`nav-link ${activePage === 'sku-po' ? 'active' : ''}`}>SKU PO</button>
+                <button onClick={() => goToPage('coa-lookup')} className={`nav-link ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
               </div>
             )}
             <div className="nav-actions">
@@ -231,7 +233,9 @@ function App() {
         {/* Main Content */}
           <div className="main-content">
             <div className="page-transition" key={activePage}>
-            {activePage === 'payments' ? (
+            {activePage === 'coa-lookup' ? (
+              <CoaLookup />
+            ) : activePage === 'payments' ? (
               <PaymentTracker
                 onSuccess={showToast}
                 onError={showModal}
