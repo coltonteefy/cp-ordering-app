@@ -9,7 +9,7 @@
   display: flex;
   justify-content: center;
   position: sticky;
-  top: 90px; /* sit just below the main nav */
+  top: 0;
   z-index: 6;
   padding: 0.5rem 0 0.35rem;
   margin-top: 0;

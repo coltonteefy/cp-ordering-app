@@ -14,6 +14,56 @@ import SkuPoPage from './components/SkuPoPage';
 import CoaLookup from './components/CoaLookup';
 import './App.css';
 
+const NavIcon = ({ type }) => {
+  if (type === 'orders') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 16 L10 10 L14 14 L20 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M16 8 H20 V12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (type === 'payments') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M3 10 H21" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (type === 'vendors') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 18 V10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M12 18 V6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M18 18 V13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M4 18 H20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (type === 'tools') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="12" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3 V6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M12 18 V21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M4.8 7.5 L6.9 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M17.1 15 L19.2 16.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M3 12 H6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M18 12 H21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M4.8 16.5 L6.9 15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M17.1 9 L19.2 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+};
+
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +78,13 @@ function App() {
   };
 
   const [activePage, setActivePage] = useState(parseHashPage);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = window.localStorage.getItem('sidebarCollapsed');
+    if (saved === null) return true;
+    return saved === 'true';
+  });
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [showNextOrderModal, setShowNextOrderModal] = useState(false);
   const [isClosingNewOrderModal, setIsClosingNewOrderModal] = useState(false);
 
@@ -93,12 +149,18 @@ function App() {
     }
   }, [activePage]);
 
+  useEffect(() => {
+    window.localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
   const goToPage = (page) => {
     if (!validPages.includes(page)) return;
     if (isGuest && page !== 'lotid') return;
     setActivePage(page);
-    setMobileMenuOpen(false);
+    setToolsMenuOpen(false);
   };
+
+  const isToolsPage = ['lotid', 'sku-po', 'coa-lookup'].includes(activePage);
 
   const handleAddUser = async (e) => {
     e.preventDefault();
@@ -165,52 +227,6 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Navigation - Only show when logged in */}
-      {user && (
-        <nav className="app-nav">
-          <div className="nav-content">
-            <div className="nav-brand">
-              <img src="/assets/logo.png" alt="Coffee and Peppers Logo" className="nav-logo" />
-            </div>
-            {!isGuest && (
-              <button 
-                className="mobile-menu-toggle" 
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                aria-label="Toggle menu"
-              >
-                <span className="hamburger"></span>
-                <span className="hamburger"></span>
-                <span className="hamburger"></span>
-              </button>
-            )}
-            {isGuest ? (
-              <div className="nav-menu">
-                <span className="nav-link active">Lot ID Tracker</span>
-              </div>
-            ) : (
-              <div className={`nav-menu ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-                <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
-                <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
-                <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
-                <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
-                <button onClick={() => goToPage('sku-po')} className={`nav-link ${activePage === 'sku-po' ? 'active' : ''}`}>SKU PO</button>
-                <button onClick={() => goToPage('coa-lookup')} className={`nav-link ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
-              </div>
-            )}
-            <div className="nav-actions">
-              {!isGuest && (
-                <button onClick={() => setShowAddUserModal(true)} className="btn-secondary">
-                  Add User
-                </button>
-              )}
-              <button onClick={handleSignOut} className="btn-secondary">
-                {isGuest ? 'Exit Guest' : 'Sign Out'}
-              </button>
-            </div>
-          </div>
-        </nav>
-      )}
-
       {!user ? (
         <>
           {/* Login Section */}
@@ -228,11 +244,123 @@ function App() {
           </section>
         </>
       ) : (
-        <div className="main-card neon-glow">
+        <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+          <aside className="app-sidebar">
+            <button
+              className="sidebar-edge-toggle"
+              onClick={() => {
+                setSidebarCollapsed((prev) => !prev);
+                if (!sidebarCollapsed) {
+                  setToolsMenuOpen(false);
+                }
+              }}
+              aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+              title={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            >
+              <svg
+                aria-hidden="true"
+                className={`sidebar-edge-toggle-icon ${sidebarCollapsed ? 'collapsed' : ''}`}
+                viewBox="0 0 20 20"
+              >
+                <path d="M12.5 5.5 L8 10 L12.5 14.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
 
-        {/* Main Content */}
-          <div className="main-content">
-            <div className="page-transition" key={activePage}>
+            <div className="sidebar-body">
+
+            <div className="sidebar-header">
+              <div className="sidebar-brand">
+                <img src="/assets/logo.png" alt="Coffee and Peppers Logo" className="nav-logo" />
+              </div>
+            </div>
+
+            {sidebarCollapsed ? (
+              <div className="sidebar-menu sidebar-icon-menu">
+                {isGuest ? (
+                  <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot ID Tracker" aria-label="Lot ID Tracker">
+                    <NavIcon type="tools" />
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => goToPage('orders')} className={`nav-link nav-icon-link ${activePage === 'orders' ? 'active' : ''}`} title="Orders" aria-label="Orders"><NavIcon type="orders" /></button>
+                    <button onClick={() => goToPage('payments')} className={`nav-link nav-icon-link ${activePage === 'payments' ? 'active' : ''}`} title="Payments" aria-label="Payments"><NavIcon type="payments" /></button>
+                    <button onClick={() => goToPage('vendors')} className={`nav-link nav-icon-link ${activePage === 'vendors' ? 'active' : ''}`} title="Vendor Profiles" aria-label="Vendor Profiles"><NavIcon type="vendors" /></button>
+                    <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot Track" aria-label="Lot Track"><NavIcon type="tools" /></button>
+                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-icon-link ${activePage === 'sku-po' ? 'active' : ''}`} title="SKU PO" aria-label="SKU PO"><NavIcon type="orders" /></button>
+                    <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-icon-link ${activePage === 'coa-lookup' ? 'active' : ''}`} title="COA Lookup" aria-label="COA Lookup"><NavIcon type="payments" /></button>
+                  </>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="sidebar-menu">
+                  <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
+                  <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
+                  <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
+                </div>
+
+                <div className={`sidebar-dropdown ${isToolsPage ? 'active' : ''} ${toolsMenuOpen ? 'open' : ''}`}>
+                  <button
+                    type="button"
+                    className="nav-link tools-trigger"
+                    onClick={() => setToolsMenuOpen((prev) => !prev)}
+                    aria-haspopup="true"
+                    aria-expanded={toolsMenuOpen}
+                  >
+                    Tools
+                  </button>
+                  <div className="sidebar-dropdown-menu">
+                    <button onClick={() => goToPage('lotid')} className={`nav-link nav-sublink ${activePage === 'lotid' ? 'active' : ''}`}>Lot Track</button>
+                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-sublink ${activePage === 'sku-po' ? 'active' : ''}`}>SKU PO</button>
+                    <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-sublink ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className={`sidebar-footer ${sidebarCollapsed ? 'collapsed' : ''}`}>
+              {sidebarCollapsed ? (
+                <>
+                  {!isGuest && (
+                    <button
+                      onClick={() => setShowAddUserModal(true)}
+                      className="nav-link nav-icon-link"
+                      title="Add User"
+                      aria-label="Add User"
+                    >
+                      <NavIcon type="vendors" />
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSignOut}
+                    className="nav-link nav-icon-link"
+                    title={isGuest ? 'Exit Guest' : 'Sign Out'}
+                    aria-label={isGuest ? 'Exit Guest' : 'Sign Out'}
+                  >
+                    <NavIcon type="settings" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  {!isGuest && (
+                    <button onClick={() => setShowAddUserModal(true)} className="btn-secondary sidebar-action-btn">
+                      Add User
+                    </button>
+                  )}
+                  <button onClick={handleSignOut} className="btn-secondary sidebar-action-btn">
+                    {isGuest ? 'Exit Guest' : 'Sign Out'}
+                  </button>
+                </>
+              )}
+            </div>
+            </div>
+          </aside>
+
+          <div className="app-main-area">
+            <div className="main-card neon-glow">
+              {/* Main Content */}
+              <div className="main-content">
+                <div className="page-transition" key={activePage}>
             {activePage === 'coa-lookup' ? (
               <CoaLookup />
             ) : activePage === 'payments' ? (
@@ -273,6 +401,8 @@ function App() {
                 />
             </>
             )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
