@@ -10,6 +10,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  overflow-x: hidden;
 }
 
 .app-container {
@@ -296,6 +298,7 @@ body {
   margin-left: var(--sidebar-rail-width);
   position: relative;
   z-index: 1;
+  overflow-x: hidden;
 }
 
 .app-topbar {
