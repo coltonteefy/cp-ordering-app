@@ -251,11 +251,12 @@ const buildDraftFromSku = (sku) => ({
 
 const buildItemsFromSku = (sku) => sku.products.map((product) => createOrderItem(product, sku.id, sku.label));
 const skuIsInDraft = (draft, skuId) => draft?.items.some((item) => item.skuCode === skuId) || false;
-const createPrintHistoryEntry = (draft) => ({
+const createPrintHistoryEntry = (draft, user) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   poNumber: draft.poNumber,
   orderDate: draft.orderDate,
   printedAt: new Date().toISOString(),
+  printedBy: user?.email || 'Unknown',
   trackingCarrier: '',
   trackingNumber: '',
   items: draft.items.map((item) => ({
@@ -295,6 +296,7 @@ const normalizePrintHistoryFromDoc = (docId, rawData) => ({
   poNumber: rawData?.poNumber || '',
   orderDate: rawData?.orderDate || '',
   printedAt: rawData?.printedAt || '',
+  printedBy: rawData?.printedBy || '',
   trackingCarrier: normalizeTrackingCarrier(rawData?.trackingCarrier),
   trackingNumber: normalizeTrackingNumber(rawData?.trackingNumber),
   items: Array.isArray(rawData?.items)
@@ -307,7 +309,7 @@ const normalizePrintHistoryFromDoc = (docId, rawData) => ({
     : [],
 });
 
-const SkuPoPage = ({ onSuccess, onError }) => {
+const SkuPoPage = ({ onSuccess, onError, user }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [draft, setDraft] = useState(() => {
     try {
@@ -631,7 +633,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
   const printLabel = async () => {
     if (!draft) return;
 
-    const historyEntry = createPrintHistoryEntry(draft);
+    const historyEntry = createPrintHistoryEntry(draft, user);
     window.print();
 
     setPendingPrintHistoryEntry(historyEntry);
@@ -751,7 +753,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
       <header className="sku-po-header">
         <div>
           <p className="sku-po-eyebrow">Restock Intake</p>
-          <h1>SKU PO</h1>
+          <h1>Package Slip</h1>
           <p className="sku-po-intro">
             Click a product to add it into the PO list. Click the same product again to remove it.
           </p>
@@ -1018,11 +1020,6 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                 <h3>Print History</h3>
                 <p>After printing, confirm success to save that snapshot here.</p>
               </div>
-              {printHistory.length > 0 && (
-                <button type="button" className="sku-po-secondary-btn" onClick={clearPrintHistory}>
-                  Clear History
-                </button>
-              )}
             </div>
 
             {printHistory.length === 0 ? (
@@ -1034,6 +1031,7 @@ const SkuPoPage = ({ onSuccess, onError }) => {
                     <div className="sku-po-history-item-top">
                       <div className="sku-po-history-item-title">
                         <strong>{formatDateTime(entry.printedAt)}</strong>
+                        {entry.printedBy && <span className="sku-po-history-printed-by">{entry.printedBy}</span>}
                         <span>Order Date {formatShortDate(entry.orderDate)} | {entry.items.length} Item{entry.items.length === 1 ? '' : 's'}</span>
                       </div>
                       <div className="sku-po-history-item-controls">

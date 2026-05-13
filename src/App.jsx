@@ -336,7 +336,7 @@ function App() {
                     <button onClick={() => goToPage('payments')} className={`nav-link nav-icon-link ${activePage === 'payments' ? 'active' : ''}`} title="Payments" aria-label="Payments"><NavIcon type="payments" /></button>
                     <button onClick={() => goToPage('vendors')} className={`nav-link nav-icon-link ${activePage === 'vendors' ? 'active' : ''}`} title="Vendor Profiles" aria-label="Vendor Profiles"><NavIcon type="vendors" /></button>
                     <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot Track" aria-label="Lot Track"><NavIcon type="sku" /></button>
-                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-icon-link ${activePage === 'sku-po' ? 'active' : ''}`} title="SKU PO" aria-label="SKU PO"><NavIcon type="shipping" /></button>
+                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-icon-link ${activePage === 'sku-po' ? 'active' : ''}`} title="Package Slip" aria-label="Package Slip"><NavIcon type="shipping" /></button>
                     <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-icon-link ${activePage === 'coa-lookup' ? 'active' : ''}`} title="COA Lookup" aria-label="COA Lookup"><NavIcon type="coa" /></button>
                   </>
                 )}
@@ -361,7 +361,7 @@ function App() {
                   </button>
                   <div className="sidebar-dropdown-menu">
                     <button onClick={() => goToPage('lotid')} className={`nav-link nav-sublink ${activePage === 'lotid' ? 'active' : ''}`}>Lot Track</button>
-                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-sublink ${activePage === 'sku-po' ? 'active' : ''}`}>SKU PO</button>
+                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-sublink ${activePage === 'sku-po' ? 'active' : ''}`}>Package Slip</button>
                     <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-sublink ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
                   </div>
                 </div>
@@ -422,6 +422,7 @@ function App() {
               <SkuPoPage
                 onSuccess={showToast}
                 onError={showModal}
+                user={user}
               />
             ) : activePage === 'vendors' ? (
               <ProductManager 

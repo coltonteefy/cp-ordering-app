@@ -647,6 +647,12 @@
   font-size: 0.82rem;
 }
 
+.sku-po-history-printed-by {
+  font-size: 0.78rem;
+  color: #a08060;
+  font-style: italic;
+}
+
 .sku-po-history-remove-btn {
   padding: 0.35rem 0.55rem;
   font-size: 0.78rem;
