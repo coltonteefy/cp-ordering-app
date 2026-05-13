@@ -15,51 +15,94 @@ import CoaLookup from './components/CoaLookup';
 import './App.css';
 
 const NavIcon = ({ type }) => {
+  const sw = { fill: 'none', stroke: 'currentColor', strokeWidth: '1.8', strokeLinecap: 'round', strokeLinejoin: 'round' };
   if (type === 'orders') {
+    // Clipboard / order list
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 16 L10 10 L14 14 L20 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M16 8 H20 V12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="5" y="3" width="14" height="18" rx="2" {...sw} />
+        <path d="M9 3 a3 3 0 0 1 6 0" {...sw} />
+        <path d="M9 12 h6" {...sw} />
+        <path d="M9 16 h4" {...sw} />
       </svg>
     );
   }
   if (type === 'payments') {
+    // Credit card
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M3 10 H21" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="2" y="5" width="20" height="14" rx="2" {...sw} />
+        <path d="M2 10 H22" {...sw} />
+        <path d="M6 15 h4" {...sw} />
       </svg>
     );
   }
   if (type === 'vendors') {
+    // Person / user
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M6 18 V10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M12 18 V6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M18 18 V13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M4 18 H20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="12" cy="8" r="4" {...sw} />
+        <path d="M4 20 a8 8 0 0 1 16 0" {...sw} />
+      </svg>
+    );
+  }
+  if (type === 'coa') {
+    // Magnifying glass
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" {...sw} />
+        <path d="M16.5 16.5 L21 21" {...sw} />
+      </svg>
+    );
+  }
+  if (type === 'sku') {
+    // Tag / label
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20.59 13.41 l-7.17 7.17 a2 2 0 0 1 -2.83 0 L4 14 V4 h10 l6.59 6.59 a2 2 0 0 1 0 2.82 z" {...sw} />
+        <circle cx="9" cy="9" r="1.5" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+  if (type === 'shipping') {
+    // Delivery truck
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="1" y="7" width="14" height="10" rx="1" {...sw} />
+        <path d="M15 9 h4 l3 4 v4 h-7 V9 z" {...sw} />
+        <circle cx="5.5" cy="19" r="1.5" {...sw} />
+        <circle cx="18.5" cy="19" r="1.5" {...sw} />
+      </svg>
+    );
+  }
+  if (type === 'add-user') {
+    // Person with plus
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="10" cy="8" r="4" {...sw} />
+        <path d="M2 20 a8 8 0 0 1 14.32 -3.32" {...sw} />
+        <path d="M19 16 v6" {...sw} />
+        <path d="M16 19 h6" {...sw} />
       </svg>
     );
   }
   if (type === 'tools') {
+    // Wrench
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="12" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M14.7 6.3 a1 1 0 0 0 0 1.4 l1.6 1.6 a1 1 0 0 0 1.4 0 l3.77 -3.77 a6 6 0 0 1 -7.94 7.94 l-6.91 6.91 a2.12 2.12 0 0 1 -3 -3 l6.91 -6.91 a6 6 0 0 1 7.94 -7.94 l-3.76 3.76 z" {...sw} />
       </svg>
     );
   }
+  // Settings — sliders
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 3 V6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M12 18 V21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M4.8 7.5 L6.9 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M17.1 15 L19.2 16.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M3 12 H6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M18 12 H21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M4.8 16.5 L6.9 15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M17.1 9 L19.2 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 6 H20" {...sw} />
+      <path d="M4 12 H20" {...sw} />
+      <path d="M4 18 H20" {...sw} />
+      <circle cx="8" cy="6" r="2" fill="var(--sidebar-bg, #fff)" {...sw} />
+      <circle cx="16" cy="12" r="2" fill="var(--sidebar-bg, #fff)" {...sw} />
+      <circle cx="10" cy="18" r="2" fill="var(--sidebar-bg, #fff)" {...sw} />
     </svg>
   );
 };
@@ -158,6 +201,7 @@ function App() {
     if (isGuest && page !== 'lotid') return;
     setActivePage(page);
     setToolsMenuOpen(false);
+    setSidebarCollapsed(true);
   };
 
   const isToolsPage = ['lotid', 'sku-po', 'coa-lookup'].includes(activePage);
@@ -269,25 +313,31 @@ function App() {
             <div className="sidebar-body">
 
             <div className="sidebar-header">
-              <div className="sidebar-brand">
-                <img src="/assets/logo.png" alt="Coffee and Peppers Logo" className="nav-logo" />
-              </div>
+              {sidebarCollapsed ? (
+                <div className="sidebar-avatar" title={user?.email || 'User'}>
+                  {user?.email ? user.email[0].toUpperCase() : '?'}
+                </div>
+              ) : (
+                <div className="sidebar-brand">
+                  <img src="/assets/logo.png" alt="Coffee and Peppers Logo" className="nav-logo" />
+                </div>
+              )}
             </div>
 
             {sidebarCollapsed ? (
               <div className="sidebar-menu sidebar-icon-menu">
                 {isGuest ? (
                   <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot ID Tracker" aria-label="Lot ID Tracker">
-                    <NavIcon type="tools" />
+                    <NavIcon type="sku" />
                   </button>
                 ) : (
                   <>
                     <button onClick={() => goToPage('orders')} className={`nav-link nav-icon-link ${activePage === 'orders' ? 'active' : ''}`} title="Orders" aria-label="Orders"><NavIcon type="orders" /></button>
                     <button onClick={() => goToPage('payments')} className={`nav-link nav-icon-link ${activePage === 'payments' ? 'active' : ''}`} title="Payments" aria-label="Payments"><NavIcon type="payments" /></button>
                     <button onClick={() => goToPage('vendors')} className={`nav-link nav-icon-link ${activePage === 'vendors' ? 'active' : ''}`} title="Vendor Profiles" aria-label="Vendor Profiles"><NavIcon type="vendors" /></button>
-                    <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot Track" aria-label="Lot Track"><NavIcon type="tools" /></button>
-                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-icon-link ${activePage === 'sku-po' ? 'active' : ''}`} title="SKU PO" aria-label="SKU PO"><NavIcon type="orders" /></button>
-                    <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-icon-link ${activePage === 'coa-lookup' ? 'active' : ''}`} title="COA Lookup" aria-label="COA Lookup"><NavIcon type="payments" /></button>
+                    <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot Track" aria-label="Lot Track"><NavIcon type="sku" /></button>
+                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-icon-link ${activePage === 'sku-po' ? 'active' : ''}`} title="SKU PO" aria-label="SKU PO"><NavIcon type="shipping" /></button>
+                    <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-icon-link ${activePage === 'coa-lookup' ? 'active' : ''}`} title="COA Lookup" aria-label="COA Lookup"><NavIcon type="coa" /></button>
                   </>
                 )}
               </div>
@@ -328,7 +378,7 @@ function App() {
                       title="Add User"
                       aria-label="Add User"
                     >
-                      <NavIcon type="vendors" />
+                      <NavIcon type="add-user" />
                     </button>
                   )}
                   <button
