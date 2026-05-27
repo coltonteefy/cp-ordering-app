@@ -93,6 +93,7 @@ const NextOrderList = ({ onSuccess, onError, onSubmitted }) => {
 
   const isTSC = selectedVendor === 'TSC';
   const activeVendorProfile = vendors.find(v => v.id === selectedVendor);
+  const activeVendorName = activeVendorProfile?.name || selectedVendor;
 
   // Get the vendor-specific price for a product
   const getVendorPriceFor = (product, vendorId, warehouse) => {
@@ -481,9 +482,13 @@ const NextOrderList = ({ onSuccess, onError, onSubmitted }) => {
                 const cost = product.warehouseCosts?.[activeWarehouse];
                 return product.vendor === 'TSC' && cost !== undefined && cost > 0;
               }
-              // For non-TSC vendors: show full catalog (TSC products) + any vendor-exclusive products
+              // For non-TSC vendors: show full catalog (TSC products) + vendor-linked products.
               if (!activeVendorProfile) return false;
-              return product.vendor === 'TSC' || product.vendor === activeVendorProfile.name;
+              return (
+                product.vendor === 'TSC' ||
+                product.vendor === selectedVendor ||
+                product.vendor === activeVendorName
+              );
             })
             .sort((a, b) => (a.id || '').localeCompare(b.id || ''))
             .map((product, index) => {

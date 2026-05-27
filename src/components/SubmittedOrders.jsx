@@ -60,6 +60,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [hasShownError, setHasShownError] = useState(false);
   const [copiedOrderMetaId, setCopiedOrderMetaId] = useState(null);
   const [availableProducts, setAvailableProducts] = useState([]);
+  const [vendorProfiles, setVendorProfiles] = useState([]);
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
   const [editingTrackingCards, setEditingTrackingCards] = useState({});
   const syncedIncomingOnce = useRef(false);
@@ -74,11 +75,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       collection(db, 'c&pVendors'),
       (snapshot) => {
         const colors = {};
+        const profiles = [];
         snapshot.forEach((snap) => {
           const data = snap.data();
+          profiles.push({ id: snap.id, ...data });
           if (data.color) colors[data.name || snap.id] = data.color;
         });
         setVendorColorMap(colors);
+        setVendorProfiles(profiles);
       }
     );
     return () => unsubscribe();
@@ -451,6 +455,55 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     return item.pricePerKit;
   };
 
+  const getVendorProductPrice = (order, product) => {
+    if (!order || !product) return 0;
+    const orderVendor = order.vendor || 'TSC';
+    const orderWarehouse = (order.warehouse || 'US').toUpperCase();
+
+    if (orderVendor === 'TSC') {
+      return Number(product.warehouseCosts?.[orderWarehouse]) || 0;
+    }
+
+    const vendorProfile = vendorProfiles.find((v) => v.id === orderVendor);
+    const vendorName = vendorProfile?.name || orderVendor;
+
+    const vendorPricingById = product.vendorPricing?.[orderVendor];
+    if (vendorPricingById && typeof vendorPricingById.price === 'number') {
+      return vendorPricingById.price;
+    }
+
+    const vendorPricingByName = product.vendorPricing?.[vendorName];
+    if (vendorPricingByName && typeof vendorPricingByName.price === 'number') {
+      return vendorPricingByName.price;
+    }
+
+    const profileProductKey = `${product.product}__${product.strength}`;
+    const profileProduct = vendorProfile?.products?.[profileProductKey];
+    if (profileProduct && typeof profileProduct.price === 'number') {
+      return profileProduct.price;
+    }
+
+    return Number(product.warehouseCosts?.[orderWarehouse]) || 0;
+  };
+
+  const getAddableProductsForOrder = (order) => {
+    if (!order) return [];
+    const orderWarehouse = (order.warehouse || 'US').toUpperCase();
+
+    return availableProducts
+      .filter((product) => {
+        if ((order.vendor || 'TSC') === 'TSC') {
+          return (Number(product.warehouseCosts?.[orderWarehouse]) || 0) > 0;
+        }
+        return getVendorProductPrice(order, product) > 0;
+      })
+      .sort((a, b) => {
+        const nameDiff = (a.product || '').localeCompare(b.product || '');
+        if (nameDiff !== 0) return nameDiff;
+        return (a.strength || '').localeCompare(b.strength || '');
+      });
+  };
+
   const updateItemWarehouse = async (orderId, itemId, newWarehouse) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order) return;
@@ -769,8 +822,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       return;
     }
 
-    const warehouse = order.warehouse || 'US';
-    const price = product.warehouseCosts?.[warehouse] || 0;
+    const warehouse = (order.warehouse || 'US').toUpperCase();
+    const price = getVendorProductPrice(order, product);
     const newItem = {
       itemId: Date.now().toString(),
       productName: product.product,
@@ -1439,11 +1492,10 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                         defaultValue=""
                       >
                         <option value="">Select a product...</option>
-                        {availableProducts
-                          .filter((p) => (p.warehouseCosts?.[order.warehouse || 'US'] || 0) > 0)
+                        {getAddableProductsForOrder(order)
                           .map((product) => (
                             <option key={product.id} value={product.id}>
-                              {product.product} {product.strength} - ${product.warehouseCosts?.[order.warehouse || 'US'] || 0}
+                              {product.product} {product.strength} - ${getVendorProductPrice(order, product)}
                             </option>
                           ))}
                       </select>

@@ -121,12 +121,6 @@ function App() {
   };
 
   const [activePage, setActivePage] = useState(parseHashPage);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const saved = window.localStorage.getItem('sidebarCollapsed');
-    if (saved === null) return true;
-    return saved === 'true';
-  });
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [showNextOrderModal, setShowNextOrderModal] = useState(false);
   const [isClosingNewOrderModal, setIsClosingNewOrderModal] = useState(false);
@@ -192,16 +186,11 @@ function App() {
     }
   }, [activePage]);
 
-  useEffect(() => {
-    window.localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
-
   const goToPage = (page) => {
     if (!validPages.includes(page)) return;
     if (isGuest && page !== 'lotid') return;
     setActivePage(page);
     setToolsMenuOpen(false);
-    setSidebarCollapsed(true);
   };
 
   const isToolsPage = ['lotid', 'sku-po', 'coa-lookup'].includes(activePage);
@@ -288,121 +277,56 @@ function App() {
           </section>
         </>
       ) : (
-        <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <div className="app-shell">
           <aside className="app-sidebar">
-            <button
-              className="sidebar-edge-toggle"
-              onClick={() => {
-                setSidebarCollapsed((prev) => !prev);
-                if (!sidebarCollapsed) {
-                  setToolsMenuOpen(false);
-                }
-              }}
-              aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-              title={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-            >
-              <svg
-                aria-hidden="true"
-                className={`sidebar-edge-toggle-icon ${sidebarCollapsed ? 'collapsed' : ''}`}
-                viewBox="0 0 20 20"
-              >
-                <path d="M12.5 5.5 L8 10 L12.5 14.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-
             <div className="sidebar-body">
-
-            <div className="sidebar-header">
-              {sidebarCollapsed ? (
-                <div className="sidebar-avatar" title={user?.email || 'User'}>
-                  {user?.email ? user.email[0].toUpperCase() : '?'}
-                </div>
-              ) : (
+              <div className="sidebar-header">
                 <div className="sidebar-brand">
                   <img src="/assets/logo.png" alt="Coffee and Peppers Logo" className="nav-logo" />
                 </div>
-              )}
-            </div>
-
-            {sidebarCollapsed ? (
-              <div className="sidebar-menu sidebar-icon-menu">
-                {isGuest ? (
-                  <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot ID Tracker" aria-label="Lot ID Tracker">
-                    <NavIcon type="sku" />
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={() => goToPage('orders')} className={`nav-link nav-icon-link ${activePage === 'orders' ? 'active' : ''}`} title="Orders" aria-label="Orders"><NavIcon type="orders" /></button>
-                    <button onClick={() => goToPage('payments')} className={`nav-link nav-icon-link ${activePage === 'payments' ? 'active' : ''}`} title="Payments" aria-label="Payments"><NavIcon type="payments" /></button>
-                    <button onClick={() => goToPage('vendors')} className={`nav-link nav-icon-link ${activePage === 'vendors' ? 'active' : ''}`} title="Vendor Profiles" aria-label="Vendor Profiles"><NavIcon type="vendors" /></button>
-                    <button onClick={() => goToPage('lotid')} className={`nav-link nav-icon-link ${activePage === 'lotid' ? 'active' : ''}`} title="Lot Track" aria-label="Lot Track"><NavIcon type="sku" /></button>
-                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-icon-link ${activePage === 'sku-po' ? 'active' : ''}`} title="Package Slip" aria-label="Package Slip"><NavIcon type="shipping" /></button>
-                    <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-icon-link ${activePage === 'coa-lookup' ? 'active' : ''}`} title="COA Lookup" aria-label="COA Lookup"><NavIcon type="coa" /></button>
-                  </>
-                )}
               </div>
-            ) : (
-              <>
+
+              {isGuest ? (
                 <div className="sidebar-menu">
-                  <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
-                  <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
-                  <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
+                  <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
                 </div>
-
-                <div className={`sidebar-dropdown ${isToolsPage ? 'active' : ''} ${toolsMenuOpen ? 'open' : ''}`}>
-                  <button
-                    type="button"
-                    className="nav-link tools-trigger"
-                    onClick={() => setToolsMenuOpen((prev) => !prev)}
-                    aria-haspopup="true"
-                    aria-expanded={toolsMenuOpen}
-                  >
-                    Tools
-                  </button>
-                  <div className="sidebar-dropdown-menu">
-                    <button onClick={() => goToPage('lotid')} className={`nav-link nav-sublink ${activePage === 'lotid' ? 'active' : ''}`}>Lot Track</button>
-                    <button onClick={() => goToPage('sku-po')} className={`nav-link nav-sublink ${activePage === 'sku-po' ? 'active' : ''}`}>Package Slip</button>
-                    <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-sublink ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className={`sidebar-footer ${sidebarCollapsed ? 'collapsed' : ''}`}>
-              {sidebarCollapsed ? (
-                <>
-                  {!isGuest && (
-                    <button
-                      onClick={() => setShowAddUserModal(true)}
-                      className="nav-link nav-icon-link"
-                      title="Add User"
-                      aria-label="Add User"
-                    >
-                      <NavIcon type="add-user" />
-                    </button>
-                  )}
-                  <button
-                    onClick={handleSignOut}
-                    className="nav-link nav-icon-link"
-                    title={isGuest ? 'Exit Guest' : 'Sign Out'}
-                    aria-label={isGuest ? 'Exit Guest' : 'Sign Out'}
-                  >
-                    <NavIcon type="settings" />
-                  </button>
-                </>
               ) : (
                 <>
-                  {!isGuest && (
-                    <button onClick={() => setShowAddUserModal(true)} className="btn-secondary sidebar-action-btn">
-                      Add User
+                  <div className="sidebar-menu">
+                    <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
+                    <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
+                    <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
+                  </div>
+
+                  <div className={`sidebar-dropdown ${isToolsPage ? 'active' : ''} ${toolsMenuOpen ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="nav-link tools-trigger"
+                      onClick={() => setToolsMenuOpen((prev) => !prev)}
+                      aria-haspopup="true"
+                      aria-expanded={toolsMenuOpen}
+                    >
+                      Tools
                     </button>
-                  )}
-                  <button onClick={handleSignOut} className="btn-secondary sidebar-action-btn">
-                    {isGuest ? 'Exit Guest' : 'Sign Out'}
-                  </button>
+                    <div className="sidebar-dropdown-menu">
+                      <button onClick={() => goToPage('lotid')} className={`nav-link nav-sublink ${activePage === 'lotid' ? 'active' : ''}`}>Lot Track</button>
+                      <button onClick={() => goToPage('sku-po')} className={`nav-link nav-sublink ${activePage === 'sku-po' ? 'active' : ''}`}>Package Slip</button>
+                      <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-sublink ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
+                    </div>
+                  </div>
                 </>
               )}
-            </div>
+
+              <div className="sidebar-footer">
+                {!isGuest && (
+                  <button onClick={() => setShowAddUserModal(true)} className="btn-secondary sidebar-action-btn">
+                    Add User
+                  </button>
+                )}
+                <button onClick={handleSignOut} className="btn-secondary sidebar-action-btn">
+                  {isGuest ? 'Exit Guest' : 'Sign Out'}
+                </button>
+              </div>
             </div>
           </aside>
 
