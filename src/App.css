@@ -235,7 +235,7 @@ body {
   gap: 0.3rem;
   padding: 0;
   position: absolute;
-  top: calc(100% + 0.45rem);
+  top: 100%;
   left: 0;
   min-width: 180px;
   background: #ffffff;
