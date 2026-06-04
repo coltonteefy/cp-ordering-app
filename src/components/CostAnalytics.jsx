@@ -3,6 +3,7 @@ import { costDatabase, getCost } from '../data/costDatabase';
 import './CostAnalytics.css';
 
 const CostAnalytics = () => {
+  const LAST_UPLOAD_STORAGE_KEY = 'costAnalyticsLastUpload';
   const [salesData, setSalesData] = useState([]);
   const [analysis, setAnalysis] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -12,6 +13,65 @@ const CostAnalytics = () => {
   const [savedAnalyses, setSavedAnalyses] = useState([]);
   const [selectedForCombine, setSelectedForCombine] = useState([]);
   const [combinedAnalysis, setCombinedAnalysis] = useState(null);
+  const [reportNetSales, setReportNetSales] = useState(null);
+  const [activeTab, setActiveTab] = useState('analysis');
+  const [ordersReportFileName, setOrdersReportFileName] = useState('');
+  const [productReportFileName, setProductReportFileName] = useState('');
+  const [ordersReportRows, setOrdersReportRows] = useState([]);
+  const [comparisonData, setComparisonData] = useState([]);
+  const [reconciliation, setReconciliation] = useState(null);
+
+  const pricingSource = combinedAnalysis || analysis;
+  const pricingRows = pricingSource
+    ? [...pricingSource.breakdown]
+      .map((item) => {
+        const sellPrice = item.itemsSold > 0 ? item.netSales / item.itemsSold : 0;
+        const unitSpread = sellPrice - item.unitCost;
+        const marginPct = sellPrice > 0 ? (unitSpread / sellPrice) * 100 : 0;
+
+        return {
+          ...item,
+          sellPrice,
+          unitSpread,
+          marginPct,
+        };
+      })
+      .sort((a, b) => {
+        const categoryCompare = (a.category || '').localeCompare(b.category || '');
+        if (categoryCompare !== 0) return categoryCompare;
+        return (a.product || '').localeCompare(b.product || '');
+      })
+    : [];
+
+  const pricingRowsByCategory = pricingRows.reduce((acc, row) => {
+    const key = row.category || 'Uncategorized';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(row);
+    return acc;
+  }, {});
+  const pricingCategories = Object.keys(pricingRowsByCategory).sort((a, b) => a.localeCompare(b));
+  const isKitOrMixCategory = (category, productTitle = '') => {
+    const normalizedCategory = String(category || '').toLowerCase();
+    if (normalizedCategory.includes('kit')) return true;
+    return /\bkit\b/i.test(String(productTitle || ''));
+  };
+
+  const pricingTotals = pricingRows.reduce((acc, row) => {
+    acc.units += row.itemsSold;
+    acc.totalCost += row.unitCost * row.itemsSold;
+    acc.totalSales += row.sellPrice * row.itemsSold;
+    return acc;
+  }, { units: 0, totalCost: 0, totalSales: 0 });
+
+  const weightedUnitCost = pricingTotals.units > 0 ? pricingTotals.totalCost / pricingTotals.units : 0;
+  const weightedUnitSell = pricingTotals.units > 0 ? pricingTotals.totalSales / pricingTotals.units : 0;
+  const weightedUnitSpread = weightedUnitSell - weightedUnitCost;
+  const weightedMarginPct = weightedUnitSell > 0 ? (weightedUnitSpread / weightedUnitSell) * 100 : 0;
+  const lowMarginCount = pricingRows.filter(row => row.marginPct < 30).length;
+  const getMarginStatus = (marginPct) => (marginPct >= 30 ? 'good' : 'bad');
+  const highestSpreadProduct = pricingRows.length > 0
+    ? pricingRows.reduce((best, row) => (row.unitSpread > best.unitSpread ? row : best), pricingRows[0])
+    : null;
 
   // Load saved dates and analyses from localStorage on mount
   useEffect(() => {
@@ -28,17 +88,39 @@ const CostAnalytics = () => {
         console.error('Error loading saved analyses:', error);
       }
     }
+
+    const cachedUpload = localStorage.getItem(LAST_UPLOAD_STORAGE_KEY);
+    if (cachedUpload) {
+      try {
+        const parsed = JSON.parse(cachedUpload);
+        if (Array.isArray(parsed.salesData) && parsed.salesData.length > 0) {
+          const restoredDateStart = parsed.dateStart || savedDateStart || '';
+          const restoredDateEnd = parsed.dateEnd || savedDateEnd || '';
+          const restoredReportNetSales = parsed.reportNetSales ?? null;
+
+          setSalesData(parsed.salesData);
+          setFileName(parsed.fileName || 'Restored CSV');
+          setProductReportFileName(parsed.fileName || 'Restored CSV');
+          setDateStart(restoredDateStart);
+          setDateEnd(restoredDateEnd);
+          setReportNetSales(restoredReportNetSales);
+          analyzeCosts(parsed.salesData, restoredDateStart, restoredDateEnd, restoredReportNetSales, []);
+        }
+      } catch (error) {
+        console.error('Error restoring cached CSV upload:', error);
+      }
+    }
   }, []);
 
   // Re-analyze when date range changes (if data is loaded)
   useEffect(() => {
     if (salesData.length > 0) {
-      analyzeCosts(salesData);
+      analyzeCosts(salesData, dateStart, dateEnd, reportNetSales, ordersReportRows);
     }
     // Save dates to localStorage
     localStorage.setItem('costAnalyticsDateStart', dateStart);
     localStorage.setItem('costAnalyticsDateEnd', dateEnd);
-  }, [dateStart, dateEnd]);
+  }, [dateStart, dateEnd, ordersReportRows]);
 
   const saveAnalysis = () => {
     if (!analysis || !dateStart || !dateEnd) {
@@ -81,6 +163,8 @@ const CostAnalytics = () => {
     setDateStart(saved.dateStart);
     setDateEnd(saved.dateEnd);
     setFileName(saved.fileName);
+    setProductReportFileName(saved.fileName);
+    setReportNetSales(saved.analysis.reportNetSales ?? null);
   };
   
   const deleteAnalysis = (key) => {
@@ -118,15 +202,45 @@ const CostAnalytics = () => {
     // Aggregate data from all selected analyses
     let totalCOGS = 0;
     let totalOrders = 0;
+    let shippingOrderCount = 0;
     let totalItemsSold = 0;
     let totalNetSales = 0;
+    let totalReportNetSales = 0;
+    let totalKitItemsSold = 0;
+    let totalKitOrders = 0;
+    let totalKitNetSales = 0;
     const productMap = {}; // Map to aggregate product data
+    const kitProductMap = {};
 
     selectedSaved.forEach(saved => {
       totalCOGS += saved.analysis.totalCOGS;
       totalOrders += saved.analysis.totalOrders;
+      shippingOrderCount += saved.analysis.shippingOrderCount ?? saved.analysis.totalOrders;
       totalItemsSold += saved.analysis.totalItemsSold;
       totalNetSales += saved.analysis.totalNetSales;
+      totalReportNetSales += saved.analysis.reportNetSales ?? saved.analysis.totalNetSales;
+
+      if (saved.analysis.kitSales?.rows?.length) {
+        totalKitItemsSold += saved.analysis.kitSales.totalItemsSold || 0;
+        totalKitOrders += saved.analysis.kitSales.totalOrders || 0;
+        totalKitNetSales += saved.analysis.kitSales.totalNetSales || 0;
+
+        saved.analysis.kitSales.rows.forEach((row) => {
+          if (!kitProductMap[row.product]) {
+            kitProductMap[row.product] = {
+              product: row.product,
+              sku: row.sku || '',
+              category: row.category || 'Kits',
+              itemsSold: 0,
+              orders: 0,
+              netSales: 0,
+            };
+          }
+          kitProductMap[row.product].itemsSold += row.itemsSold;
+          kitProductMap[row.product].orders += row.orders;
+          kitProductMap[row.product].netSales += row.netSales;
+        });
+      }
 
       // Aggregate product data
       saved.analysis.breakdown.forEach(item => {
@@ -151,7 +265,7 @@ const CostAnalytics = () => {
     });
 
     // Calculate combined metrics
-    const shippingDeduction = totalOrders * 5;
+    const shippingDeduction = shippingOrderCount * 5;
     const totalBillOwed = totalCOGS + shippingDeduction;
     const totalProfit = totalNetSales - totalCOGS;
     const profitMargin = totalNetSales > 0 ? (totalProfit / totalNetSales) * 100 : 0;
@@ -163,6 +277,13 @@ const CostAnalytics = () => {
       profitMargin: product.netSales > 0 ? (product.profit / product.netSales) * 100 : 0,
     }));
 
+    const kitRows = Object.values(kitProductMap)
+      .map((row) => ({
+        ...row,
+        avgSellPrice: row.itemsSold > 0 ? row.netSales / row.itemsSold : 0,
+      }))
+      .sort((a, b) => b.netSales - a.netSales);
+
     const dateStarts = selectedSaved.map(s => s.dateStart).sort();
     const dateEnds = selectedSaved.map(s => s.dateEnd).sort().reverse();
 
@@ -170,11 +291,19 @@ const CostAnalytics = () => {
       breakdown: breakdown.sort((a, b) => b.profit - a.profit),
       totalCOGS,
       totalOrders,
+      shippingOrderCount,
       totalItemsSold,
       shippingDeduction,
       totalBillOwed,
       netCost: totalCOGS - shippingDeduction,
       totalNetSales,
+      reportNetSales: totalReportNetSales,
+      kitSales: {
+        rows: kitRows,
+        totalItemsSold: totalKitItemsSold,
+        totalOrders: totalKitOrders,
+        totalNetSales: totalKitNetSales,
+      },
       totalProfit,
       profitMargin,
       avgOrderValue,
@@ -206,44 +335,377 @@ const CostAnalytics = () => {
     return null;
   };
 
-  const handleFileUpload = (e) => {
+  const parseCsvLine = (line) => {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === ',' && !inQuotes) {
+        values.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    values.push(current);
+
+    return values.map(v => v.trim());
+  };
+
+  const parseCsvText = (csvText) => {
+    const lines = csvText
+      .replace(/^\uFEFF/, '')
+      .split(/\r?\n/)
+      .filter(line => line.trim() !== '');
+
+    if (lines.length < 2) return [];
+
+    const headers = parseCsvLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim());
+    const rows = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvLine(lines[i]).map(v => v.replace(/^"|"$/g, '').trim());
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
+      });
+      rows.push(row);
+    }
+
+    return rows;
+  };
+
+  const parseNumber = (value) => {
+    if (value === null || value === undefined) return 0;
+    const cleaned = String(value).replace(/[^0-9.-]/g, '');
+    const parsed = parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const extractReportNetSales = (rows) => {
+    if (!rows.length) return null;
+
+    let found = false;
+    const total = rows.reduce((sum, row) => {
+      const hasNetSales = Object.prototype.hasOwnProperty.call(row, 'Net Sales')
+        || Object.prototype.hasOwnProperty.call(row, 'Net sales')
+        || Object.prototype.hasOwnProperty.call(row, 'N. Revenue')
+        || Object.prototype.hasOwnProperty.call(row, 'N. Revenue (formatted)')
+        || Object.prototype.hasOwnProperty.call(row, 'Revenue');
+      if (!hasNetSales) return sum;
+      found = true;
+      return sum + parseNumber(
+        row['Net Sales']
+        ?? row['Net sales']
+        ?? row['N. Revenue']
+        ?? row['N. Revenue (formatted)']
+        ?? row['Revenue']
+      );
+    }, 0);
+
+    return found ? Number(total.toFixed(2)) : null;
+  };
+
+  const cacheUploadedData = (payload) => {
+    try {
+      localStorage.setItem(LAST_UPLOAD_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error('Unable to cache uploaded CSV data:', error);
+    }
+  };
+
+  const parseWooProducts = (productsCell) => {
+    if (!productsCell) return [];
+    return productsCell
+      .split(',')
+      .map(part => part.trim())
+      .filter(Boolean)
+      .map(part => {
+        const match = part.match(/^(\d+)\s*[×x]\s*(.+)$/);
+        if (match) {
+          return {
+            quantity: parseInt(match[1], 10) || 0,
+            name: match[2].trim(),
+          };
+        }
+        return { quantity: 1, name: part };
+      })
+      .filter(item => item.name);
+  };
+
+  const parseDateStringToISO = (value) => {
+    if (!value) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    const isoDateMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/);
+    if (isoDateMatch) {
+      return `${isoDateMatch[1]}-${isoDateMatch[2]}-${isoDateMatch[3]}`;
+    }
+
+    const usDateMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s.*)?$/);
+    if (usDateMatch) {
+      const month = usDateMatch[1].padStart(2, '0');
+      const day = usDateMatch[2].padStart(2, '0');
+      const year = usDateMatch[3].length === 2 ? `20${usDateMatch[3]}` : usDateMatch[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    const fallback = new Date(raw);
+    if (Number.isNaN(fallback.getTime())) return null;
+    const y = fallback.getFullYear();
+    const m = String(fallback.getMonth() + 1).padStart(2, '0');
+    const d = String(fallback.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const findRowValueCaseInsensitive = (row, candidateHeaders) => {
+    if (!row) return '';
+    const entries = Object.entries(row);
+    for (const [header, value] of entries) {
+      if (candidateHeaders.includes(String(header).trim().toLowerCase())) {
+        return value;
+      }
+    }
+    return '';
+  };
+
+  const extractDateRangeFromRows = (rows) => {
+    if (!rows.length) return null;
+
+    const dateCandidates = ['date', 'order date', 'created date', 'created at'];
+    const normalizedDates = rows
+      .map(row => parseDateStringToISO(findRowValueCaseInsensitive(row, dateCandidates)))
+      .filter(Boolean)
+      .sort();
+
+    if (!normalizedDates.length) return null;
+
+    return {
+      startDate: normalizedDates[0],
+      endDate: normalizedDates[normalizedDates.length - 1],
+    };
+  };
+
+  const inferCategory = (productName) => {
+    if (!productName) return 'Singles';
+    return /\bkit\b/i.test(productName) ? 'Kits' : 'Singles';
+  };
+
+  const normalizeSalesData = (rows) => {
+    if (!rows.length) return [];
+
+    const first = rows[0];
+    const hasProductSummarySchema = Object.prototype.hasOwnProperty.call(first, 'Product title');
+    if (hasProductSummarySchema) {
+      return rows;
+    }
+
+    const productsHeader = Object.prototype.hasOwnProperty.call(first, 'Product(s)')
+      ? 'Product(s)'
+      : (Object.prototype.hasOwnProperty.call(first, 'Products') ? 'Products' : null);
+    const hasWooOrdersSchema = Boolean(productsHeader) && Object.prototype.hasOwnProperty.call(first, 'Items sold');
+    if (!hasWooOrdersSchema) {
+      return rows;
+    }
+
+    const byProduct = {};
+
+    rows.forEach((row) => {
+      const productItems = parseWooProducts(row[productsHeader]);
+      if (productItems.length === 0) return;
+
+      const orderNetSales = parseNumber(row['Net Sales'] || row['Net sales']);
+      const totalQtyInOrder = productItems.reduce((sum, item) => sum + item.quantity, 0) || 1;
+
+      productItems.forEach((item) => {
+        const productName = item.name;
+        if (!byProduct[productName]) {
+          byProduct[productName] = {
+            'Product title': productName,
+            Category: inferCategory(productName),
+            'Items sold': 0,
+            Orders: 0,
+            'Net sales': 0,
+          };
+        }
+
+        byProduct[productName]['Items sold'] += item.quantity;
+        byProduct[productName].Orders += 1;
+        byProduct[productName]['Net sales'] += orderNetSales * (item.quantity / totalQtyInOrder);
+      });
+    });
+
+    return Object.values(byProduct).map(item => ({
+      ...item,
+      'Items sold': Math.round(item['Items sold']),
+      Orders: Math.round(item.Orders),
+      'Net sales': Number(item['Net sales'].toFixed(2)),
+    }));
+  };
+
+  const aggregateSalesRows = (rows) => {
+    const map = {};
+    rows.forEach((row) => {
+      const product = (row['Product title'] || '').trim();
+      if (!product) return;
+
+      if (!map[product]) {
+        map[product] = {
+          product,
+          itemsSold: 0,
+          orders: 0,
+          netSales: 0,
+        };
+      }
+
+      map[product].itemsSold += parseInt(row['Items sold']) || 0;
+      map[product].orders += parseInt(row.Orders) || 0;
+      map[product].netSales += parseNumber(
+        row['Net sales']
+        ?? row['Net Sales']
+        ?? row['N. Revenue']
+        ?? row['N. Revenue (formatted)']
+        ?? row['Revenue']
+      );
+    });
+
+    return Object.values(map);
+  };
+
+  const buildReconciliation = (primaryRows, secondaryRows) => {
+    const primaryIndex = {};
+    primaryRows.forEach((row) => {
+      primaryIndex[row.product.toLowerCase()] = row;
+    });
+
+    const secondaryIndex = {};
+    secondaryRows.forEach((row) => {
+      secondaryIndex[row.product.toLowerCase()] = row;
+    });
+
+    const keys = Array.from(new Set([
+      ...Object.keys(primaryIndex),
+      ...Object.keys(secondaryIndex),
+    ]));
+
+    const rows = [];
+    let matchedProducts = 0;
+    let onlyInPrimary = 0;
+    let onlyInSecondary = 0;
+    let mismatchCount = 0;
+
+    keys.forEach((key) => {
+      const primary = primaryIndex[key] || null;
+      const secondary = secondaryIndex[key] || null;
+
+      if (primary && secondary) matchedProducts += 1;
+      if (primary && !secondary) onlyInPrimary += 1;
+      if (!primary && secondary) onlyInSecondary += 1;
+
+      const itemDiff = (primary?.itemsSold || 0) - (secondary?.itemsSold || 0);
+      const orderDiff = (primary?.orders || 0) - (secondary?.orders || 0);
+      const netDiff = Number(((primary?.netSales || 0) - (secondary?.netSales || 0)).toFixed(2));
+
+      const hasDiff = Math.abs(itemDiff) > 0 || Math.abs(orderDiff) > 0 || Math.abs(netDiff) > 0.01;
+      const status = !primary
+        ? 'Missing in Primary'
+        : (!secondary ? 'Missing in Comparison' : (hasDiff ? 'Mismatch' : 'Match'));
+
+      if (status !== 'Match') {
+        mismatchCount += 1;
+        rows.push({
+          product: primary?.product || secondary?.product || key,
+          primaryItemsSold: primary?.itemsSold || 0,
+          secondaryItemsSold: secondary?.itemsSold || 0,
+          primaryOrders: primary?.orders || 0,
+          secondaryOrders: secondary?.orders || 0,
+          primaryNetSales: primary?.netSales || 0,
+          secondaryNetSales: secondary?.netSales || 0,
+          itemDiff,
+          orderDiff,
+          netDiff,
+          status,
+        });
+      }
+    });
+
+    rows.sort((a, b) => Math.abs(b.netDiff) - Math.abs(a.netDiff));
+
+    return {
+      primaryProducts: primaryRows.length,
+      secondaryProducts: secondaryRows.length,
+      matchedProducts,
+      onlyInPrimary,
+      onlyInSecondary,
+      mismatchCount,
+      rows,
+    };
+  };
+
+  useEffect(() => {
+    if (!salesData.length || !comparisonData.length) {
+      setReconciliation(null);
+      return;
+    }
+
+    const primaryAgg = aggregateSalesRows(salesData);
+    const secondaryAgg = aggregateSalesRows(comparisonData);
+    setReconciliation(buildReconciliation(primaryAgg, secondaryAgg));
+  }, [salesData, comparisonData]);
+
+  const handleProductReportUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setFileName(file.name);
-    
-    // Extract dates from filename if available
-    const extractedDates = extractDatesFromFilename(file.name);
-    const newDateStart = extractedDates?.startDate || dateStart;
-    const newDateEnd = extractedDates?.endDate || dateEnd;
-    
-    if (extractedDates) {
-      setDateStart(newDateStart);
-      setDateEnd(newDateEnd);
-    }
+    setProductReportFileName(file.name);
+    const filenameDates = extractDatesFromFilename(file.name);
 
     const reader = new FileReader();
 
     reader.onload = (event) => {
       try {
         const csv = event.target.result;
-        const lines = csv.split('\n');
-        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        const data = [];
+        const parsedRows = parseCsvText(csv);
+        const reportTotalNetSales = extractReportNetSales(parsedRows);
+        const csvDateRange = extractDateRangeFromRows(parsedRows);
+        const extractedDates = csvDateRange || filenameDates;
+        const resolvedDateStart = extractedDates?.startDate || dateStart;
+        const resolvedDateEnd = extractedDates?.endDate || dateEnd;
 
-        for (let i = 1; i < lines.length; i++) {
-          if (!lines[i].trim()) continue;
+        if (extractedDates) {
+          setDateStart(resolvedDateStart);
+          setDateEnd(resolvedDateEnd);
+        }
 
-          const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-          const row = {};
-          headers.forEach((header, idx) => {
-            row[header] = values[idx] || '';
-          });
-          data.push(row);
+        const data = normalizeSalesData(parsedRows);
+
+        if (!data.length) {
+          alert('No rows were found in this CSV file.');
+          return;
         }
 
         setSalesData(data);
-        analyzeCosts(data, newDateStart, newDateEnd);
+        setReportNetSales(reportTotalNetSales);
+        cacheUploadedData({
+          fileName: file.name,
+          salesData: data,
+          dateStart: resolvedDateStart,
+          dateEnd: resolvedDateEnd,
+          reportNetSales: reportTotalNetSales,
+          cachedAt: new Date().toISOString(),
+        });
+        analyzeCosts(data, resolvedDateStart, resolvedDateEnd, reportTotalNetSales, ordersReportRows);
       } catch (error) {
         alert('Error parsing CSV: ' + error.message);
       }
@@ -252,18 +714,158 @@ const CostAnalytics = () => {
     reader.readAsText(file);
   };
 
-  const analyzeCosts = (data, paramDateStart = dateStart, paramDateEnd = dateEnd) => {
+  const handleOrdersReportUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOrdersReportFileName(file.name);
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      try {
+        const csv = event.target.result;
+        const parsedRows = parseCsvText(csv);
+        const data = normalizeSalesData(parsedRows);
+
+        if (!parsedRows.length) {
+          alert('No rows were found in the orders report CSV file.');
+          return;
+        }
+
+        setOrdersReportRows(parsedRows);
+        setComparisonData(data);
+
+        if (salesData.length > 0) {
+          analyzeCosts(salesData, dateStart, dateEnd, reportNetSales, parsedRows);
+        }
+      } catch (error) {
+        alert('Error parsing orders report CSV: ' + error.message);
+      }
+    };
+
+    reader.readAsText(file);
+  };
+
+  const getOrderProductsHeader = (rows) => {
+    if (!rows.length) return null;
+    const first = rows[0];
+    if (Object.prototype.hasOwnProperty.call(first, 'Product(s)')) return 'Product(s)';
+    if (Object.prototype.hasOwnProperty.call(first, 'Products')) return 'Products';
+    return null;
+  };
+
+  const calculateShippingOrdersFromOrdersReport = (rows) => {
+    const productsHeader = getOrderProductsHeader(rows);
+    if (!productsHeader) return null;
+
+    const isIgnoredOrderProduct = (title) => {
+      const normalized = String(title || '').toLowerCase();
+      return normalized.includes('bac water') || normalized.includes('bacteriostatic water');
+    };
+
+    const seenOrderKeys = new Set();
+    let shippingOrders = 0;
+
+    rows.forEach((row, index) => {
+      const orderId = String(
+        findRowValueCaseInsensitive(row, ['order number', 'order #', 'order', 'id'])
+      ).trim();
+      const orderKey = orderId || `row-${index}`;
+      if (seenOrderKeys.has(orderKey)) return;
+      seenOrderKeys.add(orderKey);
+
+      const products = parseWooProducts(row[productsHeader]);
+      if (!products.length) return;
+
+      const hasKitOrMix = products.some((item) => {
+        const name = item.name || '';
+        if (!name) return false;
+        if (isIgnoredOrderProduct(name)) return false;
+        return isKitOrMixCategory(inferCategory(name), name);
+      });
+
+      if (hasKitOrMix) shippingOrders += 1;
+    });
+
+    return shippingOrders;
+  };
+
+  const analyzeCosts = (
+    data,
+    paramDateStart = dateStart,
+    paramDateEnd = dateEnd,
+    paramReportNetSales = reportNetSales,
+    paramOrdersReportRows = ordersReportRows,
+  ) => {
     const breakdown = [];
     const unmatched = [];
+    const kitRows = [];
     let totalCOGS = 0;
     let totalOrders = 0;
+    let shippingOrderCount = 0;
     let totalItemsSold = 0;
     let totalNetSales = 0;
+    let totalKitItemsSold = 0;
+    let totalKitOrders = 0;
+    let totalKitNetSales = 0;
 
-    // Filter for Singles only (exclude Kits)
+    const isIgnoredProduct = (title) => {
+      const normalized = String(title || '').toLowerCase();
+      return normalized.includes('bac water') || normalized.includes('bacteriostatic water');
+    };
+
+    // Keep non-kit products; BAC filtering is handled below.
     const singlesData = data.filter(row => {
+      const productTitle = row['Product title'] || '';
       const category = row.Category || '';
-      return category !== 'Kits' && category.trim() !== '';
+      return !isKitOrMixCategory(category, productTitle);
+    });
+
+    // Prefer order-level shipping count from Orders report to avoid product-level over-counting.
+    const orderLevelShippingCount = calculateShippingOrdersFromOrdersReport(paramOrdersReportRows);
+    if (orderLevelShippingCount !== null) {
+      shippingOrderCount = orderLevelShippingCount;
+    } else {
+      shippingOrderCount = data.reduce((sum, row) => {
+        const productTitle = row['Product title'] || '';
+        if (isIgnoredProduct(productTitle)) return sum;
+        const category = row.Category || '';
+        if (!isKitOrMixCategory(category, productTitle)) return sum;
+        return sum + (parseInt(row.Orders) || 0);
+      }, 0);
+    }
+
+    data.forEach((row) => {
+      const productTitle = row['Product title'] || '';
+      const category = row.Category || '';
+      if (!isKitOrMixCategory(category, productTitle)) return;
+      if (isIgnoredProduct(productTitle)) return;
+
+      const itemsSold = parseInt(row['Items sold']) || 0;
+      const orders = parseInt(row.Orders) || 0;
+      const netSales = parseNumber(
+        row['Net sales']
+        ?? row['Net Sales']
+        ?? row['N. Revenue']
+        ?? row['N. Revenue (formatted)']
+        ?? row['Revenue']
+      );
+
+      if (!productTitle || itemsSold === 0) return;
+
+      totalKitItemsSold += itemsSold;
+      totalKitOrders += orders;
+      totalKitNetSales += netSales;
+
+      kitRows.push({
+        product: productTitle,
+        sku: row.SKU || '',
+        category: category || 'Kits',
+        itemsSold,
+        orders,
+        netSales,
+        avgSellPrice: itemsSold > 0 ? netSales / itemsSold : 0,
+      });
     });
 
     // Process each product
@@ -272,9 +874,16 @@ const CostAnalytics = () => {
       const itemsSold = parseInt(row['Items sold']) || 0;
       const category = row.Category || '';
       const orders = parseInt(row.Orders) || 0;
-      const netSales = parseFloat(row['Net sales']) || 0;
+      const netSales = parseNumber(
+        row['Net sales']
+        ?? row['Net Sales']
+        ?? row['N. Revenue']
+        ?? row['N. Revenue (formatted)']
+        ?? row['Revenue']
+      );
 
       if (!productTitle || itemsSold === 0) return;
+      if (isIgnoredProduct(productTitle)) return;
 
       const unitCost = getCost(productTitle);
 
@@ -311,7 +920,7 @@ const CostAnalytics = () => {
     });
 
     // Calculate metrics
-    const shippingDeduction = totalOrders * 5;
+    const shippingDeduction = shippingOrderCount * 5;
     const totalBillOwed = totalCOGS + shippingDeduction;
     const totalProfit = totalNetSales - totalCOGS;
     const profitMargin = totalNetSales > 0 ? (totalProfit / totalNetSales) * 100 : 0;
@@ -323,11 +932,19 @@ const CostAnalytics = () => {
       breakdown: breakdown.sort((a, b) => b.profit - a.profit),
       totalCOGS,
       totalOrders,
+      shippingOrderCount,
       totalItemsSold,
       shippingDeduction,
       totalBillOwed,
       netCost: totalCOGS - shippingDeduction,
       totalNetSales,
+      reportNetSales: paramReportNetSales ?? totalNetSales,
+      kitSales: {
+        rows: kitRows.sort((a, b) => b.netSales - a.netSales),
+        totalItemsSold: totalKitItemsSold,
+        totalOrders: totalKitOrders,
+        totalNetSales: totalKitNetSales,
+      },
       totalProfit,
       profitMargin,
       avgOrderValue,
@@ -346,17 +963,30 @@ const CostAnalytics = () => {
       <div className="upload-section">
         <div className="upload-inputs">
           <div className="input-group">
-            <label htmlFor="csv-upload" className="upload-label">
-              Upload Sales CSV:
+            <label htmlFor="orders-upload" className="upload-label">
+              Orders Report CSV:
             </label>
             <input
-              id="csv-upload"
+              id="orders-upload"
               type="file"
               accept=".csv"
-              onChange={handleFileUpload}
+              onChange={handleOrdersReportUpload}
               className="file-input"
             />
-            {fileName && <span className="file-name">Loaded: {fileName}</span>}
+            {ordersReportFileName && <span className="file-name">Loaded: {ordersReportFileName}</span>}
+          </div>
+          <div className="input-group">
+            <label htmlFor="product-upload" className="upload-label">
+              Product Report CSV:
+            </label>
+            <input
+              id="product-upload"
+              type="file"
+              accept=".csv"
+              onChange={handleProductReportUpload}
+              className="file-input"
+            />
+            {productReportFileName && <span className="file-name">Loaded: {productReportFileName}</span>}
           </div>
           <div className="date-inputs">
             <div className="date-input-group">
@@ -383,6 +1013,177 @@ const CostAnalytics = () => {
           <button onClick={saveAnalysis} className="save-analysis-btn">💾 Save Analysis</button>
         </div>
       </div>
+
+      {reconciliation && (
+        <div className="reconciliation-section">
+          <h2>Cross-Check: 2 Report Reconciliation</h2>
+          <p className="breakdown-subtitle">
+            Comparing normalized product totals between {productReportFileName || fileName || 'product report'} and {ordersReportFileName || 'orders report'}
+          </p>
+
+          <div className="summary-cards pricing-summary-cards">
+            <div className="card">
+              <div className="card-label">Matched Products</div>
+              <div className="card-value">{reconciliation.matchedProducts}</div>
+            </div>
+            <div className="card">
+              <div className="card-label">Only In Primary</div>
+              <div className="card-value">{reconciliation.onlyInPrimary}</div>
+            </div>
+            <div className="card">
+              <div className="card-label">Only In Comparison</div>
+              <div className="card-value">{reconciliation.onlyInSecondary}</div>
+            </div>
+            <div className="card highlight">
+              <div className="card-label">Mismatch Rows</div>
+              <div className="card-value">{reconciliation.mismatchCount}</div>
+            </div>
+          </div>
+
+          {reconciliation.rows.length > 0 ? (
+            <div className="table-wrapper">
+              <table className="breakdown-table pricing-compare-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th className="number-head">Items Δ</th>
+                    <th className="number-head">Orders Δ</th>
+                    <th className="number-head">Net Sales Δ</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconciliation.rows.map((row, idx) => (
+                    <tr key={`recon-${idx}`}>
+                      <td className="product-name">{row.product}</td>
+                      <td className={`number ${row.itemDiff === 0 ? '' : 'profit negative'}`}>{row.itemDiff}</td>
+                      <td className={`number ${row.orderDiff === 0 ? '' : 'profit negative'}`}>{row.orderDiff}</td>
+                      <td className={`number ${Math.abs(row.netDiff) < 0.01 ? '' : 'profit negative'}`}>${row.netDiff.toFixed(2)}</td>
+                      <td>
+                        <span className={`recon-status-badge ${row.status === 'Mismatch' ? 'bad' : 'warn'}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="pricing-quick-note">No mismatches found between the two uploaded reports.</div>
+          )}
+        </div>
+      )}
+
+      <div className="cost-view-tabs" role="tablist" aria-label="Cost analytics views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'analysis'}
+          className={`cost-view-tab ${activeTab === 'analysis' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analysis')}
+        >
+          Analysis
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'pricing'}
+          className={`cost-view-tab ${activeTab === 'pricing' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pricing')}
+        >
+          Vendor vs Sell
+        </button>
+      </div>
+
+      {activeTab === 'pricing' && (
+        <div className="pricing-view-section">
+          {pricingSource ? (
+            <>
+              <div className="summary-cards pricing-summary-cards">
+                <div className="card">
+                  <div className="card-label">Weighted Unit Cost</div>
+                  <div className="card-value">${weightedUnitCost.toFixed(2)}</div>
+                </div>
+                <div className="card">
+                  <div className="card-label">Weighted Unit Sell</div>
+                  <div className="card-value">${weightedUnitSell.toFixed(2)}</div>
+                </div>
+                <div className="card highlight">
+                  <div className="card-label">Weighted Margin</div>
+                  <div className="card-value">{weightedMarginPct.toFixed(1)}%</div>
+                </div>
+                <div className="card">
+                  <div className="card-label">Low Margin Products (&lt;30%)</div>
+                  <div className="card-value">{lowMarginCount}</div>
+                </div>
+              </div>
+
+              {highestSpreadProduct && (
+                <div className="pricing-quick-note">
+                  Highest spread right now: <strong>{highestSpreadProduct.product}</strong> at
+                  {' '}${highestSpreadProduct.unitSpread.toFixed(2)} per unit.
+                </div>
+              )}
+
+              <div className="breakdown-section">
+                <h2>Vendor Cost vs Sell Price</h2>
+                <p className="breakdown-subtitle">
+                  Grouped by category using matched products in the loaded report
+                </p>
+                {pricingCategories.map((category) => (
+                  <div key={category} className="pricing-category-group">
+                    <h3>{category}</h3>
+                    <div className="table-wrapper">
+                      <table className="breakdown-table pricing-compare-table">
+                        <thead>
+                          <tr>
+                            <th>Product</th>
+                            <th className="category-col">Category</th>
+                            <th className="number-head">Vendor Cost</th>
+                            <th className="number-head">Sell Price</th>
+                            <th className="number-head">Profit</th>
+                            <th className="number-head">Margin</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pricingRowsByCategory[category].map((item, idx) => (
+                            <tr key={`${category}-${idx}`}>
+                              <td className="product-name">{item.product}</td>
+                              <td className="category-col">{item.category || 'Uncategorized'}</td>
+                              <td className="number cost">${item.unitCost.toFixed(2)}</td>
+                              <td className="number revenue">${item.sellPrice.toFixed(2)}</td>
+                              <td className={`number profit ${item.unitSpread >= 0 ? 'positive' : 'negative'}`}>
+                                ${item.unitSpread.toFixed(2)}
+                              </td>
+                              <td className={`number profit ${item.marginPct >= 0 ? 'positive' : 'negative'}`}>
+                                {item.marginPct.toFixed(1)}%
+                              </td>
+                              <td>
+                                <span className={`margin-status-badge ${getMarginStatus(item.marginPct)}`}>
+                                  {getMarginStatus(item.marginPct) === 'good' ? 'Good' : 'Bad'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <p>Upload your sales CSV file to compare vendor costs against sell prices</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'analysis' && (
+        <>
 
       {/* Saved Analyses */}
       {savedAnalyses.length > 0 && (
@@ -478,6 +1279,10 @@ const CostAnalytics = () => {
           {/* Summary Cards */}
           <div className="summary-cards">
             <div className="card">
+              <div className="card-label">Report Net Sales</div>
+              <div className="card-value">${combinedAnalysis.reportNetSales.toFixed(2)}</div>
+            </div>
+            <div className="card">
               <div className="card-label">Net Sales</div>
               <div className="card-value">${combinedAnalysis.totalNetSales.toFixed(2)}</div>
             </div>
@@ -511,7 +1316,11 @@ const CostAnalytics = () => {
                 <span>${combinedAnalysis.totalCOGS.toFixed(2)}</span>
               </div>
               <div className="bill-row">
-                <span>Estimated Shipping (${5}/order)</span>
+                <span>Shipping Orders (${5} charge)</span>
+                <span>{combinedAnalysis.shippingOrderCount ?? combinedAnalysis.totalOrders}</span>
+              </div>
+              <div className="bill-row">
+                <span>Estimated Shipping (${5}/kit or mix order)</span>
                 <span>${combinedAnalysis.shippingDeduction.toFixed(2)}</span>
               </div>
               <div className="bill-row total">
@@ -520,6 +1329,55 @@ const CostAnalytics = () => {
               </div>
             </div>
           </div>
+
+          {combinedAnalysis.kitSales?.rows?.length > 0 && (
+            <div className="breakdown-section kit-sales-section">
+              <h2>Kit Sales Data</h2>
+              <p className="breakdown-subtitle">
+                {combinedAnalysis.kitSales.rows.length} kit products • {combinedAnalysis.kitSales.totalItemsSold} units • {combinedAnalysis.kitSales.totalOrders} orders
+              </p>
+              <div className="summary-cards pricing-summary-cards">
+                <div className="card">
+                  <div className="card-label">Kit Net Sales</div>
+                  <div className="card-value">${combinedAnalysis.kitSales.totalNetSales.toFixed(2)}</div>
+                </div>
+                <div className="card">
+                  <div className="card-label">Kit Units Sold</div>
+                  <div className="card-value">{combinedAnalysis.kitSales.totalItemsSold}</div>
+                </div>
+                <div className="card">
+                  <div className="card-label">Kit Orders</div>
+                  <div className="card-value">{combinedAnalysis.kitSales.totalOrders}</div>
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table className="breakdown-table pricing-compare-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Category</th>
+                      <th className="number-head">Units</th>
+                      <th className="number-head">Orders</th>
+                      <th className="number-head">Net Sales</th>
+                      <th className="number-head">Avg Sell</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {combinedAnalysis.kitSales.rows.map((item, idx) => (
+                      <tr key={`combined-kit-${idx}`}>
+                        <td className="product-name">{item.product}</td>
+                        <td>{item.category || 'Kits'}</td>
+                        <td className="number">{item.itemsSold}</td>
+                        <td className="number">{item.orders}</td>
+                        <td className="number revenue">${item.netSales.toFixed(2)}</td>
+                        <td className="number">${item.avgSellPrice.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Combined Breakdown Table */}
           <div className="breakdown-section">
@@ -592,7 +1450,11 @@ const CostAnalytics = () => {
           {/* Summary Cards */}
           <div className="summary-cards">
             <div className="card">
-              <div className="card-label">Net Sales (Revenue)</div>
+              <div className="card-label">Report Net Sales</div>
+              <div className="card-value">${analysis.reportNetSales.toFixed(2)}</div>
+            </div>
+            <div className="card">
+              <div className="card-label">Net Sales (Non-Kit, Excl BAC)</div>
               <div className="card-value">${analysis.totalNetSales.toFixed(2)}</div>
             </div>
             <div className="card">
@@ -625,7 +1487,11 @@ const CostAnalytics = () => {
                 <span>${analysis.totalCOGS.toFixed(2)}</span>
               </div>
               <div className="bill-row">
-                <span>Estimated Shipping (${5}/order)</span>
+                <span>Shipping Orders (${5} charge, from Orders report)</span>
+                <span>{analysis.shippingOrderCount ?? analysis.totalOrders}</span>
+              </div>
+              <div className="bill-row">
+                <span>Estimated Shipping (${5}/kit or mix order)</span>
                 <span>${analysis.shippingDeduction.toFixed(2)}</span>
               </div>
               <div className="bill-row total">
@@ -634,6 +1500,57 @@ const CostAnalytics = () => {
               </div>
             </div>
           </div>
+
+          {analysis.kitSales?.rows?.length > 0 && (
+            <div className="breakdown-section kit-sales-section">
+              <h2>Kit Sales Data</h2>
+              <p className="breakdown-subtitle">
+                {analysis.kitSales.rows.length} kit products • {analysis.kitSales.totalItemsSold} units • {analysis.kitSales.totalOrders} orders
+              </p>
+              <div className="summary-cards pricing-summary-cards">
+                <div className="card">
+                  <div className="card-label">Kit Net Sales</div>
+                  <div className="card-value">${analysis.kitSales.totalNetSales.toFixed(2)}</div>
+                </div>
+                <div className="card">
+                  <div className="card-label">Kit Units Sold</div>
+                  <div className="card-value">{analysis.kitSales.totalItemsSold}</div>
+                </div>
+                <div className="card">
+                  <div className="card-label">Kit Orders</div>
+                  <div className="card-value">{analysis.kitSales.totalOrders}</div>
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table className="breakdown-table pricing-compare-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>SKU</th>
+                      <th>Category</th>
+                      <th className="number-head">Units</th>
+                      <th className="number-head">Orders</th>
+                      <th className="number-head">Net Sales</th>
+                      <th className="number-head">Avg Sell</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analysis.kitSales.rows.map((item, idx) => (
+                      <tr key={`kit-${idx}`}>
+                        <td className="product-name">{item.product}</td>
+                        <td>{item.sku || 'N/A'}</td>
+                        <td>{item.category || 'Kits'}</td>
+                        <td className="number">{item.itemsSold}</td>
+                        <td className="number">{item.orders}</td>
+                        <td className="number revenue">${item.netSales.toFixed(2)}</td>
+                        <td className="number">${item.avgSellPrice.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Breakdown Table */}
           <div className="breakdown-section">
@@ -779,6 +1696,8 @@ const CostAnalytics = () => {
         <div className="empty-state">
           <p>Upload your sales CSV file to see cost analysis</p>
         </div>
+      )}
+        </>
       )}
     </div>
   );

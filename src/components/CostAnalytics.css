@@ -17,6 +17,141 @@
   margin-bottom: 2rem;
 }
 
+.cost-view-tabs {
+  display: inline-flex;
+  gap: 0.5rem;
+  background: #eef2f5;
+  border: 1px solid #d7dde3;
+  border-radius: 10px;
+  padding: 0.35rem;
+  margin-bottom: 1.5rem;
+}
+
+.cost-view-tab {
+  border: none;
+  background: transparent;
+  color: #4e5d6b;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cost-view-tab:hover {
+  background: rgba(52, 152, 219, 0.12);
+}
+
+.cost-view-tab.active {
+  background: #3498db;
+  color: #fff;
+}
+
+.pricing-view-section {
+  margin-bottom: 2rem;
+}
+
+.pricing-summary-cards {
+  margin-bottom: 1rem;
+}
+
+.pricing-quick-note {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid #2980b9;
+  background: #edf6fd;
+  border-radius: 4px;
+  color: #1f618d;
+  font-size: 0.92rem;
+}
+
+.reconciliation-section {
+  background: #f6fbff;
+  border: 1px solid #cfe3f4;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.reconciliation-section h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.15rem;
+  color: #1f618d;
+}
+
+.pricing-category-group {
+  margin-top: 1.25rem;
+}
+
+.pricing-category-group h3 {
+  margin: 0 0 0.6rem 0;
+  font-size: 1rem;
+  color: #2c3e50;
+}
+
+.kit-sales-section {
+  margin-top: 1.5rem;
+}
+
+.pricing-compare-table th.number-head {
+  text-align: right;
+}
+
+.pricing-compare-table td.category-col,
+.pricing-compare-table th.category-col {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pricing-compare-table td.number {
+  min-width: 120px;
+}
+
+.margin-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.margin-status-badge.good {
+  background: #d5f4e6;
+  color: #1e8449;
+}
+
+.margin-status-badge.bad {
+  background: #fdecea;
+  color: #c0392b;
+}
+
+.recon-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.recon-status-badge.bad {
+  background: #fdecea;
+  color: #c0392b;
+}
+
+.recon-status-badge.warn {
+  background: #fff3cd;
+  color: #7a4f00;
+}
+
 /* Upload Section */
 .upload-section {
   padding: 1.25rem;

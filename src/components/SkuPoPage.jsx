@@ -236,6 +236,33 @@ const formatDateTime = (value) => {
   return parsed.toLocaleString();
 };
 
+const getMonthKeyFromHistoryEntry = (entry) => {
+  const candidate = String(entry?.printedAt || entry?.orderDate || '').trim();
+  if (!candidate) return 'Unknown';
+
+  const parsed = new Date(candidate);
+  if (Number.isNaN(parsed.getTime())) return 'Unknown';
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+const formatMonthLabel = (monthKey) => {
+  if (!monthKey || monthKey === 'Unknown') return 'Unknown Month';
+  const [year, month] = monthKey.split('-');
+  const monthNumber = Number(month);
+  const yearNumber = Number(year);
+
+  if (!month || Number.isNaN(monthNumber) || Number.isNaN(yearNumber)) {
+    return monthKey;
+  }
+
+  const parsed = new Date(yearNumber, monthNumber - 1, 1);
+  if (Number.isNaN(parsed.getTime())) return monthKey;
+  return parsed.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+};
+
 const calculateKitValue = (quantitySingles, singlesPerKit) => {
   const singles = Number(quantitySingles) || 0;
   const unitsPerKit = Number(singlesPerKit) || 0;
@@ -332,6 +359,8 @@ const SkuPoPage = ({ onSuccess, onError, user }) => {
     }
   });
   const [printHistory, setPrintHistory] = useState([]);
+  const [selectedSentInMonth, setSelectedSentInMonth] = useState('all');
+  const [historyViewTab, setHistoryViewTab] = useState('history');
   const [trackingEditor, setTrackingEditor] = useState({
     entryId: '',
     trackingCarrier: TRACKING_CARRIERS[0],
@@ -501,6 +530,103 @@ const SkuPoPage = ({ onSuccess, onError, user }) => {
       sku.products.some((product) => product.productName.toLowerCase().includes(query))
     );
   }, [searchTerm, skuCatalog]);
+
+  const sentInTotals = useMemo(() => {
+    const allByProduct = new Map();
+    const byMonth = new Map();
+    let allTotalKitsSent = 0;
+
+    const addItemToMap = (targetMap, item, quantityKits) => {
+      const skuCode = String(item?.skuCode || '').trim();
+      const description = String(item?.description || skuCode || 'Unknown Product').trim();
+      const key = `${skuCode}::${description}`;
+
+      if (!targetMap.has(key)) {
+        targetMap.set(key, {
+          skuCode,
+          description,
+          totalKits: 0,
+        });
+      }
+
+      targetMap.get(key).totalKits += quantityKits;
+    };
+
+    printHistory.forEach((entry) => {
+      const monthKey = getMonthKeyFromHistoryEntry(entry);
+
+      if (!byMonth.has(monthKey)) {
+        byMonth.set(monthKey, {
+          monthKey,
+          byProduct: new Map(),
+          totalKitsSent: 0,
+        });
+      }
+
+      const monthBucket = byMonth.get(monthKey);
+
+      (entry.items || []).forEach((item) => {
+        const quantityKits = Number(item?.quantityKits) || 0;
+        if (quantityKits === 0) return;
+
+        addItemToMap(allByProduct, item, quantityKits);
+        addItemToMap(monthBucket.byProduct, item, quantityKits);
+
+        allTotalKitsSent += quantityKits;
+        monthBucket.totalKitsSent += quantityKits;
+      });
+    });
+
+    const sortRows = (rows) => rows.sort((left, right) => {
+      if (right.totalKits !== left.totalKits) return right.totalKits - left.totalKits;
+      return left.description.localeCompare(right.description);
+    });
+
+    const allRows = sortRows(Array.from(allByProduct.values()));
+    const months = Array.from(byMonth.values())
+      .map((bucket) => {
+        const rows = sortRows(Array.from(bucket.byProduct.values()));
+        return {
+          monthKey: bucket.monthKey,
+          monthLabel: formatMonthLabel(bucket.monthKey),
+          rows,
+          totalKitsSent: bucket.totalKitsSent,
+          totalProducts: rows.length,
+        };
+      })
+      .sort((left, right) => right.monthKey.localeCompare(left.monthKey));
+
+    return {
+      all: {
+        monthKey: 'all',
+        monthLabel: 'All Months',
+        rows: allRows,
+        totalKitsSent: allTotalKitsSent,
+        totalProducts: allRows.length,
+      },
+      months,
+    };
+  }, [printHistory]);
+
+  useEffect(() => {
+    if (selectedSentInMonth === 'all') return;
+    const monthStillExists = sentInTotals.months.some((month) => month.monthKey === selectedSentInMonth);
+    if (!monthStillExists) {
+      setSelectedSentInMonth('all');
+    }
+  }, [selectedSentInMonth, sentInTotals.months]);
+
+  const displayedSentInTotals = useMemo(() => {
+    if (selectedSentInMonth === 'all') return sentInTotals.all;
+    return sentInTotals.months.find((month) => month.monthKey === selectedSentInMonth) || sentInTotals.all;
+  }, [selectedSentInMonth, sentInTotals]);
+
+  const activeHistoryMonthFilter = selectedSentInMonth;
+
+  const displayedPrintHistory = useMemo(() => {
+    if (activeHistoryMonthFilter === 'all') return printHistory;
+    return printHistory.filter((entry) => getMonthKeyFromHistoryEntry(entry) === activeHistoryMonthFilter);
+  }, [activeHistoryMonthFilter, printHistory]);
 
   const summaryText = useMemo(() => {
     if (!draft) return '';
@@ -1022,131 +1148,217 @@ const SkuPoPage = ({ onSuccess, onError, user }) => {
               </div>
             </div>
 
-            {printHistory.length === 0 ? (
-              <p className="sku-po-history-empty">No printed lists yet.</p>
-            ) : (
-              <div className="sku-po-history-list">
-                {printHistory.map((entry) => (
-                  <article key={entry.id} className="sku-po-history-item">
-                    <div className="sku-po-history-item-top">
-                      <div className="sku-po-history-item-title">
-                        <strong>{formatDateTime(entry.printedAt)}</strong>
-                        {entry.printedBy && <span className="sku-po-history-printed-by">{entry.printedBy}</span>}
-                        <span>Order Date {formatShortDate(entry.orderDate)} | {entry.items.length} Item{entry.items.length === 1 ? '' : 's'}</span>
-                      </div>
-                      <div className="sku-po-history-item-controls">
-                        <button
-                          type="button"
-                          className="sku-po-secondary-btn sku-po-history-track-btn"
-                          onClick={() => openTrackingEditor(entry)}
-                        >
-                          {entry.trackingNumber ? 'Edit Tracking' : 'Add Tracking'}
-                        </button>
-                        <button
-                          type="button"
-                          className="sku-po-remove-btn sku-po-history-remove-btn"
-                          onClick={() => removeHistoryEntry(entry.id)}
-                          aria-label={`Delete history entry printed ${formatDateTime(entry.printedAt)}`}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <div className="sku-po-history-tracking-summary">
-                      <span>Package Tracking</span>
-                      {entry.trackingNumber ? (
-                        (() => {
-                          const trackingLabel = `${entry.trackingCarrier ? `${entry.trackingCarrier}: ` : ''}${entry.trackingNumber}`;
-                          const trackingUrl = buildTrackingUrl(entry.trackingCarrier, entry.trackingNumber);
+            <div className="sku-po-history-filter-row">
+              <label htmlFor="sent-in-month-filter">
+                <span>Month Filter</span>
+                <select
+                  id="sent-in-month-filter"
+                  value={selectedSentInMonth}
+                  onChange={(event) => setSelectedSentInMonth(event.target.value)}
+                >
+                  <option value="all">All Months</option>
+                  {sentInTotals.months.map((month) => (
+                    <option key={month.monthKey} value={month.monthKey}>
+                      {month.monthLabel}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-                          if (trackingUrl) {
-                            return (
-                              <a
-                                href={trackingUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="sku-po-history-tracking-link"
-                                aria-label={`Track package via ${entry.trackingCarrier || 'carrier'}`}
-                              >
-                                {trackingLabel}
-                              </a>
-                            );
-                          }
+            <div className="sku-po-history-tabs" role="tablist" aria-label="Package slip history views">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={historyViewTab === 'history'}
+                className={`sku-po-history-tab ${historyViewTab === 'history' ? 'active' : ''}`}
+                onClick={() => setHistoryViewTab('history')}
+              >
+                Print History
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={historyViewTab === 'monthTotals'}
+                className={`sku-po-history-tab ${historyViewTab === 'monthTotals' ? 'active' : ''}`}
+                onClick={() => setHistoryViewTab('monthTotals')}
+              >
+                Month Totals
+              </button>
+            </div>
 
-                          return <strong>{trackingLabel}</strong>;
-                        })()
-                      ) : (
-                        <em>Not added yet</em>
-                      )}
-                    </div>
-                    {trackingEditor.entryId === entry.id && (
-                      <div className="sku-po-history-tracking-editor">
-                        <label>
-                          <span>Carrier</span>
-                          <select
-                            value={trackingEditor.trackingCarrier}
-                            onChange={(event) =>
-                              setTrackingEditor((current) => ({
-                                ...current,
-                                trackingCarrier: event.target.value,
-                              }))
-                            }
-                          >
-                            {TRACKING_CARRIERS.map((carrier) => (
-                              <option key={carrier} value={carrier}>{carrier}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>
-                          <span>Tracking Number</span>
-                          <input
-                            type="text"
-                            value={trackingEditor.trackingNumber}
-                            onChange={(event) =>
-                              setTrackingEditor((current) => ({
-                                ...current,
-                                trackingNumber: event.target.value,
-                              }))
-                            }
-                            placeholder="Enter tracking number"
-                          />
-                        </label>
-                        <div className="sku-po-history-tracking-actions">
+            {historyViewTab === 'monthTotals' && (
+              <section className="sku-po-sent-in-section" aria-label="Sent in totals by product">
+                <div className="sku-po-sent-in-header">
+                  <h4>Sent-In Totals by Product</h4>
+                  <p>Aggregated from saved package slip history entries, grouped by month.</p>
+                </div>
+                <div className="sku-po-sent-in-metrics">
+                  <span>
+                    <strong>{displayedSentInTotals.totalKitsSent}</strong> total kits sent in
+                  </span>
+                  <span>
+                    <strong>{displayedSentInTotals.totalProducts}</strong> products tracked
+                  </span>
+                </div>
+                {displayedSentInTotals.rows.length === 0 ? (
+                  <p className="sku-po-history-empty">No sent-in totals yet.</p>
+                ) : (
+                  <div className="sku-po-sent-in-table-wrap">
+                    <table className="sku-po-sent-in-table">
+                      <thead>
+                        <tr>
+                          <th>SKU</th>
+                          <th>Product</th>
+                          <th>Total KIT Sent In</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayedSentInTotals.rows.map((row) => (
+                          <tr key={`${row.skuCode}-${row.description}`}>
+                            <td>{row.skuCode || 'N/A'}</td>
+                            <td>{row.description}</td>
+                            <td>{row.totalKits}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {historyViewTab === 'history' && (
+              displayedPrintHistory.length === 0 ? (
+                <p className="sku-po-history-empty">
+                  {activeHistoryMonthFilter === 'all'
+                    ? 'No printed lists yet.'
+                    : `No printed lists for ${formatMonthLabel(activeHistoryMonthFilter)}.`}
+                </p>
+              ) : (
+                <div className="sku-po-history-list">
+                  {displayedPrintHistory.map((entry) => (
+                    <article key={entry.id} className="sku-po-history-item">
+                      <div className="sku-po-history-item-top">
+                        <div className="sku-po-history-item-title">
+                          <strong>{formatDateTime(entry.printedAt)}</strong>
+                          {entry.printedBy && <span className="sku-po-history-printed-by">{entry.printedBy}</span>}
+                          <span>Order Date {formatShortDate(entry.orderDate)} | {entry.items.length} Item{entry.items.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="sku-po-history-item-controls">
                           <button
                             type="button"
-                            className="sku-po-primary-btn"
-                            onClick={async () => {
-                              const saved = await saveHistoryTracking(
-                                entry.id,
-                                trackingEditor.trackingNumber,
-                                trackingEditor.trackingCarrier
-                              );
-                              if (saved) closeTrackingEditor();
-                            }}
+                            className="sku-po-secondary-btn sku-po-history-track-btn"
+                            onClick={() => openTrackingEditor(entry)}
                           >
-                            Save Tracking
+                            {entry.trackingNumber ? 'Edit Tracking' : 'Add Tracking'}
                           </button>
                           <button
                             type="button"
-                            className="sku-po-secondary-btn"
-                            onClick={closeTrackingEditor}
+                            className="sku-po-remove-btn sku-po-history-remove-btn"
+                            onClick={() => removeHistoryEntry(entry.id)}
+                            aria-label={`Delete history entry printed ${formatDateTime(entry.printedAt)}`}
                           >
-                            Cancel
+                            Delete
                           </button>
                         </div>
                       </div>
-                    )}
-                    <ul className="sku-po-history-lines">
-                      {entry.items.map((item, index) => (
-                        <li key={`${entry.id}-${item.skuCode || item.description}-${index}`}>
-                          <span>{index + 1}. {item.description}</span>
-                          <strong>{item.lot ? `${item.lot} | ` : ''}{item.quantityKits ?? 0} KIT</strong>
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                ))}
-              </div>
+                      <div className="sku-po-history-tracking-summary">
+                        <span>Package Tracking</span>
+                        {entry.trackingNumber ? (
+                          (() => {
+                            const trackingLabel = `${entry.trackingCarrier ? `${entry.trackingCarrier}: ` : ''}${entry.trackingNumber}`;
+                            const trackingUrl = buildTrackingUrl(entry.trackingCarrier, entry.trackingNumber);
+
+                            if (trackingUrl) {
+                              return (
+                                <a
+                                  href={trackingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="sku-po-history-tracking-link"
+                                  aria-label={`Track package via ${entry.trackingCarrier || 'carrier'}`}
+                                >
+                                  {trackingLabel}
+                                </a>
+                              );
+                            }
+
+                            return <strong>{trackingLabel}</strong>;
+                          })()
+                        ) : (
+                          <em>Not added yet</em>
+                        )}
+                      </div>
+                      {trackingEditor.entryId === entry.id && (
+                        <div className="sku-po-history-tracking-editor">
+                          <label>
+                            <span>Carrier</span>
+                            <select
+                              value={trackingEditor.trackingCarrier}
+                              onChange={(event) =>
+                                setTrackingEditor((current) => ({
+                                  ...current,
+                                  trackingCarrier: event.target.value,
+                                }))
+                              }
+                            >
+                              {TRACKING_CARRIERS.map((carrier) => (
+                                <option key={carrier} value={carrier}>{carrier}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>Tracking Number</span>
+                            <input
+                              type="text"
+                              value={trackingEditor.trackingNumber}
+                              onChange={(event) =>
+                                setTrackingEditor((current) => ({
+                                  ...current,
+                                  trackingNumber: event.target.value,
+                                }))
+                              }
+                              placeholder="Enter tracking number"
+                            />
+                          </label>
+                          <div className="sku-po-history-tracking-actions">
+                            <button
+                              type="button"
+                              className="sku-po-primary-btn"
+                              onClick={async () => {
+                                const saved = await saveHistoryTracking(
+                                  entry.id,
+                                  trackingEditor.trackingNumber,
+                                  trackingEditor.trackingCarrier
+                                );
+                                if (saved) closeTrackingEditor();
+                              }}
+                            >
+                              Save Tracking
+                            </button>
+                            <button
+                              type="button"
+                              className="sku-po-secondary-btn"
+                              onClick={closeTrackingEditor}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <ul className="sku-po-history-lines">
+                        {entry.items.map((item, index) => (
+                          <li key={`${entry.id}-${item.skuCode || item.description}-${index}`}>
+                            <span>{index + 1}. {item.description}</span>
+                            <strong>{item.lot ? `${item.lot} | ` : ''}{item.quantityKits ?? 0} KIT</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </article>
+                  ))}
+                </div>
+              )
             )}
           </section>
         </div>

@@ -12,6 +12,7 @@ import PaymentTracker from './components/PaymentTracker';
 import IncomingProducts from './components/IncomingProducts';
 import SkuPoPage from './components/SkuPoPage';
 import CoaLookup from './components/CoaLookup';
+import CostAnalytics from './components/CostAnalytics';
 import './App.css';
 
 const NavIcon = ({ type }) => {
@@ -113,7 +114,7 @@ function App() {
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
   const [toast, setToast] = useState({ visible: false, message: '' });
-  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup'];
+  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup', 'cost-analytics'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -193,7 +194,7 @@ function App() {
     setToolsMenuOpen(false);
   };
 
-  const isToolsPage = ['lotid', 'sku-po', 'coa-lookup'].includes(activePage);
+  const isToolsPage = ['lotid', 'sku-po', 'coa-lookup', 'cost-analytics'].includes(activePage);
 
   const handleAddUser = async (e) => {
     e.preventDefault();
@@ -312,6 +313,7 @@ function App() {
                       <button onClick={() => goToPage('lotid')} className={`nav-link nav-sublink ${activePage === 'lotid' ? 'active' : ''}`}>Lot Track</button>
                       <button onClick={() => goToPage('sku-po')} className={`nav-link nav-sublink ${activePage === 'sku-po' ? 'active' : ''}`}>Package Slip</button>
                       <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-sublink ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
+                      <button onClick={() => goToPage('cost-analytics')} className={`nav-link nav-sublink ${activePage === 'cost-analytics' ? 'active' : ''}`}>Cost Tool</button>
                     </div>
                   </div>
                 </>
@@ -337,6 +339,8 @@ function App() {
                 <div className="page-transition" key={activePage}>
             {activePage === 'coa-lookup' ? (
               <CoaLookup />
+            ) : activePage === 'cost-analytics' ? (
+              <CostAnalytics />
             ) : activePage === 'payments' ? (
               <PaymentTracker
                 onSuccess={showToast}

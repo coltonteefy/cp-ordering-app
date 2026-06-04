@@ -562,6 +562,96 @@
   flex-wrap: wrap;
 }
 
+.sku-po-sent-in-section {
+  border: 1px solid #e6ddd1;
+  background: #fffdf9;
+  border-radius: 16px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.sku-po-sent-in-header h4 {
+  margin: 0;
+  color: #2f2a26;
+  font-size: 1rem;
+}
+
+.sku-po-sent-in-header p {
+  margin: 0.25rem 0 0;
+  color: #756757;
+  font-size: 0.85rem;
+}
+
+.sku-po-sent-in-controls {
+  margin-top: 0.7rem;
+}
+
+.sku-po-sent-in-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sku-po-sent-in-controls span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #6b5a49;
+}
+
+.sku-po-sent-in-controls select {
+  border: 1px solid #ded2c3;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #3f3126;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.sku-po-sent-in-metrics {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.7rem 0 0.9rem;
+  color: #4a3d31;
+  font-size: 0.9rem;
+}
+
+.sku-po-sent-in-table-wrap {
+  overflow: auto;
+  border: 1px solid #e6ddd1;
+  border-radius: 12px;
+}
+
+.sku-po-sent-in-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.sku-po-sent-in-table th,
+.sku-po-sent-in-table td {
+  border-bottom: 1px solid #efe7dd;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  font-size: 0.88rem;
+}
+
+.sku-po-sent-in-table th {
+  background: #f7efe4;
+  color: #5a4430;
+  font-weight: 700;
+}
+
+.sku-po-sent-in-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.sku-po-sent-in-table td:last-child,
+.sku-po-sent-in-table th:last-child {
+  text-align: right;
+  font-weight: 700;
+}
+
 .sku-po-date-input-row label {
   display: flex;
   align-items: center;
@@ -595,6 +685,58 @@
 
 .sku-po-section-heading.compact {
   margin-bottom: 0.85rem;
+}
+
+.sku-po-history-filter-row {
+  margin-bottom: 0.75rem;
+}
+
+.sku-po-history-filter-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sku-po-history-filter-row span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #6b5a49;
+}
+
+.sku-po-history-filter-row select {
+  border: 1px solid #ded2c3;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #3f3126;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.sku-po-history-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border: 1px solid #e6ddd1;
+  border-radius: 999px;
+  background: #f7efe4;
+  margin-bottom: 0.95rem;
+}
+
+.sku-po-history-tab {
+  border: none;
+  background: transparent;
+  color: #6f5f51;
+  border-radius: 999px;
+  padding: 0.36rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sku-po-history-tab.active {
+  background: #ffffff;
+  color: #3f3226;
+  box-shadow: 0 1px 2px rgba(56, 38, 14, 0.14);
 }
 
 .sku-po-table-wrap.preview {

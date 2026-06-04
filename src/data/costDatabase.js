@@ -30,10 +30,15 @@ export const costDatabase = {
   "TESAMORELIN 20MG": 40.00,
   "CJC(NO DAC)/IPAMORELIN 5MG/5MG": 25.00,
   "SNAP 8 10mg": 12.00,
+  "LL37 5MG": 15.00,
+  "LL37 5mg": 15.00,
   "GLOW": 35.00,
   "KLOW": 45.00,
   "KPV": 15.00,
-  "MT-2": 12.00,
+  "MT-2": 30.00,
+  "MT2 10MG": 30.00,
+  "MT-2 10MG": 30.00,
+  "MT-II 10MG": 30.00,
   "VIP": 20.00,
   "$$-31 50MG": 20.00, // SS-31
   "FOX04 10mg": 44.00,
@@ -44,6 +49,11 @@ export const costDatabase = {
   "SEMAX SPRAY 5mg": 27.00,
   "SELANK SPRAY 5mg": 27.00,
   "NAD+ SPRAY 1000mg": 30.00,
+  "DREAM CATCHER": 32.00,
+  "DREAM CATCHER SPRAY 1000MG": 32.00,
+  "DREAM CATCHER SPRAY 1012MG": 32.00,
+  "MT-II SPRAY 10MG": 30.00,
+  "MT2 SPRAY 10MG": 30.00,
   "PT-141 SPRAY 10MG": 27.00,
   "BPC-157 SPRAY 5MG": 28.00,
 
@@ -75,6 +85,69 @@ export const costDatabase = {
   "GLUTATHIONE AMINO 20ML": 25.00,
 };
 
+const normalizeProductTitle = (value) => {
+  if (!value) return '';
+
+  return String(value)
+    .toLowerCase()
+    .replace(/\b\d+\s*[x×]\s*/g, ' ') // remove qty prefixes like "2x" / "2×"
+    .replace(/\bkit\b[^,]*/g, ' ') // strip kit descriptors
+    .replace(/[+&/()\[\],.-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const extractDoseTokens = (value) => {
+  if (!value) return [];
+  const matches = String(value).toLowerCase().match(/\d+(?:\.\d+)?\s*(?:mg|mcg|ml|ct)/g);
+  return matches || [];
+};
+
+const tokenSet = (value) => new Set(normalizeProductTitle(value).split(' ').filter(Boolean));
+
+const jaccardSimilarity = (aSet, bSet) => {
+  if (!aSet.size || !bSet.size) return 0;
+  let intersection = 0;
+  for (const token of aSet) {
+    if (bSet.has(token)) intersection += 1;
+  }
+  const union = aSet.size + bSet.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+};
+
+const findBestFuzzyCostMatch = (productTitle) => {
+  const inputNorm = normalizeProductTitle(productTitle);
+  if (!inputNorm) return null;
+
+  const inputTokens = tokenSet(inputNorm);
+  const inputDoses = extractDoseTokens(productTitle);
+  let best = null;
+
+  for (const [key, cost] of Object.entries(costDatabase)) {
+    const keyNorm = normalizeProductTitle(key);
+    if (!keyNorm) continue;
+
+    const keyTokens = tokenSet(keyNorm);
+    const keyDoses = extractDoseTokens(key);
+
+    // Prefer matches with the same dose information when available.
+    const doseCompatible = inputDoses.length === 0 || keyDoses.length === 0
+      ? true
+      : inputDoses.some(d => keyDoses.includes(d));
+
+    if (!doseCompatible) continue;
+
+    const similarity = jaccardSimilarity(inputTokens, keyTokens);
+    if (similarity < 0.66) continue;
+
+    if (!best || similarity > best.similarity) {
+      best = { cost, similarity };
+    }
+  }
+
+  return best ? best.cost : null;
+};
+
 // Get cost for a product - case insensitive matching
 export const getCost = (productTitle) => {
   if (!productTitle) return null;
@@ -90,6 +163,20 @@ export const getCost = (productTitle) => {
     if (key.toLowerCase() === normalized) {
       return cost;
     }
+  }
+
+  // Normalized match catches small formatting differences (spacing, punctuation, kit labels).
+  const normalizedInput = normalizeProductTitle(productTitle);
+  for (const [key, cost] of Object.entries(costDatabase)) {
+    if (normalizeProductTitle(key) === normalizedInput) {
+      return cost;
+    }
+  }
+
+  // Fuzzy fallback for near matches that are not exact aliases in the DB.
+  const fuzzyCost = findBestFuzzyCostMatch(productTitle);
+  if (fuzzyCost !== null) {
+    return fuzzyCost;
   }
   
   return null;
