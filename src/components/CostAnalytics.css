@@ -48,6 +48,15 @@
   color: #fff;
 }
 
+.cost-view-tabs.details-tabs {
+  margin-top: 0.25rem;
+}
+
+.cost-view-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .pricing-view-section {
   margin-bottom: 2rem;
 }
@@ -197,6 +206,23 @@
   padding: 0.5rem 1rem;
   background: #d5f4e6;
   border-radius: 4px;
+}
+
+.remove-upload-btn {
+  background: #fff3f2;
+  color: #c0392b;
+  border: 1px solid #f1b8b2;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.remove-upload-btn:hover {
+  background: #fdecea;
+  border-color: #ea9b92;
 }
 
 .date-inputs {

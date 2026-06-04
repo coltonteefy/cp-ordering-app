@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { costDatabase, getCost } from '../data/costDatabase';
 import './CostAnalytics.css';
 
@@ -13,13 +13,14 @@ const CostAnalytics = () => {
   const [savedAnalyses, setSavedAnalyses] = useState([]);
   const [selectedForCombine, setSelectedForCombine] = useState([]);
   const [combinedAnalysis, setCombinedAnalysis] = useState(null);
+  const [analysisDetailsTab, setAnalysisDetailsTab] = useState('products');
+  const [combinedDetailsTab, setCombinedDetailsTab] = useState('products');
   const [reportNetSales, setReportNetSales] = useState(null);
   const [activeTab, setActiveTab] = useState('analysis');
-  const [ordersReportFileName, setOrdersReportFileName] = useState('');
   const [productReportFileName, setProductReportFileName] = useState('');
-  const [ordersReportRows, setOrdersReportRows] = useState([]);
   const [comparisonData, setComparisonData] = useState([]);
   const [reconciliation, setReconciliation] = useState(null);
+  const productFileInputRef = useRef(null);
 
   const pricingSource = combinedAnalysis || analysis;
   const pricingRows = pricingSource
@@ -73,13 +74,8 @@ const CostAnalytics = () => {
     ? pricingRows.reduce((best, row) => (row.unitSpread > best.unitSpread ? row : best), pricingRows[0])
     : null;
 
-  // Load saved dates and analyses from localStorage on mount
+  // Load saved analyses and cached upload on mount
   useEffect(() => {
-    const savedDateStart = localStorage.getItem('costAnalyticsDateStart');
-    const savedDateEnd = localStorage.getItem('costAnalyticsDateEnd');
-    if (savedDateStart) setDateStart(savedDateStart);
-    if (savedDateEnd) setDateEnd(savedDateEnd);
-    
     const saved = localStorage.getItem('costAnalysesSaved');
     if (saved) {
       try {
@@ -94,8 +90,8 @@ const CostAnalytics = () => {
       try {
         const parsed = JSON.parse(cachedUpload);
         if (Array.isArray(parsed.salesData) && parsed.salesData.length > 0) {
-          const restoredDateStart = parsed.dateStart || savedDateStart || '';
-          const restoredDateEnd = parsed.dateEnd || savedDateEnd || '';
+          const restoredDateStart = parsed.dateStart || '';
+          const restoredDateEnd = parsed.dateEnd || '';
           const restoredReportNetSales = parsed.reportNetSales ?? null;
 
           setSalesData(parsed.salesData);
@@ -104,23 +100,13 @@ const CostAnalytics = () => {
           setDateStart(restoredDateStart);
           setDateEnd(restoredDateEnd);
           setReportNetSales(restoredReportNetSales);
-          analyzeCosts(parsed.salesData, restoredDateStart, restoredDateEnd, restoredReportNetSales, []);
+          analyzeCosts(parsed.salesData, restoredDateStart, restoredDateEnd, restoredReportNetSales);
         }
       } catch (error) {
         console.error('Error restoring cached CSV upload:', error);
       }
     }
   }, []);
-
-  // Re-analyze when date range changes (if data is loaded)
-  useEffect(() => {
-    if (salesData.length > 0) {
-      analyzeCosts(salesData, dateStart, dateEnd, reportNetSales, ordersReportRows);
-    }
-    // Save dates to localStorage
-    localStorage.setItem('costAnalyticsDateStart', dateStart);
-    localStorage.setItem('costAnalyticsDateEnd', dateEnd);
-  }, [dateStart, dateEnd, ordersReportRows]);
 
   const saveAnalysis = () => {
     if (!analysis || !dateStart || !dateEnd) {
@@ -680,13 +666,11 @@ const CostAnalytics = () => {
         const reportTotalNetSales = extractReportNetSales(parsedRows);
         const csvDateRange = extractDateRangeFromRows(parsedRows);
         const extractedDates = csvDateRange || filenameDates;
-        const resolvedDateStart = extractedDates?.startDate || dateStart;
-        const resolvedDateEnd = extractedDates?.endDate || dateEnd;
+        const resolvedDateStart = extractedDates?.startDate || '';
+        const resolvedDateEnd = extractedDates?.endDate || '';
 
-        if (extractedDates) {
-          setDateStart(resolvedDateStart);
-          setDateEnd(resolvedDateEnd);
-        }
+        setDateStart(resolvedDateStart);
+        setDateEnd(resolvedDateEnd);
 
         const data = normalizeSalesData(parsedRows);
 
@@ -705,7 +689,7 @@ const CostAnalytics = () => {
           reportNetSales: reportTotalNetSales,
           cachedAt: new Date().toISOString(),
         });
-        analyzeCosts(data, resolvedDateStart, resolvedDateEnd, reportTotalNetSales, ordersReportRows);
+        analyzeCosts(data, resolvedDateStart, resolvedDateEnd, reportTotalNetSales);
       } catch (error) {
         alert('Error parsing CSV: ' + error.message);
       }
@@ -714,80 +698,23 @@ const CostAnalytics = () => {
     reader.readAsText(file);
   };
 
-  const handleOrdersReportUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const clearProductReportUpload = () => {
+    if (productFileInputRef.current) {
+      productFileInputRef.current.value = '';
+    }
 
-    setOrdersReportFileName(file.name);
-    const reader = new FileReader();
+    setSalesData([]);
+    setAnalysis(null);
+    setFileName('');
+    setProductReportFileName('');
+    setUnmatchedProducts([]);
+    setDateStart('');
+    setDateEnd('');
+    setReportNetSales(null);
+    setComparisonData([]);
+    setReconciliation(null);
 
-    reader.onload = (event) => {
-      try {
-        const csv = event.target.result;
-        const parsedRows = parseCsvText(csv);
-        const data = normalizeSalesData(parsedRows);
-
-        if (!parsedRows.length) {
-          alert('No rows were found in the orders report CSV file.');
-          return;
-        }
-
-        setOrdersReportRows(parsedRows);
-        setComparisonData(data);
-
-        if (salesData.length > 0) {
-          analyzeCosts(salesData, dateStart, dateEnd, reportNetSales, parsedRows);
-        }
-      } catch (error) {
-        alert('Error parsing orders report CSV: ' + error.message);
-      }
-    };
-
-    reader.readAsText(file);
-  };
-
-  const getOrderProductsHeader = (rows) => {
-    if (!rows.length) return null;
-    const first = rows[0];
-    if (Object.prototype.hasOwnProperty.call(first, 'Product(s)')) return 'Product(s)';
-    if (Object.prototype.hasOwnProperty.call(first, 'Products')) return 'Products';
-    return null;
-  };
-
-  const calculateShippingOrdersFromOrdersReport = (rows) => {
-    const productsHeader = getOrderProductsHeader(rows);
-    if (!productsHeader) return null;
-
-    const isIgnoredOrderProduct = (title) => {
-      const normalized = String(title || '').toLowerCase();
-      return normalized.includes('bac water') || normalized.includes('bacteriostatic water');
-    };
-
-    const seenOrderKeys = new Set();
-    let shippingOrders = 0;
-
-    rows.forEach((row, index) => {
-      const orderId = String(
-        findRowValueCaseInsensitive(row, ['order number', 'order #', 'order', 'id'])
-      ).trim();
-      const orderKey = orderId || `row-${index}`;
-      if (seenOrderKeys.has(orderKey)) return;
-      seenOrderKeys.add(orderKey);
-
-      const products = parseWooProducts(row[productsHeader]);
-      if (!products.length) return;
-
-      const hasKitOrMix = products.some((item) => {
-        const name = item.name || '';
-        if (!name) return false;
-        if (isIgnoredOrderProduct(name)) return false;
-        return isKitOrMixCategory(inferCategory(name), name);
-      });
-
-      if (hasKitOrMix) shippingOrders += 1;
-    });
-
-    return shippingOrders;
+    localStorage.removeItem(LAST_UPLOAD_STORAGE_KEY);
   };
 
   const analyzeCosts = (
@@ -795,7 +722,6 @@ const CostAnalytics = () => {
     paramDateStart = dateStart,
     paramDateEnd = dateEnd,
     paramReportNetSales = reportNetSales,
-    paramOrdersReportRows = ordersReportRows,
   ) => {
     const breakdown = [];
     const unmatched = [];
@@ -821,19 +747,14 @@ const CostAnalytics = () => {
       return !isKitOrMixCategory(category, productTitle);
     });
 
-    // Prefer order-level shipping count from Orders report to avoid product-level over-counting.
-    const orderLevelShippingCount = calculateShippingOrdersFromOrdersReport(paramOrdersReportRows);
-    if (orderLevelShippingCount !== null) {
-      shippingOrderCount = orderLevelShippingCount;
-    } else {
-      shippingOrderCount = data.reduce((sum, row) => {
-        const productTitle = row['Product title'] || '';
-        if (isIgnoredProduct(productTitle)) return sum;
-        const category = row.Category || '';
-        if (!isKitOrMixCategory(category, productTitle)) return sum;
-        return sum + (parseInt(row.Orders) || 0);
-      }, 0);
-    }
+    // Shipping applies only to Kit and Kit/Singles mix categories.
+    shippingOrderCount = data.reduce((sum, row) => {
+      const productTitle = row['Product title'] || '';
+      if (isIgnoredProduct(productTitle)) return sum;
+      const category = row.Category || '';
+      if (!isKitOrMixCategory(category, productTitle)) return sum;
+      return sum + (parseInt(row.Orders) || 0);
+    }, 0);
 
     data.forEach((row) => {
       const productTitle = row['Product title'] || '';
@@ -963,52 +884,27 @@ const CostAnalytics = () => {
       <div className="upload-section">
         <div className="upload-inputs">
           <div className="input-group">
-            <label htmlFor="orders-upload" className="upload-label">
-              Orders Report CSV:
-            </label>
-            <input
-              id="orders-upload"
-              type="file"
-              accept=".csv"
-              onChange={handleOrdersReportUpload}
-              className="file-input"
-            />
-            {ordersReportFileName && <span className="file-name">Loaded: {ordersReportFileName}</span>}
-          </div>
-          <div className="input-group">
             <label htmlFor="product-upload" className="upload-label">
               Product Report CSV:
             </label>
             <input
               id="product-upload"
+              ref={productFileInputRef}
               type="file"
               accept=".csv"
               onChange={handleProductReportUpload}
               className="file-input"
             />
             {productReportFileName && <span className="file-name">Loaded: {productReportFileName}</span>}
-          </div>
-          <div className="date-inputs">
-            <div className="date-input-group">
-              <label htmlFor="date-start">From:</label>
-              <input
-                id="date-start"
-                type="date"
-                value={dateStart}
-                onChange={(e) => setDateStart(e.target.value)}
-                className="date-input"
-              />
-            </div>
-            <div className="date-input-group">
-              <label htmlFor="date-end">To:</label>
-              <input
-                id="date-end"
-                type="date"
-                value={dateEnd}
-                onChange={(e) => setDateEnd(e.target.value)}
-                className="date-input"
-              />
-            </div>
+            {productReportFileName && (
+              <button
+                type="button"
+                className="remove-upload-btn"
+                onClick={clearProductReportUpload}
+              >
+                Remove File
+              </button>
+            )}
           </div>
           <button onClick={saveAnalysis} className="save-analysis-btn">💾 Save Analysis</button>
         </div>
@@ -1018,7 +914,7 @@ const CostAnalytics = () => {
         <div className="reconciliation-section">
           <h2>Cross-Check: 2 Report Reconciliation</h2>
           <p className="breakdown-subtitle">
-            Comparing normalized product totals between {productReportFileName || fileName || 'product report'} and {ordersReportFileName || 'orders report'}
+            Comparing normalized product totals between {productReportFileName || fileName || 'primary report'} and comparison report
           </p>
 
           <div className="summary-cards pricing-summary-cards">
@@ -1330,47 +1226,116 @@ const CostAnalytics = () => {
             </div>
           </div>
 
-          {combinedAnalysis.kitSales?.rows?.length > 0 && (
+          <div className="cost-view-tabs details-tabs" role="tablist" aria-label="Combined details views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={combinedDetailsTab === 'products'}
+              className={`cost-view-tab ${combinedDetailsTab === 'products' ? 'active' : ''}`}
+              onClick={() => setCombinedDetailsTab('products')}
+            >
+              Product Breakdown
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={combinedDetailsTab === 'kits'}
+              className={`cost-view-tab ${combinedDetailsTab === 'kits' ? 'active' : ''}`}
+              onClick={() => setCombinedDetailsTab('kits')}
+              disabled={!combinedAnalysis.kitSales?.rows?.length}
+            >
+              Kit Data
+            </button>
+          </div>
+
+          {combinedDetailsTab === 'kits' && (
             <div className="breakdown-section kit-sales-section">
               <h2>Kit Sales Data</h2>
+              {combinedAnalysis.kitSales?.rows?.length > 0 ? (
+                <>
+                  <p className="breakdown-subtitle">
+                    {combinedAnalysis.kitSales.rows.length} kit products • {combinedAnalysis.kitSales.totalItemsSold} units • {combinedAnalysis.kitSales.totalOrders} orders
+                  </p>
+                  <div className="summary-cards pricing-summary-cards">
+                    <div className="card">
+                      <div className="card-label">Kit Net Sales</div>
+                      <div className="card-value">${combinedAnalysis.kitSales.totalNetSales.toFixed(2)}</div>
+                    </div>
+                    <div className="card">
+                      <div className="card-label">Kit Units Sold</div>
+                      <div className="card-value">{combinedAnalysis.kitSales.totalItemsSold}</div>
+                    </div>
+                    <div className="card">
+                      <div className="card-label">Kit Orders</div>
+                      <div className="card-value">{combinedAnalysis.kitSales.totalOrders}</div>
+                    </div>
+                  </div>
+                  <div className="table-wrapper">
+                    <table className="breakdown-table pricing-compare-table">
+                      <thead>
+                        <tr>
+                          <th>Product</th>
+                          <th>Category</th>
+                          <th className="number-head">Units</th>
+                          <th className="number-head">Orders</th>
+                          <th className="number-head">Net Sales</th>
+                          <th className="number-head">Avg Sell</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {combinedAnalysis.kitSales.rows.map((item, idx) => (
+                          <tr key={`combined-kit-${idx}`}>
+                            <td className="product-name">{item.product}</td>
+                            <td>{item.category || 'Kits'}</td>
+                            <td className="number">{item.itemsSold}</td>
+                            <td className="number">{item.orders}</td>
+                            <td className="number revenue">${item.netSales.toFixed(2)}</td>
+                            <td className="number">${item.avgSellPrice.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <p>No kit data found for this combined period.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {combinedDetailsTab === 'products' && (
+            <div className="breakdown-section">
+              <h2>Product Performance (Combined)</h2>
               <p className="breakdown-subtitle">
-                {combinedAnalysis.kitSales.rows.length} kit products • {combinedAnalysis.kitSales.totalItemsSold} units • {combinedAnalysis.kitSales.totalOrders} orders
+                {combinedAnalysis.breakdown.length} products matched • {combinedAnalysis.totalItemsSold} total units sold
               </p>
-              <div className="summary-cards pricing-summary-cards">
-                <div className="card">
-                  <div className="card-label">Kit Net Sales</div>
-                  <div className="card-value">${combinedAnalysis.kitSales.totalNetSales.toFixed(2)}</div>
-                </div>
-                <div className="card">
-                  <div className="card-label">Kit Units Sold</div>
-                  <div className="card-value">{combinedAnalysis.kitSales.totalItemsSold}</div>
-                </div>
-                <div className="card">
-                  <div className="card-label">Kit Orders</div>
-                  <div className="card-value">{combinedAnalysis.kitSales.totalOrders}</div>
-                </div>
-              </div>
               <div className="table-wrapper">
-                <table className="breakdown-table pricing-compare-table">
+                <table className="breakdown-table">
                   <thead>
                     <tr>
                       <th>Product</th>
                       <th>Category</th>
-                      <th className="number-head">Units</th>
-                      <th className="number-head">Orders</th>
-                      <th className="number-head">Net Sales</th>
-                      <th className="number-head">Avg Sell</th>
+                      <th>Qty Sold</th>
+                      <th>Total COGS</th>
+                      <th>Net Sales</th>
+                      <th>Profit</th>
+                      <th>Margin %</th>
+                      <th>Orders</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {combinedAnalysis.kitSales.rows.map((item, idx) => (
-                      <tr key={`combined-kit-${idx}`}>
+                    {combinedAnalysis.breakdown.map((item, idx) => (
+                      <tr key={idx}>
                         <td className="product-name">{item.product}</td>
-                        <td>{item.category || 'Kits'}</td>
+                        <td>{item.category}</td>
                         <td className="number">{item.itemsSold}</td>
-                        <td className="number">{item.orders}</td>
+                        <td className="number cost">${item.totalCost.toFixed(2)}</td>
                         <td className="number revenue">${item.netSales.toFixed(2)}</td>
-                        <td className="number">${item.avgSellPrice.toFixed(2)}</td>
+                        <td className={`number profit ${item.profit > 0 ? 'positive' : 'negative'}`}>${item.profit.toFixed(2)}</td>
+                        <td className="number">{item.profitMargin.toFixed(1)}%</td>
+                        <td className="number">{item.orders}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1378,44 +1343,6 @@ const CostAnalytics = () => {
               </div>
             </div>
           )}
-
-          {/* Combined Breakdown Table */}
-          <div className="breakdown-section">
-            <h2>Product Performance (Combined)</h2>
-            <p className="breakdown-subtitle">
-              {combinedAnalysis.breakdown.length} products matched • {combinedAnalysis.totalItemsSold} total units sold
-            </p>
-            <div className="table-wrapper">
-              <table className="breakdown-table">
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Category</th>
-                    <th>Qty Sold</th>
-                    <th>Total COGS</th>
-                    <th>Net Sales</th>
-                    <th>Profit</th>
-                    <th>Margin %</th>
-                    <th>Orders</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {combinedAnalysis.breakdown.map((item, idx) => (
-                    <tr key={idx}>
-                      <td className="product-name">{item.product}</td>
-                      <td>{item.category}</td>
-                      <td className="number">{item.itemsSold}</td>
-                      <td className="number cost">${item.totalCost.toFixed(2)}</td>
-                      <td className="number revenue">${item.netSales.toFixed(2)}</td>
-                      <td className={`number profit ${item.profit > 0 ? 'positive' : 'negative'}`}>${item.profit.toFixed(2)}</td>
-                      <td className="number">{item.profitMargin.toFixed(1)}%</td>
-                      <td className="number">{item.orders}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1487,7 +1414,7 @@ const CostAnalytics = () => {
                 <span>${analysis.totalCOGS.toFixed(2)}</span>
               </div>
               <div className="bill-row">
-                <span>Shipping Orders (${5} charge, from Orders report)</span>
+                <span>Shipping Orders (${5} charge)</span>
                 <span>{analysis.shippingOrderCount ?? analysis.totalOrders}</span>
               </div>
               <div className="bill-row">
@@ -1501,49 +1428,120 @@ const CostAnalytics = () => {
             </div>
           </div>
 
-          {analysis.kitSales?.rows?.length > 0 && (
+          <div className="cost-view-tabs details-tabs" role="tablist" aria-label="Analysis details views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={analysisDetailsTab === 'products'}
+              className={`cost-view-tab ${analysisDetailsTab === 'products' ? 'active' : ''}`}
+              onClick={() => setAnalysisDetailsTab('products')}
+            >
+              Product Breakdown
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={analysisDetailsTab === 'kits'}
+              className={`cost-view-tab ${analysisDetailsTab === 'kits' ? 'active' : ''}`}
+              onClick={() => setAnalysisDetailsTab('kits')}
+              disabled={!analysis.kitSales?.rows?.length}
+            >
+              Kit Data
+            </button>
+          </div>
+
+          {analysisDetailsTab === 'kits' && (
             <div className="breakdown-section kit-sales-section">
               <h2>Kit Sales Data</h2>
+              {analysis.kitSales?.rows?.length > 0 ? (
+                <>
+                  <p className="breakdown-subtitle">
+                    {analysis.kitSales.rows.length} kit products • {analysis.kitSales.totalItemsSold} units • {analysis.kitSales.totalOrders} orders
+                  </p>
+                  <div className="summary-cards pricing-summary-cards">
+                    <div className="card">
+                      <div className="card-label">Kit Net Sales</div>
+                      <div className="card-value">${analysis.kitSales.totalNetSales.toFixed(2)}</div>
+                    </div>
+                    <div className="card">
+                      <div className="card-label">Kit Units Sold</div>
+                      <div className="card-value">{analysis.kitSales.totalItemsSold}</div>
+                    </div>
+                    <div className="card">
+                      <div className="card-label">Kit Orders</div>
+                      <div className="card-value">{analysis.kitSales.totalOrders}</div>
+                    </div>
+                  </div>
+                  <div className="table-wrapper">
+                    <table className="breakdown-table pricing-compare-table">
+                      <thead>
+                        <tr>
+                          <th>Product</th>
+                          <th>SKU</th>
+                          <th>Category</th>
+                          <th className="number-head">Units</th>
+                          <th className="number-head">Orders</th>
+                          <th className="number-head">Net Sales</th>
+                          <th className="number-head">Avg Sell</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analysis.kitSales.rows.map((item, idx) => (
+                          <tr key={`kit-${idx}`}>
+                            <td className="product-name">{item.product}</td>
+                            <td>{item.sku || 'N/A'}</td>
+                            <td>{item.category || 'Kits'}</td>
+                            <td className="number">{item.itemsSold}</td>
+                            <td className="number">{item.orders}</td>
+                            <td className="number revenue">${item.netSales.toFixed(2)}</td>
+                            <td className="number">${item.avgSellPrice.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <p>No kit data found for this report.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {analysisDetailsTab === 'products' && (
+            <div className="breakdown-section">
+              <h2>Product Breakdown</h2>
               <p className="breakdown-subtitle">
-                {analysis.kitSales.rows.length} kit products • {analysis.kitSales.totalItemsSold} units • {analysis.kitSales.totalOrders} orders
+                {analysis.breakdown.length} products matched • {analysis.totalItemsSold} total units sold
               </p>
-              <div className="summary-cards pricing-summary-cards">
-                <div className="card">
-                  <div className="card-label">Kit Net Sales</div>
-                  <div className="card-value">${analysis.kitSales.totalNetSales.toFixed(2)}</div>
-                </div>
-                <div className="card">
-                  <div className="card-label">Kit Units Sold</div>
-                  <div className="card-value">{analysis.kitSales.totalItemsSold}</div>
-                </div>
-                <div className="card">
-                  <div className="card-label">Kit Orders</div>
-                  <div className="card-value">{analysis.kitSales.totalOrders}</div>
-                </div>
-              </div>
               <div className="table-wrapper">
-                <table className="breakdown-table pricing-compare-table">
+                <table className="breakdown-table">
                   <thead>
                     <tr>
                       <th>Product</th>
-                      <th>SKU</th>
                       <th>Category</th>
-                      <th className="number-head">Units</th>
-                      <th className="number-head">Orders</th>
-                      <th className="number-head">Net Sales</th>
-                      <th className="number-head">Avg Sell</th>
+                      <th>Qty Sold</th>
+                      <th>Unit Cost</th>
+                      <th>Total COGS</th>
+                      <th>Net Sales</th>
+                      <th>Profit</th>
+                      <th>Margin %</th>
+                      <th>Orders</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {analysis.kitSales.rows.map((item, idx) => (
-                      <tr key={`kit-${idx}`}>
+                    {analysis.breakdown.map((item, idx) => (
+                      <tr key={idx}>
                         <td className="product-name">{item.product}</td>
-                        <td>{item.sku || 'N/A'}</td>
-                        <td>{item.category || 'Kits'}</td>
+                        <td>{item.category}</td>
                         <td className="number">{item.itemsSold}</td>
-                        <td className="number">{item.orders}</td>
+                        <td className="number">${item.unitCost.toFixed(2)}</td>
+                        <td className="number cost">${item.totalCost.toFixed(2)}</td>
                         <td className="number revenue">${item.netSales.toFixed(2)}</td>
-                        <td className="number">${item.avgSellPrice.toFixed(2)}</td>
+                        <td className={`number profit ${item.profit > 0 ? 'positive' : 'negative'}`}>${item.profit.toFixed(2)}</td>
+                        <td className="number">{item.profitMargin.toFixed(1)}%</td>
+                        <td className="number">{item.orders}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1551,46 +1549,6 @@ const CostAnalytics = () => {
               </div>
             </div>
           )}
-
-          {/* Breakdown Table */}
-          <div className="breakdown-section">
-            <h2>Product Breakdown</h2>
-            <p className="breakdown-subtitle">
-              {analysis.breakdown.length} products matched • {analysis.totalItemsSold} total units sold
-            </p>
-            <div className="table-wrapper">
-              <table className="breakdown-table">
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Category</th>
-                    <th>Qty Sold</th>
-                    <th>Unit Cost</th>
-                    <th>Total COGS</th>
-                    <th>Net Sales</th>
-                    <th>Profit</th>
-                    <th>Margin %</th>
-                    <th>Orders</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analysis.breakdown.map((item, idx) => (
-                    <tr key={idx}>
-                      <td className="product-name">{item.product}</td>
-                      <td>{item.category}</td>
-                      <td className="number">{item.itemsSold}</td>
-                      <td className="number">${item.unitCost.toFixed(2)}</td>
-                      <td className="number cost">${item.totalCost.toFixed(2)}</td>
-                      <td className="number revenue">${item.netSales.toFixed(2)}</td>
-                      <td className={`number profit ${item.profit > 0 ? 'positive' : 'negative'}`}>${item.profit.toFixed(2)}</td>
-                      <td className="number">{item.profitMargin.toFixed(1)}%</td>
-                      <td className="number">{item.orders}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
 
           {/* Business Insights */}
           <div className="insights-section">
