@@ -8,7 +8,7 @@ import {
   query,
   serverTimestamp,
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getBytes, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
 import { costDatabase, getCost } from '../data/costDatabase';
 import './CostAnalytics.css';
@@ -44,7 +44,9 @@ const CostAnalytics = () => {
     return {
       id: docSnapshot.id,
       fileName: data.fileName || 'Unnamed report',
+      storagePath: data.storagePath || '',
       downloadURL: data.downloadURL || '',
+      csvText: typeof data.csvText === 'string' ? data.csvText : '',
       dateStart: data.dateStart || '',
       dateEnd: data.dateEnd || '',
       reportNetSales: Number(data.reportNetSales) || 0,
@@ -789,10 +791,9 @@ const CostAnalytics = () => {
 
     try {
       const fallbackFileName = productReportFileName || fileName || `report-${Date.now()}.csv`;
-      const uploadSource = uploadedProductFile || new Blob(
-        [salesDataToCsv(salesData)],
-        { type: 'text/csv' }
-      );
+      const csvTextForDoc = salesDataToCsv(salesData);
+      const uploadSource = uploadedProductFile || new Blob([csvTextForDoc], { type: 'text/csv' });
+      const csvTextToStore = csvTextForDoc.length <= 900000 ? csvTextForDoc : '';
       const stamp = Date.now();
       const safeName = fallbackFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
       const storagePath = `cost-analytics-reports/${stamp}-${safeName}`;
@@ -810,6 +811,7 @@ const CostAnalytics = () => {
         fileName: fallbackFileName,
         storagePath,
         downloadURL,
+        csvText: csvTextToStore,
         dateStart,
         dateEnd,
         reportNetSales: reportNetSales ?? 0,
@@ -830,16 +832,39 @@ const CostAnalytics = () => {
   };
 
   const loadSharedReport = async (report) => {
-    if (!report?.downloadURL) return;
+    if (!report?.downloadURL && !report?.storagePath && !report?.csvText) return;
     setIsLoadingSharedReportId(report.id);
 
     try {
-      const response = await fetch(report.downloadURL);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch report (${response.status})`);
+      let csvText = '';
+
+      if (report.csvText) {
+        csvText = report.csvText;
       }
 
-      const csvText = await response.text();
+      // Prefer Storage SDK path-based read for authenticated users.
+      if (!csvText && report.storagePath) {
+        try {
+          const storageRef = ref(storage, report.storagePath);
+          const bytes = await getBytes(storageRef);
+          csvText = new TextDecoder('utf-8').decode(bytes);
+        } catch (storageReadError) {
+          console.warn('Path-based storage read failed, falling back to download URL.', storageReadError);
+        }
+      }
+
+      if (!csvText) {
+        if (!report.downloadURL) {
+          throw new Error('No download URL found for this shared report.');
+        }
+
+        const response = await fetch(report.downloadURL);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch report (${response.status})`);
+        }
+        csvText = await response.text();
+      }
+
       setUploadedProductFile(null);
       setFileName(report.fileName || 'Shared Report');
       setProductReportFileName(report.fileName || 'Shared Report');
@@ -849,7 +874,7 @@ const CostAnalytics = () => {
       applyReportFromCsvText(csvText, report.fileName || 'Shared Report');
     } catch (error) {
       console.error('Unable to load shared report:', error);
-      alert('Unable to load this shared report right now.');
+      alert(`Unable to load this shared report right now. ${error?.message || ''} If this is an older shared file, re-save it once so it includes inline CSV fallback.`.trim());
     } finally {
       setIsLoadingSharedReportId('');
     }
