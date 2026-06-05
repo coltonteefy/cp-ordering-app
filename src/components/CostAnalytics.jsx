@@ -1,9 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth, db, storage } from '../firebaseConfig';
 import { costDatabase, getCost } from '../data/costDatabase';
 import './CostAnalytics.css';
 
 const CostAnalytics = () => {
   const LAST_UPLOAD_STORAGE_KEY = 'costAnalyticsLastUpload';
+  const SHARED_REPORTS_COLLECTION = 'costAnalyticsSharedReports';
+  const MAX_SHARED_REPORTS = 40;
   const [salesData, setSalesData] = useState([]);
   const [analysis, setAnalysis] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -20,7 +33,39 @@ const CostAnalytics = () => {
   const [productReportFileName, setProductReportFileName] = useState('');
   const [comparisonData, setComparisonData] = useState([]);
   const [reconciliation, setReconciliation] = useState(null);
+  const [uploadedProductFile, setUploadedProductFile] = useState(null);
+  const [sharedReports, setSharedReports] = useState([]);
+  const [isSavingSharedReport, setIsSavingSharedReport] = useState(false);
+  const [isLoadingSharedReportId, setIsLoadingSharedReportId] = useState('');
   const productFileInputRef = useRef(null);
+
+  const mapSharedReportDoc = (docSnapshot) => {
+    const data = docSnapshot.data();
+    return {
+      id: docSnapshot.id,
+      fileName: data.fileName || 'Unnamed report',
+      downloadURL: data.downloadURL || '',
+      dateStart: data.dateStart || '',
+      dateEnd: data.dateEnd || '',
+      reportNetSales: Number(data.reportNetSales) || 0,
+      uploadedBy: data.uploadedBy || 'Unknown',
+      uploadedAt: data.uploadedAt?.toDate ? data.uploadedAt.toDate() : null,
+      uploadedAtIso: data.uploadedAtIso || '',
+      rowCount: Number(data.rowCount) || 0,
+    };
+  };
+
+  const loadSharedReports = async () => {
+    try {
+      const sharedRef = collection(db, SHARED_REPORTS_COLLECTION);
+      const sharedQuery = query(sharedRef, orderBy('uploadedAt', 'desc'), limit(MAX_SHARED_REPORTS));
+      const snapshot = await getDocs(sharedQuery);
+      setSharedReports(snapshot.docs.map(mapSharedReportDoc));
+    } catch (error) {
+      console.error('Unable to load shared reports:', error);
+      setSharedReports([]);
+    }
+  };
 
   const pricingSource = combinedAnalysis || analysis;
   const pricingRows = pricingSource
@@ -107,6 +152,43 @@ const CostAnalytics = () => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    loadSharedReports();
+  }, []);
+
+  const applyReportFromCsvText = (csvText, sourceName) => {
+    const parsedRows = parseCsvText(csvText);
+    const reportTotalNetSales = extractReportNetSales(parsedRows);
+    const csvDateRange = extractDateRangeFromRows(parsedRows);
+    const filenameDates = extractDatesFromFilename(sourceName || '');
+    const extractedDates = csvDateRange || filenameDates;
+    const resolvedDateStart = extractedDates?.startDate || '';
+    const resolvedDateEnd = extractedDates?.endDate || '';
+
+    setDateStart(resolvedDateStart);
+    setDateEnd(resolvedDateEnd);
+
+    const data = normalizeSalesData(parsedRows);
+
+    if (!data.length) {
+      throw new Error('No rows were found in this CSV file.');
+    }
+
+    setSalesData(data);
+    setReportNetSales(reportTotalNetSales);
+
+    cacheUploadedData({
+      fileName: sourceName,
+      salesData: data,
+      dateStart: resolvedDateStart,
+      dateEnd: resolvedDateEnd,
+      reportNetSales: reportTotalNetSales,
+      cachedAt: new Date().toISOString(),
+    });
+
+    analyzeCosts(data, resolvedDateStart, resolvedDateEnd, reportTotalNetSales);
+  };
 
   const saveAnalysis = () => {
     if (!analysis || !dateStart || !dateEnd) {
@@ -653,49 +735,92 @@ const CostAnalytics = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    setUploadedProductFile(file);
     setFileName(file.name);
     setProductReportFileName(file.name);
-    const filenameDates = extractDatesFromFilename(file.name);
 
     const reader = new FileReader();
 
     reader.onload = (event) => {
       try {
-        const csv = event.target.result;
-        const parsedRows = parseCsvText(csv);
-        const reportTotalNetSales = extractReportNetSales(parsedRows);
-        const csvDateRange = extractDateRangeFromRows(parsedRows);
-        const extractedDates = csvDateRange || filenameDates;
-        const resolvedDateStart = extractedDates?.startDate || '';
-        const resolvedDateEnd = extractedDates?.endDate || '';
-
-        setDateStart(resolvedDateStart);
-        setDateEnd(resolvedDateEnd);
-
-        const data = normalizeSalesData(parsedRows);
-
-        if (!data.length) {
-          alert('No rows were found in this CSV file.');
-          return;
-        }
-
-        setSalesData(data);
-        setReportNetSales(reportTotalNetSales);
-        cacheUploadedData({
-          fileName: file.name,
-          salesData: data,
-          dateStart: resolvedDateStart,
-          dateEnd: resolvedDateEnd,
-          reportNetSales: reportTotalNetSales,
-          cachedAt: new Date().toISOString(),
-        });
-        analyzeCosts(data, resolvedDateStart, resolvedDateEnd, reportTotalNetSales);
+        applyReportFromCsvText(event.target.result, file.name);
       } catch (error) {
         alert('Error parsing CSV: ' + error.message);
       }
     };
 
     reader.readAsText(file);
+  };
+
+  const saveReportToSharedDb = async () => {
+    if (!uploadedProductFile) {
+      alert('Upload a product report first, then save it to shared reports.');
+      return;
+    }
+
+    setIsSavingSharedReport(true);
+
+    try {
+      const stamp = Date.now();
+      const safeName = uploadedProductFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `cost-analytics-reports/${stamp}-${safeName}`;
+      const storageRef = ref(storage, storagePath);
+
+      await uploadBytes(storageRef, uploadedProductFile, {
+        contentType: uploadedProductFile.type || 'text/csv',
+      });
+
+      const downloadURL = await getDownloadURL(storageRef);
+      const uploadedBy = auth.currentUser?.email || 'Unknown';
+      const uploadedAtIso = new Date().toISOString();
+
+      await addDoc(collection(db, SHARED_REPORTS_COLLECTION), {
+        fileName: uploadedProductFile.name,
+        storagePath,
+        downloadURL,
+        dateStart,
+        dateEnd,
+        reportNetSales: reportNetSales ?? 0,
+        rowCount: salesData.length,
+        uploadedBy,
+        uploadedAt: serverTimestamp(),
+        uploadedAtIso,
+      });
+
+      await loadSharedReports();
+      alert('Report saved to shared database.');
+    } catch (error) {
+      console.error('Unable to save shared report:', error);
+      alert('Unable to save report to shared database. Check Firebase rules and try again.');
+    } finally {
+      setIsSavingSharedReport(false);
+    }
+  };
+
+  const loadSharedReport = async (report) => {
+    if (!report?.downloadURL) return;
+    setIsLoadingSharedReportId(report.id);
+
+    try {
+      const response = await fetch(report.downloadURL);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch report (${response.status})`);
+      }
+
+      const csvText = await response.text();
+      setUploadedProductFile(null);
+      setFileName(report.fileName || 'Shared Report');
+      setProductReportFileName(report.fileName || 'Shared Report');
+      if (productFileInputRef.current) {
+        productFileInputRef.current.value = '';
+      }
+      applyReportFromCsvText(csvText, report.fileName || 'Shared Report');
+    } catch (error) {
+      console.error('Unable to load shared report:', error);
+      alert('Unable to load this shared report right now.');
+    } finally {
+      setIsLoadingSharedReportId('');
+    }
   };
 
   const clearProductReportUpload = () => {
@@ -713,6 +838,7 @@ const CostAnalytics = () => {
     setReportNetSales(null);
     setComparisonData([]);
     setReconciliation(null);
+    setUploadedProductFile(null);
 
     localStorage.removeItem(LAST_UPLOAD_STORAGE_KEY);
   };
@@ -905,9 +1031,64 @@ const CostAnalytics = () => {
                 Remove File
               </button>
             )}
+            <button
+              type="button"
+              className="save-shared-btn"
+              onClick={saveReportToSharedDb}
+              disabled={!uploadedProductFile || isSavingSharedReport}
+            >
+              {isSavingSharedReport ? 'Saving...' : 'Save To Shared DB'}
+            </button>
           </div>
           <button onClick={saveAnalysis} className="save-analysis-btn">💾 Save Analysis</button>
         </div>
+      </div>
+
+      <div className="shared-reports-section">
+        <h2>Shared Reports (All Users)</h2>
+        {sharedReports.length === 0 ? (
+          <p className="breakdown-subtitle">No shared reports yet.</p>
+        ) : (
+          <div className="table-wrapper">
+            <table className="breakdown-table shared-reports-table">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Date Range</th>
+                  <th className="number-head">Report Net Sales</th>
+                  <th>Uploaded By</th>
+                  <th>Uploaded At</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sharedReports.map((report) => (
+                  <tr key={report.id}>
+                    <td className="product-name">{report.fileName}</td>
+                    <td>
+                      {report.dateStart && report.dateEnd
+                        ? `${report.dateStart} to ${report.dateEnd}`
+                        : 'Date not detected'}
+                    </td>
+                    <td className="number revenue">${(report.reportNetSales || 0).toFixed(2)}</td>
+                    <td>{report.uploadedBy || 'Unknown'}</td>
+                    <td>{report.uploadedAt ? report.uploadedAt.toLocaleString() : (report.uploadedAtIso || 'Unknown')}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="load-btn shared-load-btn"
+                        onClick={() => loadSharedReport(report)}
+                        disabled={isLoadingSharedReportId === report.id}
+                      >
+                        {isLoadingSharedReportId === report.id ? 'Loading...' : 'Load'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {reconciliation && (

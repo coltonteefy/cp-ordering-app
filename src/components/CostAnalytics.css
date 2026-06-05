@@ -225,6 +225,50 @@
   border-color: #ea9b92;
 }
 
+.save-shared-btn {
+  background: #eef7ff;
+  color: #1f618d;
+  border: 1px solid #b8d7f0;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.save-shared-btn:hover:not(:disabled) {
+  background: #dcefff;
+}
+
+.save-shared-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.shared-reports-section {
+  background: #f9fbff;
+  border: 1px solid #d6e6f5;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.shared-reports-section h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+  color: #1f618d;
+}
+
+.shared-reports-table th.number-head,
+.shared-reports-table td.number {
+  text-align: right;
+}
+
+.shared-load-btn {
+  min-width: 72px;
+}
+
 .date-inputs {
   display: flex;
   gap: 1rem;
