@@ -752,22 +752,54 @@ const CostAnalytics = () => {
     reader.readAsText(file);
   };
 
+  const escapeCsvValue = (value) => {
+    const normalized = value === null || value === undefined ? '' : String(value);
+    if (/[",\n\r]/.test(normalized)) {
+      return `"${normalized.replace(/"/g, '""')}"`;
+    }
+    return normalized;
+  };
+
+  const salesDataToCsv = (rows) => {
+    if (!Array.isArray(rows) || rows.length === 0) return '';
+
+    const preferredHeaders = ['Product title', 'Category', 'Items sold', 'Orders', 'Net sales', 'SKU'];
+    const rowKeys = new Set();
+    rows.forEach((row) => {
+      Object.keys(row || {}).forEach((key) => rowKeys.add(key));
+    });
+
+    const headers = [
+      ...preferredHeaders.filter((header) => rowKeys.has(header)),
+      ...Array.from(rowKeys).filter((header) => !preferredHeaders.includes(header)).sort(),
+    ];
+
+    const headerLine = headers.map(escapeCsvValue).join(',');
+    const dataLines = rows.map((row) => headers.map((header) => escapeCsvValue(row?.[header] ?? '')).join(','));
+    return [headerLine, ...dataLines].join('\n');
+  };
+
   const saveReportToSharedDb = async () => {
-    if (!uploadedProductFile) {
-      alert('Upload a product report first, then save it to shared reports.');
+    if (!uploadedProductFile && !salesData.length) {
+      alert('Upload or load a product report first, then save it to shared reports.');
       return;
     }
 
     setIsSavingSharedReport(true);
 
     try {
+      const fallbackFileName = productReportFileName || fileName || `report-${Date.now()}.csv`;
+      const uploadSource = uploadedProductFile || new Blob(
+        [salesDataToCsv(salesData)],
+        { type: 'text/csv' }
+      );
       const stamp = Date.now();
-      const safeName = uploadedProductFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeName = fallbackFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
       const storagePath = `cost-analytics-reports/${stamp}-${safeName}`;
       const storageRef = ref(storage, storagePath);
 
-      await uploadBytes(storageRef, uploadedProductFile, {
-        contentType: uploadedProductFile.type || 'text/csv',
+      await uploadBytes(storageRef, uploadSource, {
+        contentType: uploadSource.type || 'text/csv',
       });
 
       const downloadURL = await getDownloadURL(storageRef);
@@ -775,7 +807,7 @@ const CostAnalytics = () => {
       const uploadedAtIso = new Date().toISOString();
 
       await addDoc(collection(db, SHARED_REPORTS_COLLECTION), {
-        fileName: uploadedProductFile.name,
+        fileName: fallbackFileName,
         storagePath,
         downloadURL,
         dateStart,
@@ -1035,7 +1067,7 @@ const CostAnalytics = () => {
               type="button"
               className="save-shared-btn"
               onClick={saveReportToSharedDb}
-              disabled={!uploadedProductFile || isSavingSharedReport}
+              disabled={(!uploadedProductFile && !salesData.length) || isSavingSharedReport}
             >
               {isSavingSharedReport ? 'Saving...' : 'Save To Shared DB'}
             </button>
