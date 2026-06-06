@@ -210,6 +210,7 @@ const CostAnalytics = () => {
       startDate: rangeStart,
       endDate: rangeEnd,
       orderCount: Number(report?.orderCount) || 0,
+      paidOrderCount: Number(report?.paidOrderCount) || 0,
       metricsSource: report?.metricsSource || 'orders-v3',
       pulledStatuses: Array.isArray(report?.pulledStatuses) ? report.pulledStatuses : [],
       orderStatusCounts: report?.orderStatusCounts || {},
@@ -229,7 +230,7 @@ const CostAnalytics = () => {
       grossSales: Number(report?.analyticsTotals?.gross_sales) || normalizedNetSales,
       totalSales: Number(report?.analyticsTotals?.total_sales) || Number(report?.analyticsTotals?.gross_sales) || normalizedNetSales,
       netSales: Number(report?.analyticsTotals?.net_revenue) || normalizedNetSales,
-    }, Number(report?.orderCount) || reportRows.length);
+    }, Number(report?.paidOrderCount) || Number(report?.orderCount) || reportRows.length);
   };
 
   const pullWooDailyReport = async ({ silent = false, startDate = wooPullStartDate, endDate = wooPullEndDate } = {}) => {
@@ -1771,7 +1772,7 @@ const CostAnalytics = () => {
               <div className="card-value">${combinedAnalysis.avgOrderValue.toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Total Orders (Woo)</div>
+              <div className="card-label">Paid Orders (Woo)</div>
               <div className="card-value">{combinedAnalysis.totalWooOrders ?? combinedAnalysis.totalOrders}</div>
             </div>
             <div className="card">
@@ -1983,7 +1984,7 @@ const CostAnalytics = () => {
               <div className="card-value">${analysis.avgOrderValue.toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Total Orders (Woo)</div>
+              <div className="card-label">Paid Orders (Woo)</div>
               <div className="card-value">{analysis.totalWooOrders ?? analysis.totalOrders}</div>
             </div>
             <div className="card">

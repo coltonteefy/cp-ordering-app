@@ -25,6 +25,12 @@ const parseMoney = (value) => {
 
 const inferCategoryFromName = (name) => (/\bkit\b/i.test(String(name || '')) ? 'Kits' : 'Singles');
 
+const getPaidOrderCount = (orderStatusCounts) => {
+  const processingCount = Number(orderStatusCounts?.processing) || 0;
+  const completedCount = Number(orderStatusCounts?.completed) || 0;
+  return processingCount + completedCount;
+};
+
 const getDateKey = (value = new Date()) => {
   const parsed = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(parsed.getTime())) return new Date().toISOString().slice(0, 10);
@@ -264,12 +270,14 @@ const buildDailyWooReport = (orders, startDateKey, endDateKey, analyticsSummary 
   const lineItemNetSales = rows.reduce((sum, row) => sum + parseMoney(row['Net sales']), 0);
   const dashboardNetSales = analyticsSummary?.netSales ?? lineItemNetSales;
   const dashboardOrderCount = analyticsSummary?.orderCount ?? orders.length;
+  const paidOrderCount = getPaidOrderCount(Object.fromEntries(orderStatusCounts.entries()));
 
   return {
     date: startDateKey === endDateKey ? startDateKey : `${startDateKey} to ${endDateKey}`,
     startDate: startDateKey,
     endDate: endDateKey,
     orderCount: dashboardOrderCount,
+    paidOrderCount,
     pulledStatuses: WOO_ORDER_STATUSES.length ? WOO_ORDER_STATUSES : ['any'],
     orderStatusCounts: Object.fromEntries(orderStatusCounts.entries()),
     totalNetSales: Number(dashboardNetSales.toFixed(2)),
