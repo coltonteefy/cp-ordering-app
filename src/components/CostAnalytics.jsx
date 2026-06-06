@@ -1759,10 +1759,6 @@ const CostAnalytics = () => {
               <div className="card-label">Total COGS</div>
               <div className="card-value">${combinedAnalysis.totalCOGS.toFixed(2)}</div>
             </div>
-            <div className="card highlight">
-              <div className="card-label">Total Profit</div>
-              <div className="card-value">${combinedAnalysis.totalProfit.toFixed(2)}</div>
-            </div>
             <div className="card">
               <div className="card-label">Profit Margin</div>
               <div className="card-value">{combinedAnalysis.profitMargin.toFixed(1)}%</div>
@@ -1888,7 +1884,11 @@ const CostAnalytics = () => {
               <div className="summary-cards pricing-summary-cards">
                 <div className="card">
                   <div className="card-label">Single Vial Sales</div>
-                  <div className="card-value">${(combinedAnalysis.netSales ?? combinedAnalysis.reportNetSales ?? combinedAnalysis.totalNetSales).toFixed(2)}</div>
+                  <div className="card-value">${combinedAnalysis.totalNetSales.toFixed(2)}</div>
+                </div>
+                <div className="card highlight">
+                  <div className="card-label">Single Vial Profit</div>
+                  <div className="card-value">${combinedAnalysis.totalProfit.toFixed(2)}</div>
                 </div>
               </div>
               <p className="breakdown-subtitle">
@@ -1970,10 +1970,6 @@ const CostAnalytics = () => {
             <div className="card">
               <div className="card-label">Total COGS</div>
               <div className="card-value">${analysis.totalCOGS.toFixed(2)}</div>
-            </div>
-            <div className="card highlight">
-              <div className="card-label">Total Profit</div>
-              <div className="card-value">${analysis.totalProfit.toFixed(2)}</div>
             </div>
             <div className="card">
               <div className="card-label">Profit Margin</div>
@@ -2102,7 +2098,11 @@ const CostAnalytics = () => {
               <div className="summary-cards pricing-summary-cards">
                 <div className="card">
                   <div className="card-label">Single Vial Sales</div>
-                  <div className="card-value">${(analysis.netSales ?? analysis.reportNetSales ?? analysis.totalNetSales).toFixed(2)}</div>
+                  <div className="card-value">${analysis.totalNetSales.toFixed(2)}</div>
+                </div>
+                <div className="card highlight">
+                  <div className="card-label">Single Vial Profit</div>
+                  <div className="card-value">${analysis.totalProfit.toFixed(2)}</div>
                 </div>
               </div>
               <p className="breakdown-subtitle">
