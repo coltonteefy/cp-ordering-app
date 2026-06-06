@@ -1,16 +1,27 @@
-# React + Vite
+# Order App React
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Local Setup
 
-Currently, two official plugins are available:
+1. Copy `.env.example` to `.env`.
+2. Fill in Woo credentials in `.env`.
+3. Run `npm install`.
+4. Start the backend API: `npm run server`.
+5. In another terminal, start frontend: `npm run dev`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The frontend runs on `http://localhost:5173` and proxies API calls to `http://localhost:3031`.
 
-## React Compiler
+## Required Environment Variables
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `WOO_BASE_URL`
+- `WOO_CONSUMER_KEY`
+- `WOO_CONSUMER_SECRET`
+- `WOO_ORDER_STATUSES` (optional, comma-separated; use `any` for all statuses)
+- `ALLOWED_ORIGINS` (comma-separated browser origins)
+- `PORT` (optional, defaults to 3031)
 
-## Expanding the ESLint configuration
+## Production Notes
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Keep Woo credentials only on the server. Never expose them in frontend code.
+- Set `ALLOWED_ORIGINS` to your real app domains only.
+- Rotate Woo keys immediately if they were shared in screenshots or chat.
+- Run frontend and backend as separate services and put HTTPS in front of both.

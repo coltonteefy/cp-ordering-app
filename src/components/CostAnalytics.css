@@ -75,6 +75,16 @@
   font-size: 0.92rem;
 }
 
+.metric-reconciliation-note {
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid #2d7fb8;
+  background: #eef7fd;
+  border-radius: 4px;
+  color: #1f5f8b;
+  font-size: 0.9rem;
+}
+
 .reconciliation-section {
   background: #f6fbff;
   border: 1px solid #cfe3f4;
@@ -176,6 +186,37 @@
   gap: 1rem;
 }
 
+.input-source-toggle {
+  display: inline-flex;
+  gap: 0.5rem;
+  background: #eef2f5;
+  border: 1px solid #d7dde3;
+  border-radius: 10px;
+  padding: 0.35rem;
+  width: fit-content;
+}
+
+.input-source-btn {
+  border: none;
+  background: transparent;
+  color: #4e5d6b;
+  font-weight: 600;
+  font-size: 0.88rem;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.input-source-btn:hover {
+  background: rgba(52, 152, 219, 0.12);
+}
+
+.input-source-btn.active {
+  background: #3498db;
+  color: #fff;
+}
+
 .input-group {
   display: flex;
   align-items: center;
@@ -246,6 +287,70 @@
   cursor: not-allowed;
 }
 
+.woo-pull-btn {
+  background: #eef8ef;
+  color: #1e8449;
+  border: 1px solid #b8e0c2;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.woo-pull-btn:hover:not(:disabled) {
+  background: #dff3e3;
+}
+
+.woo-pull-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.woo-auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #455a64;
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.woo-date-range-inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.woo-date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.84rem;
+  color: #455a64;
+}
+
+.woo-sync-section {
+  background: #f5fcf7;
+  border: 1px solid #cdebd6;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.woo-sync-section h2 {
+  margin: 0 0 0.55rem;
+  font-size: 1.02rem;
+  color: #1e8449;
+}
+
+.woo-coupon-table th.number-head,
+.woo-coupon-table td.number {
+  text-align: right;
+}
+
 .shared-reports-section {
   background: #f9fbff;
   border: 1px solid #d6e6f5;
@@ -266,6 +371,16 @@
 }
 
 .shared-load-btn {
+  min-width: 72px;
+}
+
+.shared-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.shared-delete-btn {
   min-width: 72px;
 }
 

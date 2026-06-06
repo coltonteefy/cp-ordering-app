@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
 } from 'firebase/firestore';
-import { getBytes, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getBytes, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
 import { costDatabase, getCost } from '../data/costDatabase';
 import './CostAnalytics.css';
@@ -17,6 +19,8 @@ const CostAnalytics = () => {
   const LAST_UPLOAD_STORAGE_KEY = 'costAnalyticsLastUpload';
   const SHARED_REPORTS_COLLECTION = 'costAnalyticsSharedReports';
   const MAX_SHARED_REPORTS = 40;
+  const WOO_PULL_TIMEOUT_MS = 180000;
+  const defaultWooDate = new Date().toISOString().slice(0, 10);
   const [salesData, setSalesData] = useState([]);
   const [analysis, setAnalysis] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -30,6 +34,7 @@ const CostAnalytics = () => {
   const [combinedDetailsTab, setCombinedDetailsTab] = useState('products');
   const [reportNetSales, setReportNetSales] = useState(null);
   const [activeTab, setActiveTab] = useState('analysis');
+  const [inputSource, setInputSource] = useState('woo');
   const [productReportFileName, setProductReportFileName] = useState('');
   const [comparisonData, setComparisonData] = useState([]);
   const [reconciliation, setReconciliation] = useState(null);
@@ -37,6 +42,13 @@ const CostAnalytics = () => {
   const [sharedReports, setSharedReports] = useState([]);
   const [isSavingSharedReport, setIsSavingSharedReport] = useState(false);
   const [isLoadingSharedReportId, setIsLoadingSharedReportId] = useState('');
+  const [isDeletingSharedReportId, setIsDeletingSharedReportId] = useState('');
+  const [isPullingWoo, setIsPullingWoo] = useState(false);
+  const [wooAutoPullEnabled, setWooAutoPullEnabled] = useState(false);
+  const [wooPullInfo, setWooPullInfo] = useState(null);
+  const [wooCouponUsage, setWooCouponUsage] = useState([]);
+  const [wooPullStartDate, setWooPullStartDate] = useState(defaultWooDate);
+  const [wooPullEndDate, setWooPullEndDate] = useState(defaultWooDate);
   const productFileInputRef = useRef(null);
 
   const mapSharedReportDoc = (docSnapshot) => {
@@ -159,7 +171,130 @@ const CostAnalytics = () => {
     loadSharedReports();
   }, []);
 
+  const applyWooDailyReport = (report) => {
+    const rangeStart = report?.startDate || report?.date || defaultWooDate;
+    const rangeEnd = report?.endDate || rangeStart;
+    const rows = Array.isArray(report?.rows) ? report.rows : [];
+
+    if (!rows.length) {
+      throw new Error('No product rows returned from Woo for this date.');
+    }
+
+    const reportRows = rows.map((row) => ({
+      'Product title': row['Product title'] || row.product || '',
+      Category: row.Category || row.category || '',
+      'Items sold': Number(row['Items sold'] ?? row.itemsSold) || 0,
+      Orders: Number(row.Orders ?? row.orders) || 0,
+      'Net sales': Number(row['Net sales'] ?? row.netSales) || 0,
+      SKU: row.SKU || row.sku || '',
+    }));
+
+    const normalizedNetSales = Number(report?.totalNetSales) || reportRows.reduce(
+      (sum, row) => sum + (Number(row['Net sales']) || 0),
+      0
+    );
+
+    const sourceName = rangeStart === rangeEnd
+      ? `Woo Daily Orders ${rangeStart}.csv`
+      : `Woo Orders ${rangeStart} to ${rangeEnd}.csv`;
+    setInputSource('woo');
+    setUploadedProductFile(null);
+    setFileName(sourceName);
+    setProductReportFileName(sourceName);
+    setDateStart(rangeStart);
+    setDateEnd(rangeEnd);
+    setSalesData(reportRows);
+    setReportNetSales(normalizedNetSales);
+    setWooCouponUsage(Array.isArray(report?.couponUsage) ? report.couponUsage : []);
+    setWooPullInfo({
+      startDate: rangeStart,
+      endDate: rangeEnd,
+      orderCount: Number(report?.orderCount) || 0,
+      metricsSource: report?.metricsSource || 'orders-v3',
+      pulledStatuses: Array.isArray(report?.pulledStatuses) ? report.pulledStatuses : [],
+      orderStatusCounts: report?.orderStatusCounts || {},
+      pulledAt: new Date().toISOString(),
+    });
+
+    cacheUploadedData({
+      fileName: sourceName,
+      salesData: reportRows,
+      dateStart: rangeStart,
+      dateEnd: rangeEnd,
+      reportNetSales: normalizedNetSales,
+      cachedAt: new Date().toISOString(),
+    });
+
+    analyzeCosts(reportRows, rangeStart, rangeEnd, normalizedNetSales, {
+      grossSales: Number(report?.analyticsTotals?.gross_sales) || normalizedNetSales,
+      totalSales: Number(report?.analyticsTotals?.total_sales) || Number(report?.analyticsTotals?.gross_sales) || normalizedNetSales,
+      netSales: Number(report?.analyticsTotals?.net_revenue) || normalizedNetSales,
+    }, Number(report?.orderCount) || reportRows.length);
+  };
+
+  const pullWooDailyReport = async ({ silent = false, startDate = wooPullStartDate, endDate = wooPullEndDate } = {}) => {
+    if (!silent) {
+      setIsPullingWoo(true);
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), WOO_PULL_TIMEOUT_MS);
+      const params = new URLSearchParams();
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      const response = await fetch(`/api/woo/daily-report?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      window.clearTimeout(timeoutId);
+      if (!response.ok) {
+        let details = '';
+        try {
+          const payload = await response.json();
+          details = payload?.error || '';
+        } catch {
+          details = await response.text();
+        }
+        throw new Error(details || `Woo sync failed (${response.status})`);
+      }
+
+      const payload = await response.json();
+      applyWooDailyReport(payload);
+    } catch (error) {
+      if (!silent) {
+        const timeoutMessage = error?.name === 'AbortError'
+          ? 'Request timed out. Try a shorter range (for example 7-14 days) or pull again.'
+          : (error?.message || '');
+        alert(`Unable to pull Woo daily orders. ${timeoutMessage}`.trim());
+      }
+    } finally {
+      if (!silent) {
+        setIsPullingWoo(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!wooAutoPullEnabled || inputSource !== 'woo') return undefined;
+
+    pullWooDailyReport({ silent: true, startDate: wooPullStartDate, endDate: wooPullEndDate });
+    const intervalId = window.setInterval(() => {
+      pullWooDailyReport({ silent: true, startDate: wooPullStartDate, endDate: wooPullEndDate });
+    }, 60 * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [wooAutoPullEnabled, inputSource, wooPullStartDate, wooPullEndDate]);
+
+  useEffect(() => {
+    if (inputSource !== 'woo' && wooAutoPullEnabled) {
+      setWooAutoPullEnabled(false);
+    }
+  }, [inputSource, wooAutoPullEnabled]);
+
   const applyReportFromCsvText = (csvText, sourceName) => {
+    setInputSource('csv');
     const parsedRows = parseCsvText(csvText);
     const reportTotalNetSales = extractReportNetSales(parsedRows);
     const csvDateRange = extractDateRangeFromRows(parsedRows);
@@ -272,10 +407,14 @@ const CostAnalytics = () => {
     // Aggregate data from all selected analyses
     let totalCOGS = 0;
     let totalOrders = 0;
+    let totalWooOrders = 0;
     let shippingOrderCount = 0;
     let totalItemsSold = 0;
     let totalNetSales = 0;
     let totalReportNetSales = 0;
+    let totalGrossSales = 0;
+    let totalTotalSales = 0;
+    let totalNetRevenue = 0;
     let totalKitItemsSold = 0;
     let totalKitOrders = 0;
     let totalKitNetSales = 0;
@@ -285,10 +424,14 @@ const CostAnalytics = () => {
     selectedSaved.forEach(saved => {
       totalCOGS += saved.analysis.totalCOGS;
       totalOrders += saved.analysis.totalOrders;
+      totalWooOrders += saved.analysis.totalWooOrders ?? saved.analysis.totalOrders;
       shippingOrderCount += saved.analysis.shippingOrderCount ?? saved.analysis.totalOrders;
       totalItemsSold += saved.analysis.totalItemsSold;
       totalNetSales += saved.analysis.totalNetSales;
       totalReportNetSales += saved.analysis.reportNetSales ?? saved.analysis.totalNetSales;
+      totalGrossSales += saved.analysis.grossSales ?? saved.analysis.reportNetSales ?? saved.analysis.totalNetSales;
+      totalTotalSales += saved.analysis.totalSales ?? saved.analysis.grossSales ?? saved.analysis.reportNetSales ?? saved.analysis.totalNetSales;
+      totalNetRevenue += saved.analysis.netSales ?? saved.analysis.reportNetSales ?? saved.analysis.totalNetSales;
 
       if (saved.analysis.kitSales?.rows?.length) {
         totalKitItemsSold += saved.analysis.kitSales.totalItemsSold || 0;
@@ -361,12 +504,16 @@ const CostAnalytics = () => {
       breakdown: breakdown.sort((a, b) => b.profit - a.profit),
       totalCOGS,
       totalOrders,
+      totalWooOrders,
       shippingOrderCount,
       totalItemsSold,
       shippingDeduction,
       totalBillOwed,
       netCost: totalCOGS - shippingDeduction,
       totalNetSales,
+      grossSales: totalGrossSales,
+      totalSales: totalTotalSales,
+      netSales: totalNetRevenue,
       reportNetSales: totalReportNetSales,
       kitSales: {
         rows: kitRows,
@@ -737,6 +884,7 @@ const CostAnalytics = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    setInputSource('csv');
     setUploadedProductFile(file);
     setFileName(file.name);
     setProductReportFileName(file.name);
@@ -880,6 +1028,36 @@ const CostAnalytics = () => {
     }
   };
 
+  const deleteSharedReport = async (report) => {
+    if (!report?.id) return;
+
+    const confirmed = window.confirm(`Delete shared report "${report.fileName || 'Unnamed report'}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setIsDeletingSharedReportId(report.id);
+
+    try {
+      if (report.storagePath) {
+        try {
+          await deleteObject(ref(storage, report.storagePath));
+        } catch (storageError) {
+          // Ignore missing object; still continue with Firestore cleanup.
+          if (storageError?.code !== 'storage/object-not-found') {
+            throw storageError;
+          }
+        }
+      }
+
+      await deleteDoc(doc(db, SHARED_REPORTS_COLLECTION, report.id));
+      setSharedReports((prev) => prev.filter((item) => item.id !== report.id));
+    } catch (error) {
+      console.error('Unable to delete shared report:', error);
+      alert(`Unable to delete this shared report. ${error?.message || ''}`.trim());
+    } finally {
+      setIsDeletingSharedReportId('');
+    }
+  };
+
   const clearProductReportUpload = () => {
     if (productFileInputRef.current) {
       productFileInputRef.current.value = '';
@@ -905,6 +1083,8 @@ const CostAnalytics = () => {
     paramDateStart = dateStart,
     paramDateEnd = dateEnd,
     paramReportNetSales = reportNetSales,
+    paramSalesMetrics = null,
+    paramWooOrderCount = null,
   ) => {
     const breakdown = [];
     const unmatched = [];
@@ -1030,6 +1210,10 @@ const CostAnalytics = () => {
     const profitMargin = totalNetSales > 0 ? (totalProfit / totalNetSales) * 100 : 0;
     const avgOrderValue = totalOrders > 0 ? totalNetSales / totalOrders : 0;
     const costPerOrder = totalOrders > 0 ? totalCOGS / totalOrders : 0;
+    const grossSales = Number(paramSalesMetrics?.grossSales ?? paramReportNetSales ?? totalNetSales);
+    const totalSales = Number(paramSalesMetrics?.totalSales ?? grossSales);
+    const netSales = Number(paramSalesMetrics?.netSales ?? paramReportNetSales ?? totalNetSales);
+    const totalWooOrders = Number(paramWooOrderCount ?? totalOrders);
 
     setUnmatchedProducts(unmatched);
     setAnalysis({
@@ -1055,6 +1239,10 @@ const CostAnalytics = () => {
       costPerOrder,
       dateStart: paramDateStart,
       dateEnd: paramDateEnd,
+      totalWooOrders,
+      grossSales,
+      totalSales,
+      netSales,
     });
   };
 
@@ -1066,27 +1254,98 @@ const CostAnalytics = () => {
       {/* Upload Section */}
       <div className="upload-section">
         <div className="upload-inputs">
+          <div className="input-source-toggle" role="tablist" aria-label="Input source selector">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={inputSource === 'woo'}
+              className={`input-source-btn ${inputSource === 'woo' ? 'active' : ''}`}
+              onClick={() => setInputSource('woo')}
+            >
+              Pull Woo Data
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={inputSource === 'csv'}
+              className={`input-source-btn ${inputSource === 'csv' ? 'active' : ''}`}
+              onClick={() => setInputSource('csv')}
+            >
+              Load Product CSV
+            </button>
+          </div>
           <div className="input-group">
-            <label htmlFor="product-upload" className="upload-label">
-              Product Report CSV:
-            </label>
-            <input
-              id="product-upload"
-              ref={productFileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleProductReportUpload}
-              className="file-input"
-            />
-            {productReportFileName && <span className="file-name">Loaded: {productReportFileName}</span>}
-            {productReportFileName && (
-              <button
-                type="button"
-                className="remove-upload-btn"
-                onClick={clearProductReportUpload}
-              >
-                Remove File
-              </button>
+            {inputSource === 'csv' ? (
+              <>
+                <label htmlFor="product-upload" className="upload-label">
+                  Product Report CSV:
+                </label>
+                <input
+                  id="product-upload"
+                  ref={productFileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleProductReportUpload}
+                  className="file-input"
+                />
+                {productReportFileName && <span className="file-name">Loaded: {productReportFileName}</span>}
+                {productReportFileName && (
+                  <button
+                    type="button"
+                    className="remove-upload-btn"
+                    onClick={clearProductReportUpload}
+                  >
+                    Remove File
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="upload-label">Woo Daily Orders:</span>
+                <div className="woo-date-range-inputs">
+                  <label className="woo-date-field">
+                    From
+                    <input
+                      type="date"
+                      value={wooPullStartDate}
+                      onChange={(event) => setWooPullStartDate(event.target.value)}
+                      className="date-input"
+                    />
+                  </label>
+                  <label className="woo-date-field">
+                    To
+                    <input
+                      type="date"
+                      value={wooPullEndDate}
+                      onChange={(event) => setWooPullEndDate(event.target.value)}
+                      className="date-input"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  className="woo-pull-btn"
+                  onClick={() => pullWooDailyReport({ startDate: wooPullStartDate, endDate: wooPullEndDate })}
+                  disabled={isPullingWoo}
+                >
+                  {isPullingWoo ? 'Pulling Woo (this may take a few minutes)...' : 'Pull Woo Data'}
+                </button>
+                <label className="woo-auto-toggle">
+                  <input
+                    type="checkbox"
+                    checked={wooAutoPullEnabled}
+                    onChange={(event) => setWooAutoPullEnabled(event.target.checked)}
+                  />
+                  Auto-pull every 1 min
+                </label>
+                {wooPullInfo && (
+                  <span className="file-name">
+                    Last pull: {wooPullInfo.startDate === wooPullInfo.endDate
+                      ? wooPullInfo.startDate
+                      : `${wooPullInfo.startDate} to ${wooPullInfo.endDate}`}
+                  </span>
+                )}
+              </>
             )}
             <button
               type="button"
@@ -1101,52 +1360,64 @@ const CostAnalytics = () => {
         </div>
       </div>
 
-      <div className="shared-reports-section">
-        <h2>Shared Reports (All Users)</h2>
-        {sharedReports.length === 0 ? (
-          <p className="breakdown-subtitle">No shared reports yet.</p>
-        ) : (
-          <div className="table-wrapper">
-            <table className="breakdown-table shared-reports-table">
-              <thead>
-                <tr>
-                  <th>File</th>
-                  <th>Date Range</th>
-                  <th className="number-head">Report Net Sales</th>
-                  <th>Uploaded By</th>
-                  <th>Uploaded At</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sharedReports.map((report) => (
-                  <tr key={report.id}>
-                    <td className="product-name">{report.fileName}</td>
-                    <td>
-                      {report.dateStart && report.dateEnd
-                        ? `${report.dateStart} to ${report.dateEnd}`
-                        : 'Date not detected'}
-                    </td>
-                    <td className="number revenue">${(report.reportNetSales || 0).toFixed(2)}</td>
-                    <td>{report.uploadedBy || 'Unknown'}</td>
-                    <td>{report.uploadedAt ? report.uploadedAt.toLocaleString() : (report.uploadedAtIso || 'Unknown')}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="load-btn shared-load-btn"
-                        onClick={() => loadSharedReport(report)}
-                        disabled={isLoadingSharedReportId === report.id}
-                      >
-                        {isLoadingSharedReportId === report.id ? 'Loading...' : 'Load'}
-                      </button>
-                    </td>
+      {inputSource === 'csv' && (
+        <div className="shared-reports-section">
+          <h2>Shared Reports (All Users)</h2>
+          {sharedReports.length === 0 ? (
+            <p className="breakdown-subtitle">No shared reports yet.</p>
+          ) : (
+            <div className="table-wrapper">
+              <table className="breakdown-table shared-reports-table">
+                <thead>
+                  <tr>
+                    <th>File</th>
+                    <th>Date Range</th>
+                    <th className="number-head">Report Net Sales</th>
+                    <th>Uploaded By</th>
+                    <th>Uploaded At</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {sharedReports.map((report) => (
+                    <tr key={report.id}>
+                      <td className="product-name">{report.fileName}</td>
+                      <td>
+                        {report.dateStart && report.dateEnd
+                          ? `${report.dateStart} to ${report.dateEnd}`
+                          : 'Date not detected'}
+                      </td>
+                      <td className="number revenue">${(report.reportNetSales || 0).toFixed(2)}</td>
+                      <td>{report.uploadedBy || 'Unknown'}</td>
+                      <td>{report.uploadedAt ? report.uploadedAt.toLocaleString() : (report.uploadedAtIso || 'Unknown')}</td>
+                      <td>
+                        <div className="shared-actions">
+                          <button
+                            type="button"
+                            className="load-btn shared-load-btn"
+                            onClick={() => loadSharedReport(report)}
+                            disabled={isLoadingSharedReportId === report.id || isDeletingSharedReportId === report.id}
+                          >
+                            {isLoadingSharedReportId === report.id ? 'Loading...' : 'Load'}
+                          </button>
+                          <button
+                            type="button"
+                            className="delete-btn shared-delete-btn"
+                            onClick={() => deleteSharedReport(report)}
+                            disabled={isDeletingSharedReportId === report.id || isLoadingSharedReportId === report.id}
+                          >
+                            {isDeletingSharedReportId === report.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {reconciliation && (
         <div className="reconciliation-section">
@@ -1218,6 +1489,15 @@ const CostAnalytics = () => {
           onClick={() => setActiveTab('analysis')}
         >
           Analysis
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'coupons'}
+          className={`cost-view-tab ${activeTab === 'coupons' ? 'active' : ''}`}
+          onClick={() => setActiveTab('coupons')}
+        >
+          Affiliate/Coupons
         </button>
         <button
           type="button"
@@ -1311,6 +1591,60 @@ const CostAnalytics = () => {
           ) : (
             <div className="empty-state">
               <p>Upload your sales CSV file to compare vendor costs against sell prices</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'coupons' && (
+        <div className="woo-sync-section">
+          <h2>Affiliate & Coupon Performance</h2>
+          {wooPullInfo ? (
+            <>
+              <p className="breakdown-subtitle">
+                Pulled {wooPullInfo.orderCount} orders for {wooPullInfo.startDate === wooPullInfo.endDate
+                  ? wooPullInfo.startDate
+                  : `${wooPullInfo.startDate} to ${wooPullInfo.endDate}`}.
+              </p>
+              {Object.keys(wooPullInfo.orderStatusCounts || {}).length > 0 && (
+                <p className="breakdown-subtitle">
+                  Status mix: {Object.entries(wooPullInfo.orderStatusCounts)
+                    .map(([status, count]) => `${status}: ${count}`)
+                    .join(' • ')}
+                </p>
+              )}
+              <p className="breakdown-subtitle">
+                Totals source: {wooPullInfo.metricsSource === 'wc-analytics' ? 'Woo Analytics (dashboard aligned)' : 'Order line items (fallback)'}
+              </p>
+            </>
+          ) : (
+            <p className="breakdown-subtitle">Run Pull Woo Today to load today&apos;s affiliate/coupon data.</p>
+          )}
+
+          {wooCouponUsage.length > 0 ? (
+            <div className="table-wrapper">
+              <table className="breakdown-table woo-coupon-table">
+                <thead>
+                  <tr>
+                    <th>Coupon Code</th>
+                    <th className="number-head">Orders</th>
+                    <th className="number-head">Discount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wooCouponUsage.map((coupon) => (
+                    <tr key={coupon.code}>
+                      <td className="product-name">{coupon.code}</td>
+                      <td className="number">{coupon.orderCount}</td>
+                      <td className="number revenue">${Number(coupon.totalDiscount || 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p>No coupon data available yet for the selected pull.</p>
             </div>
           )}
         </div>
@@ -1413,12 +1747,12 @@ const CostAnalytics = () => {
           {/* Summary Cards */}
           <div className="summary-cards">
             <div className="card">
-              <div className="card-label">Report Net Sales</div>
-              <div className="card-value">${combinedAnalysis.reportNetSales.toFixed(2)}</div>
+              <div className="card-label">Gross Sales</div>
+              <div className="card-value">${(combinedAnalysis.grossSales ?? combinedAnalysis.reportNetSales ?? combinedAnalysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Net Sales</div>
-              <div className="card-value">${combinedAnalysis.totalNetSales.toFixed(2)}</div>
+              <div className="card-label">Total Sales</div>
+              <div className="card-value">${(combinedAnalysis.totalSales ?? combinedAnalysis.grossSales ?? combinedAnalysis.reportNetSales ?? combinedAnalysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
               <div className="card-label">Total COGS</div>
@@ -1437,7 +1771,11 @@ const CostAnalytics = () => {
               <div className="card-value">${combinedAnalysis.avgOrderValue.toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Total Orders</div>
+              <div className="card-label">Total Orders (Woo)</div>
+              <div className="card-value">{combinedAnalysis.totalWooOrders ?? combinedAnalysis.totalOrders}</div>
+            </div>
+            <div className="card">
+              <div className="card-label">Filtered Orders (Cost Model)</div>
               <div className="card-value">{combinedAnalysis.totalOrders}</div>
             </div>
           </div>
@@ -1472,7 +1810,7 @@ const CostAnalytics = () => {
               className={`cost-view-tab ${combinedDetailsTab === 'products' ? 'active' : ''}`}
               onClick={() => setCombinedDetailsTab('products')}
             >
-              Product Breakdown
+              Single Vial Data
             </button>
             <button
               type="button"
@@ -1545,7 +1883,13 @@ const CostAnalytics = () => {
 
           {combinedDetailsTab === 'products' && (
             <div className="breakdown-section">
-              <h2>Product Performance (Combined)</h2>
+              <h2>Single Vial Data (Combined)</h2>
+              <div className="summary-cards pricing-summary-cards">
+                <div className="card">
+                  <div className="card-label">Single Vial Sales</div>
+                  <div className="card-value">${(combinedAnalysis.netSales ?? combinedAnalysis.reportNetSales ?? combinedAnalysis.totalNetSales).toFixed(2)}</div>
+                </div>
+              </div>
               <p className="breakdown-subtitle">
                 {combinedAnalysis.breakdown.length} products matched • {combinedAnalysis.totalItemsSold} total units sold
               </p>
@@ -1615,12 +1959,12 @@ const CostAnalytics = () => {
           {/* Summary Cards */}
           <div className="summary-cards">
             <div className="card">
-              <div className="card-label">Report Net Sales</div>
-              <div className="card-value">${analysis.reportNetSales.toFixed(2)}</div>
+              <div className="card-label">Gross Sales</div>
+              <div className="card-value">${(analysis.grossSales ?? analysis.reportNetSales ?? analysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Net Sales (Non-Kit, Excl BAC)</div>
-              <div className="card-value">${analysis.totalNetSales.toFixed(2)}</div>
+              <div className="card-label">Total Sales</div>
+              <div className="card-value">${(analysis.totalSales ?? analysis.grossSales ?? analysis.reportNetSales ?? analysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
               <div className="card-label">Total COGS</div>
@@ -1639,7 +1983,11 @@ const CostAnalytics = () => {
               <div className="card-value">${analysis.avgOrderValue.toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Total Orders</div>
+              <div className="card-label">Total Orders (Woo)</div>
+              <div className="card-value">{analysis.totalWooOrders ?? analysis.totalOrders}</div>
+            </div>
+            <div className="card">
+              <div className="card-label">Filtered Orders (Cost Model)</div>
               <div className="card-value">{analysis.totalOrders}</div>
             </div>
           </div>
@@ -1674,7 +2022,7 @@ const CostAnalytics = () => {
               className={`cost-view-tab ${analysisDetailsTab === 'products' ? 'active' : ''}`}
               onClick={() => setAnalysisDetailsTab('products')}
             >
-              Product Breakdown
+              Single Vial Data
             </button>
             <button
               type="button"
@@ -1749,7 +2097,13 @@ const CostAnalytics = () => {
 
           {analysisDetailsTab === 'products' && (
             <div className="breakdown-section">
-              <h2>Product Breakdown</h2>
+              <h2>Single Vial Data</h2>
+              <div className="summary-cards pricing-summary-cards">
+                <div className="card">
+                  <div className="card-label">Single Vial Sales</div>
+                  <div className="card-value">${(analysis.netSales ?? analysis.reportNetSales ?? analysis.totalNetSales).toFixed(2)}</div>
+                </div>
+              </div>
               <p className="breakdown-subtitle">
                 {analysis.breakdown.length} products matched • {analysis.totalItemsSold} total units sold
               </p>
