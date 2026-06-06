@@ -552,6 +552,7 @@
   width: 100%;
   border-collapse: collapse;
   background: white;
+  table-layout: fixed;
 }
 
 .breakdown-table thead {
@@ -574,6 +575,42 @@
   border-bottom: 1px solid #ecf0f1;
 }
 
+.breakdown-table th.product-col,
+.breakdown-table td.product-name {
+  width: 24%;
+}
+
+.breakdown-table th.category-col,
+.breakdown-table td.category-col {
+  width: 12%;
+}
+
+.breakdown-table th.sell-price-col,
+.breakdown-table td.sell-price-col {
+  width: 11%;
+}
+
+.breakdown-table th.number-head,
+.breakdown-table td.number {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.breakdown-table th.number-head {
+  width: 9.5%;
+}
+
+.breakdown-table th.number-head:last-child,
+.breakdown-table td.number:last-child {
+  width: 8%;
+}
+
+.breakdown-table th.status-col,
+.breakdown-table td.status-col {
+  width: 10%;
+  text-align: center;
+}
+
 .breakdown-table tbody tr:hover {
   background: #f8f9fa;
 }
@@ -582,6 +619,7 @@
   font-weight: 500;
   color: #2c3e50;
   max-width: 250px;
+  overflow-wrap: anywhere;
 }
 
 .number {

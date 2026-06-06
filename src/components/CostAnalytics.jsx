@@ -1901,6 +1901,7 @@ const CostAnalytics = () => {
                       <th>Product</th>
                       <th>Category</th>
                       <th>Qty Sold</th>
+                      <th className="number-head">Avg Sell Price</th>
                       <th>Total COGS</th>
                       <th>Net Sales</th>
                       <th>Profit</th>
@@ -1914,6 +1915,7 @@ const CostAnalytics = () => {
                         <td className="product-name">{item.product}</td>
                         <td>{item.category}</td>
                         <td className="number">{item.itemsSold}</td>
+                        <td className="number revenue">${(item.itemsSold > 0 ? item.netSales / item.itemsSold : 0).toFixed(2)}</td>
                         <td className="number cost">${item.totalCost.toFixed(2)}</td>
                         <td className="number revenue">${item.netSales.toFixed(2)}</td>
                         <td className={`number profit ${item.profit > 0 ? 'positive' : 'negative'}`}>${item.profit.toFixed(2)}</td>
@@ -2113,23 +2115,25 @@ const CostAnalytics = () => {
                   <thead>
                     <tr>
                       <th>Product</th>
-                      <th>Category</th>
-                      <th>Qty Sold</th>
-                      <th>Unit Cost</th>
-                      <th>Total COGS</th>
-                      <th>Net Sales</th>
-                      <th>Profit</th>
-                      <th>Margin %</th>
-                      <th>Orders</th>
+                      <th className="category-col">Category</th>
+                      <th className="number-head">Qty Sold</th>
+                      <th className="number-head">Vendor Cost</th>
+                      <th className="number-head sell-price-col">Avg Sell Price</th>
+                      <th className="number-head">Total COGS</th>
+                      <th className="number-head">Net Sales</th>
+                      <th className="number-head">Profit</th>
+                      <th className="number-head">Margin %</th>
+                      <th className="number-head">Orders</th>
                     </tr>
                   </thead>
                   <tbody>
                     {analysis.breakdown.map((item, idx) => (
                       <tr key={idx}>
                         <td className="product-name">{item.product}</td>
-                        <td>{item.category}</td>
+                        <td className="category-col">{item.category}</td>
                         <td className="number">{item.itemsSold}</td>
                         <td className="number">${item.unitCost.toFixed(2)}</td>
+                        <td className="number revenue sell-price-col">${(item.itemsSold > 0 ? item.netSales / item.itemsSold : 0).toFixed(2)}</td>
                         <td className="number cost">${item.totalCost.toFixed(2)}</td>
                         <td className="number revenue">${item.netSales.toFixed(2)}</td>
                         <td className={`number profit ${item.profit > 0 ? 'positive' : 'negative'}`}>${item.profit.toFixed(2)}</td>
