@@ -49,7 +49,20 @@ const CostAnalytics = () => {
   const [wooCouponUsage, setWooCouponUsage] = useState([]);
   const [wooPullStartDate, setWooPullStartDate] = useState(defaultWooDate);
   const [wooPullEndDate, setWooPullEndDate] = useState(defaultWooDate);
+  const [successToastMessage, setSuccessToastMessage] = useState('');
   const productFileInputRef = useRef(null);
+  const toastTimerRef = useRef(null);
+
+  const showSuccessToast = (message) => {
+    setSuccessToastMessage(message);
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setSuccessToastMessage('');
+      toastTimerRef.current = null;
+    }, 3200);
+  };
 
   const mapSharedReportDoc = (docSnapshot) => {
     const data = docSnapshot.data();
@@ -129,9 +142,23 @@ const CostAnalytics = () => {
   const weightedMarginPct = weightedUnitSell > 0 ? (weightedUnitSpread / weightedUnitSell) * 100 : 0;
   const lowMarginCount = pricingRows.filter(row => row.marginPct < 30).length;
   const getMarginStatus = (marginPct) => (marginPct >= 30 ? 'good' : 'bad');
+  const getSalesMix = (singleSales, kitSales) => {
+    const single = Number(singleSales) || 0;
+    const kit = Number(kitSales) || 0;
+    const total = single + kit;
+    if (total <= 0) {
+      return { singlePct: 0, kitPct: 0 };
+    }
+    return {
+      singlePct: (single / total) * 100,
+      kitPct: (kit / total) * 100,
+    };
+  };
   const highestSpreadProduct = pricingRows.length > 0
     ? pricingRows.reduce((best, row) => (row.unitSpread > best.unitSpread ? row : best), pricingRows[0])
     : null;
+  const combinedSalesMix = getSalesMix(combinedAnalysis?.totalNetSales, combinedAnalysis?.kitSales?.totalNetSales);
+  const analysisSalesMix = getSalesMix(analysis?.totalNetSales, analysis?.kitSales?.totalNetSales);
 
   // Load saved analyses and cached upload on mount
   useEffect(() => {
@@ -169,6 +196,12 @@ const CostAnalytics = () => {
 
   useEffect(() => {
     loadSharedReports();
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
   }, []);
 
   const applyWooDailyReport = (report) => {
@@ -357,11 +390,11 @@ const CostAnalytics = () => {
     if (sameMonthSaved.length >= 2) {
       setSelectedForCombine(sameMonthSaved.map(s => s.key));
       setCombinedAnalysis(createCombinedAnalysis(sameMonthSaved, `${sameMonthSaved.length} periods (${saveMonth})`));
-      alert(`Analysis saved for ${dateStart} to ${dateEnd}. Auto-combined ${sameMonthSaved.length} reports for ${saveMonth}.`);
+      showSuccessToast(`Analysis saved for ${dateStart} to ${dateEnd}. Auto-combined ${sameMonthSaved.length} reports for ${saveMonth}.`);
       return;
     }
 
-    alert(`Analysis saved for ${dateStart} to ${dateEnd}`);
+    showSuccessToast(`Analysis saved for ${dateStart} to ${dateEnd}`);
   };
   
   const loadAnalysis = (saved) => {
@@ -971,7 +1004,7 @@ const CostAnalytics = () => {
       });
 
       await loadSharedReports();
-      alert('Report saved to shared database.');
+      showSuccessToast('Report saved to shared database.');
     } catch (error) {
       console.error('Unable to save shared report:', error);
       alert('Unable to save report to shared database. Check Firebase rules and try again.');
@@ -1756,8 +1789,8 @@ const CostAnalytics = () => {
               <div className="card-value">${(combinedAnalysis.totalSales ?? combinedAnalysis.grossSales ?? combinedAnalysis.reportNetSales ?? combinedAnalysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Total COGS</div>
-              <div className="card-value">${combinedAnalysis.totalCOGS.toFixed(2)}</div>
+              <div className="card-label">Net Sales</div>
+              <div className="card-value">${(combinedAnalysis.netSales ?? combinedAnalysis.reportNetSales ?? combinedAnalysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
               <div className="card-label">Profit Margin</div>
@@ -1774,6 +1807,10 @@ const CostAnalytics = () => {
             <div className="card">
               <div className="card-label">Filtered Orders (Cost Model)</div>
               <div className="card-value">{combinedAnalysis.totalOrders}</div>
+            </div>
+            <div className="card">
+              <div className="card-label">Sales Mix (Single/Kit)</div>
+              <div className="card-value">{combinedSalesMix.singlePct.toFixed(1)}% / {combinedSalesMix.kitPct.toFixed(1)}%</div>
             </div>
           </div>
 
@@ -1886,6 +1923,10 @@ const CostAnalytics = () => {
                   <div className="card-label">Single Vial Sales</div>
                   <div className="card-value">${combinedAnalysis.totalNetSales.toFixed(2)}</div>
                 </div>
+                <div className="card">
+                  <div className="card-label">Single Vial COGS</div>
+                  <div className="card-value">${combinedAnalysis.totalCOGS.toFixed(2)}</div>
+                </div>
                 <div className="card highlight">
                   <div className="card-label">Single Vial Profit</div>
                   <div className="card-value">${combinedAnalysis.totalProfit.toFixed(2)}</div>
@@ -1970,8 +2011,8 @@ const CostAnalytics = () => {
               <div className="card-value">${(analysis.totalSales ?? analysis.grossSales ?? analysis.reportNetSales ?? analysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Total COGS</div>
-              <div className="card-value">${analysis.totalCOGS.toFixed(2)}</div>
+              <div className="card-label">Net Sales</div>
+              <div className="card-value">${(analysis.netSales ?? analysis.reportNetSales ?? analysis.totalNetSales).toFixed(2)}</div>
             </div>
             <div className="card">
               <div className="card-label">Profit Margin</div>
@@ -1988,6 +2029,10 @@ const CostAnalytics = () => {
             <div className="card">
               <div className="card-label">Filtered Orders (Cost Model)</div>
               <div className="card-value">{analysis.totalOrders}</div>
+            </div>
+            <div className="card">
+              <div className="card-label">Sales Mix (Single/Kit)</div>
+              <div className="card-value">{analysisSalesMix.singlePct.toFixed(1)}% / {analysisSalesMix.kitPct.toFixed(1)}%</div>
             </div>
           </div>
 
@@ -2101,6 +2146,10 @@ const CostAnalytics = () => {
                 <div className="card">
                   <div className="card-label">Single Vial Sales</div>
                   <div className="card-value">${analysis.totalNetSales.toFixed(2)}</div>
+                </div>
+                <div className="card">
+                  <div className="card-label">Single Vial COGS</div>
+                  <div className="card-value">${analysis.totalCOGS.toFixed(2)}</div>
                 </div>
                 <div className="card highlight">
                   <div className="card-label">Single Vial Profit</div>
@@ -2250,6 +2299,12 @@ const CostAnalytics = () => {
       {!analysis && (
         <div className="empty-state">
           <p>Upload your sales CSV file to see cost analysis</p>
+        </div>
+      )}
+
+      {successToastMessage && (
+        <div className="success-toast" role="status" aria-live="polite">
+          {successToastMessage}
         </div>
       )}
         </>

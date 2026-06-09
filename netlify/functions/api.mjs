@@ -268,6 +268,17 @@ const buildDailyWooReport = (orders, startDateKey, endDateKey, analyticsSummary 
     .sort((a, b) => b.totalDiscount - a.totalDiscount);
 
   const lineItemNetSales = rows.reduce((sum, row) => sum + parseMoney(row['Net sales']), 0);
+  const fallbackGrossSales = orders.reduce((sum, order) => {
+    const lineItems = Array.isArray(order?.line_items) ? order.line_items : [];
+    const orderGross = lineItems.reduce((lineSum, item) => lineSum + parseMoney(item?.subtotal), 0);
+    return sum + orderGross;
+  }, 0);
+  const fallbackTotalSales = orders.reduce((sum, order) => sum + parseMoney(order?.total), 0);
+  const normalizedAnalyticsTotals = {
+    gross_sales: Number((parseMoney(analyticsSummary?.totals?.gross_sales) || fallbackGrossSales).toFixed(2)),
+    total_sales: Number((parseMoney(analyticsSummary?.totals?.total_sales) || fallbackTotalSales).toFixed(2)),
+    net_revenue: Number((parseMoney(analyticsSummary?.totals?.net_revenue) || lineItemNetSales).toFixed(2)),
+  };
   const dashboardNetSales = analyticsSummary?.netSales ?? lineItemNetSales;
   const dashboardOrderCount = analyticsSummary?.orderCount ?? orders.length;
   const paidOrderCount = getPaidOrderCount(Object.fromEntries(orderStatusCounts.entries()));
@@ -283,7 +294,7 @@ const buildDailyWooReport = (orders, startDateKey, endDateKey, analyticsSummary 
     totalNetSales: Number(dashboardNetSales.toFixed(2)),
     lineItemNetSales: Number(lineItemNetSales.toFixed(2)),
     metricsSource: analyticsSummary ? 'wc-analytics' : 'orders-v3',
-    analyticsTotals: analyticsSummary?.totals || null,
+    analyticsTotals: normalizedAnalyticsTotals,
     rows: rows.sort((a, b) => parseMoney(b['Net sales']) - parseMoney(a['Net sales'])),
     couponUsage,
   };

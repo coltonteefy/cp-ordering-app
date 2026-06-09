@@ -1047,6 +1047,23 @@
   box-shadow: 0 2px 4px rgba(231, 76, 60, 0.3);
 }
 
+.success-toast {
+  position: fixed;
+  right: 1rem;
+  top: 1rem;
+  z-index: 1200;
+  max-width: min(460px, calc(100vw - 2rem));
+  background: #153a2b;
+  color: #eaf9f1;
+  border: 1px solid #2e6b54;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(8, 33, 24, 0.32);
+  padding: 0.75rem 0.95rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .cost-analytics-page {
@@ -1117,6 +1134,13 @@
 
   .close-combined-btn {
     align-self: flex-end;
+  }
+
+  .success-toast {
+    left: 1rem;
+    right: 1rem;
+    top: 0.75rem;
+    max-width: none;
   }
 }
 
