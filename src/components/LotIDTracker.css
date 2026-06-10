@@ -1188,10 +1188,203 @@
 }
 
 .lot-testing-modal {
-  width: min(1100px, 96vw);
+  width: min(680px, 96vw);
   max-height: 92vh;
-  overflow: auto;
-  background: #f6f7f9;
+  overflow-y: auto;
+  background: #e8ecf0;
+  padding: 0 !important;
+  border-radius: 10px;
+}
+
+.lot-testing-modal .lot-modal-actions {
+  padding: 12px 16px;
+  margin-top: 0;
+  background: #e8ecf0;
+  border-top: 1px solid #cdd3db;
+}
+
+.lot-testing-modal-header-bar {
+  padding: 14px 18px 10px;
+  background: #1a2535;
+  color: #fff;
+}
+.lot-testing-modal-header-bar h3 {
+  margin: 0 0 2px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+.lot-testing-modal-header-bar .lot-modal-sub {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #9aabb8;
+}
+
+/* Label preview — 4in wide × 6in tall portrait (matches Rollo output) */
+.lot-testing-label-preview {
+  background: #fff;
+  margin: 16px auto;
+  padding: 12px;
+  width: 580px;
+  min-height: 870px; /* 580px × (6/4) = 6in equivalent */
+  box-shadow: 0 3px 16px rgba(0,0,0,0.28);
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+  color: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Submission info — 2-col grid matching 4in print */
+.lot-tp-sub-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 10px;
+  margin-bottom: 6px;
+  padding: 5px 7px;
+  background: #f3f5f8;
+  border: 1px solid #c8d0da;
+}
+.lot-tp-sub-field {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lot-tp-sub-label {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #5a6a7a;
+}
+.lot-tp-sub-input {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a2535;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #aab4c0;
+  padding: 0 0 1px;
+  width: 100%;
+  outline: none;
+  font-family: Arial, sans-serif;
+}
+.lot-tp-sub-input:focus { border-bottom-color: #1f6aa6; }
+.lot-tp-sub-select {
+  appearance: none;
+  cursor: pointer;
+}
+.lot-tp-sub-value-static {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a2535;
+  border-bottom: 1px solid #aab4c0;
+  padding-bottom: 1px;
+}
+
+/* Combine CoA row matching print */
+.lot-tp-combine {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  margin: 4px 0 7px;
+  cursor: pointer;
+}
+.lot-tp-combine-box {
+  width: 15px;
+  height: 15px;
+  border: 2px solid #394450;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: #1a1a1a;
+}
+
+/* Footer: pushed to bottom of the flex label, two columns */
+.lot-tp-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+  align-items: start;
+}
+.lot-tp-comments-label {
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 3px;
+  color: #1a1a1a;
+}
+.lot-tp-comments-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #d5deea;
+  border: 1px solid #b9c4d2;
+  font-size: 11px;
+  font-family: Arial, sans-serif;
+  resize: vertical;
+  padding: 3px 4px;
+  outline: none;
+  min-height: 44px;
+}
+.lot-tp-ack-title {
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 3px;
+  color: #1a1a1a;
+}
+.lot-tp-ack-copy {
+  font-size: 8px;
+  line-height: 1.3;
+  color: #333;
+  margin-bottom: 5px;
+}
+.lot-tp-sig-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 11px;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+.lot-tp-sig-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.lot-tp-sig-line {
+  flex: 1;
+  border-bottom: 1.5px solid #444;
+  min-height: 32px;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 1px;
+}
+.lot-tp-date-line {
+  flex: 1;
+  border-bottom: 1.5px solid #444;
+  min-height: 18px;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 1px;
+}
+.lot-tp-sig-img {
+  max-height: 28px;
+  max-width: 140px;
+  display: block;
+  object-fit: contain;
+}
+.lot-tp-date-fill {
+  background: #d5deea;
+  padding: 2px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
 }
 
 .lot-testing-section {
@@ -1372,14 +1565,16 @@
 }
 
 .lot-testing-grid-check:checked {
-  background: #e7eef8;
+  background: #d5deea;
+  border-color: #4a6a8a;
 }
 
 .lot-testing-grid-check:checked::after {
-  content: "X";
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: #1f2b36;
+  content: "✓";
+  font-size: 9px;
+  font-weight: 900;
+  color: #1a2535;
+  line-height: 1;
 }
 
 .lot-testing-grid-check.static {
@@ -1468,6 +1663,301 @@
 
 .lot-testing-date-line {
   background: #d5deea;
+}
+
+/* Redesigned modal form header */
+.lot-testing-form-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 1rem;
+  padding: 0.75rem 0.9rem 0.4rem;
+}
+
+.lot-testing-form-disclaimer {
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+  max-width: 220px;
+  text-align: right;
+  color: #1e2d3b;
+}
+
+/* Testing Options header row */
+.lot-testing-options-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #1f6aa6;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.4rem 0.9rem 0.1rem;
+}
+
+.lot-testing-options-wrap {
+  border-top: none !important;
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+}
+
+.lot-testing-options-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  min-width: 600px;
+}
+
+.lot-testing-options-table th {
+  background: #0c365b;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid #1a4d72;
+  padding: 0.35rem 0.25rem;
+  line-height: 1.2;
+  font-size: 0.78rem;
+}
+
+.lot-testing-options-table th small {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  opacity: 0.88;
+  line-height: 1.1;
+}
+
+/* Additional Screening Options */
+.lot-testing-screening {
+  padding: 0.45rem 0.9rem 0.2rem;
+}
+
+.lot-testing-screening-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+  color: #1e2d3b;
+}
+
+.lot-testing-screening-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  color: #2a3a47;
+}
+
+.lot-testing-screening-box {
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid #5a6a7a;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+/* Horizontal test options row */
+.lot-testing-horiz-options {
+  border: 1px solid #b9c4d2;
+  border-top: none;
+}
+
+.lot-testing-horiz-options-header {
+  background: #0c365b;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.3rem 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lot-testing-horiz-options-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.lot-testing-horiz-option-col {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: end;
+  justify-items: center;
+  text-align: center;
+  padding: 0.45rem 0.3rem 0.4rem;
+  border-right: 1px solid #d0d7e0;
+  cursor: pointer;
+  gap: 0.3rem;
+}
+
+.lot-testing-horiz-option-col:hover {
+  background: #f0f4f8;
+}
+
+.lot-testing-horiz-option-col:last-child {
+  border-right: none;
+}
+
+.lot-testing-horiz-option-name {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: #1e2d3b;
+  line-height: 1.2;
+}
+
+.lot-testing-horiz-option-note {
+  display: block;
+  font-size: 0.58rem;
+  font-weight: 400;
+  color: #7a8a98;
+  line-height: 1.1;
+}
+
+.lot-testing-horiz-option-price {
+  display: block;
+  font-size: 0.65rem;
+  color: #2a3a47;
+  font-weight: 600;
+  margin-top: 1px;
+}
+
+.lot-testing-horiz-fentanyl {
+  background: #f7f8fa;
+  border-left: 2px solid #0c365b;
+  cursor: default;
+}
+
+.lot-testing-horiz-fentanyl:hover {
+  background: #f7f8fa;
+}
+
+/* Sample list */
+.lot-testing-samples-section {
+  margin-top: 0.6rem;
+  border: 1px solid #b9c4d2;
+}
+
+.lot-testing-samples-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0c365b;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.3rem 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lot-testing-samples-count {
+  font-weight: 400;
+  opacity: 0.75;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.68rem;
+}
+
+.lot-testing-samples-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.lot-testing-samples-table th {
+  background: #1a4d72;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid #2a5d82;
+  padding: 0.2rem 0.25rem;
+  font-size: 0.72rem;
+}
+
+.lot-testing-samples-table th.lot-testing-col-left {
+  text-align: left;
+  padding-left: 0.4rem;
+}
+
+.lot-testing-samples-table td {
+  border: 1px solid #c2c7cf;
+  height: 2rem;
+  padding: 0.1rem 0.25rem;
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+
+.lot-testing-remove-inline {
+  border: none;
+  background: none;
+  color: #a04040;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.lot-testing-remove-inline:hover {
+  color: #c00;
+}
+
+/* Comments spacing */
+.lot-testing-comments-label {
+  padding: 0 0.9rem;
+  display: block;
+  margin-top: 0.55rem;
+}
+
+.lot-testing-comments-input {
+  margin: 0 0.9rem 0.5rem;
+  width: calc(100% - 1.8rem);
+  box-sizing: border-box;
+}
+
+/* ── Scoped overrides inside the 4in portrait label preview ── */
+.lot-testing-label-preview .lot-testing-horiz-options-header {
+  font-size: 8px;
+  padding: 2px 5px;
+}
+.lot-testing-label-preview .lot-testing-horiz-options-grid {
+  overflow: hidden;
+}
+.lot-testing-label-preview .lot-testing-horiz-option-col {
+  padding: 3px 1px;
+  gap: 3px;
+}
+.lot-testing-label-preview .lot-testing-horiz-option-name {
+  font-size: 7px;
+  line-height: 1.2;
+}
+.lot-testing-label-preview .lot-testing-horiz-option-note {
+  font-size: 5.5px;
+}
+.lot-testing-label-preview .lot-testing-horiz-option-price {
+  font-size: 6px;
+  margin-top: 1px;
+}
+.lot-testing-label-preview .lot-testing-grid-check {
+  width: 11px;
+  height: 11px;
+  border-width: 2px;
+}
+.lot-testing-label-preview .lot-testing-samples-header {
+  font-size: 8px;
+  padding: 2px 5px;
+}
+.lot-testing-label-preview .lot-testing-samples-table th {
+  font-size: 8px;
+  padding: 2px 4px;
+}
+.lot-testing-label-preview .lot-testing-samples-table td {
+  font-size: 11px;
+  font-weight: 700;
+  height: auto;
+  padding: 2px 4px;
+}
+.lot-testing-label-preview .lot-testing-cell-input {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 2px;
 }
 
 .lot-id-card-id {

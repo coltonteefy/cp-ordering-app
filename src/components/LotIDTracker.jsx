@@ -1466,8 +1466,19 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [testingQueue, setTestingQueue] = useState([]);
   const [testingFormOpen, setTestingFormOpen] = useState(false);
-  const [testingContact, setTestingContact] = useState({ company: "", contact: "", phone: "", email: "", emailOptIn: false });
-  const [testingFormOptions, setTestingFormOptions] = useState({ combineCoa: false, comments: "" });
+  const TESTING_CONTACTS = [
+    { name: "Colton Teefy",  phone: "404-630-0071" },
+    { name: "Daniel Mata",   phone: "480-695-5048" },
+  ];
+  const [testingContact, setTestingContact] = useState({
+    company: "Coffee and Peppers",
+    contact: "Colton Teefy",
+    phone: "404-630-0071",
+    email: "coffeepepp@gmail.com",
+    emailOptIn: false,
+  });
+  const [testingFormOptions, setTestingFormOptions] = useState({ combineCoa: true, comments: "" });
+  const [testingGlobalTests, setTestingGlobalTests] = useState({ purityId: true, netPeptide: true, endotoxins: true, sterility: true, conformityTest: true, vialPhoto: true, fentanyl: true });
   const [vendorFilter, setVendorFilter] = useState(() => vendorGuest || "");
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
@@ -1969,6 +1980,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     const entryId = `${product.docId}-${coa.lot}`;
     setTestingQueue((prev) => {
       if (prev.some((entry) => entry.id === entryId)) return prev;
+      const all = Object.values(testingGlobalTests).every(Boolean);
       return [
         ...prev,
         {
@@ -1976,16 +1988,21 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           sampleName: product.product || "",
           expectedMg: product.strength || "",
           lotNumber: coa.lot || "",
-          selectAll: false,
-          purityId: true,
-          netPeptide: false,
-          endotoxins: false,
-          conformityTest: false,
-          vialPhoto: false,
+          selectAll: all,
+          ...testingGlobalTests,
         },
       ];
     });
     setTestingFormOpen(true);
+  };
+
+  const updateGlobalTest = (field, value) => {
+    setTestingGlobalTests((prev) => {
+      const next = { ...prev, [field]: value };
+      const all = Object.values(next).every(Boolean);
+      setTestingQueue((q) => q.map((entry) => ({ ...entry, [field]: value, selectAll: all })));
+      return next;
+    });
   };
 
   const removeTestingQueueItem = (entryId) => {
@@ -2001,11 +2018,12 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           updated.purityId = value;
           updated.netPeptide = value;
           updated.endotoxins = value;
+          updated.sterility = value;
           updated.conformityTest = value;
           updated.vialPhoto = value;
-        } else if (["purityId", "netPeptide", "endotoxins", "conformityTest", "vialPhoto"].includes(field)) {
+        } else if (["purityId", "netPeptide", "endotoxins", "sterility", "conformityTest", "vialPhoto"].includes(field)) {
           updated.selectAll =
-            updated.purityId && updated.netPeptide && updated.endotoxins && updated.conformityTest && updated.vialPhoto;
+            updated.purityId && updated.netPeptide && updated.endotoxins && updated.sterility && updated.conformityTest && updated.vialPhoto;
         }
         return updated;
       })
@@ -2020,130 +2038,151 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
         .replace(/>/g, "&gt;")
         .replace(/\"/g, "&quot;");
 
-    const displayRows = Array.from(
-      { length: Math.max(PRINT_TESTING_TABLE_ROW_COUNT, testingQueue.length) },
-      (_, index) => testingQueue[index] || null
-    );
-
-    const checkboxCell = (checked) => `<span class="testing-print-box${checked ? " checked" : ""}">${checked ? "X" : ""}</span>`;
     const today = new Date().toLocaleDateString("en-US");
-    const printLotClass = (lotNumber) => {
-      const len = String(lotNumber || "").length;
-      if (len > 16) return " testing-print-lot-tight";
-      if (len > 12) return " testing-print-lot-compact";
-      return "";
-    };
-    const tableRows = displayRows
-      .map(
-        (entry) => `
-          <tr>
-            <td class="testing-print-sample-col">${esc(entry?.sampleName || "")}</td>
-            <td class="testing-print-sample-col">${esc(entry?.expectedMg || "")}</td>
-            <td class="testing-print-sample-col testing-print-lot-cell${printLotClass(entry?.lotNumber)}">${esc(entry?.lotNumber || "")}</td>
-            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.selectAll))}</td>
-            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.purityId))}</td>
-            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.netPeptide))}</td>
-            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.endotoxins))}</td>
-            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.conformityTest))}</td>
-            <td class="testing-print-check-col">${checkboxCell(Boolean(entry?.vialPhoto))}</td>
-          </tr>
-        `
-      )
-      .join("");
 
-    const win = window.open("", "_blank", "width=1400,height=900");
-    if (!win) return;
+    const sigFile = testingContact.contact === "Daniel Mata" ? "danielsignature.png" : "coltonsignature.png";
+    const sigUrl = `${window.location.origin}/assets/${sigFile}`;
 
-    win.document.write(`
-      <html>
-        <head>
-          <title>Peptide Purity Testing Intake Form</title>
-          <style>
-            @page { size: 11in 8.5in; margin: 0.5in; }
-            html, body { margin: 0; padding: 0; }
-            body { font-family: Arial, sans-serif; color: #1a1a1a; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; padding: 0.06in; }
-            .testing-print-block { border: 1px solid #b9c4d2; width: 100%; max-width: 9.9in; box-sizing: border-box; page-break-inside: avoid; margin: 0 auto; }
-            .testing-print-header { display: grid; grid-template-columns: 58% 13% 29%; align-items: center; gap: 7px; padding: 8px 10px 7px; }
-            .testing-print-title { font-size: 24px; line-height: 1; font-weight: 800; letter-spacing: 0; color: #1f6aa6; margin: 0; text-transform: uppercase; white-space: nowrap; }
-            .testing-print-meta { font-size: 10px; font-weight: 700; }
-            .testing-print-meta-center { text-align: center; }
-            .testing-print-meta-right { text-align: left; line-height: 1.15; }
-            .testing-print-table { width: 100%; margin: 0; border-collapse: collapse; table-layout: fixed; }
-            .testing-print-table th, .testing-print-table td { border: 1px solid #c2c7cf; height: 24px; padding: 1px 4px; font-size: 9px; }
-            .testing-print-table th { background: #0c365b; color: #fff; font-weight: 700; text-align: center; line-height: 1.05; }
-            .testing-print-table th.left { text-align: left; }
-            .testing-print-table th small { display: block; font-size: 8px; font-weight: 600; line-height: 1.05; }
-            .testing-print-sample-col { background: #d5deea; }
-            .testing-print-lot-cell { white-space: nowrap; letter-spacing: 0.01em; }
-            .testing-print-lot-cell.testing-print-lot-compact { font-size: 8.5px; }
-            .testing-print-lot-cell.testing-print-lot-tight { font-size: 7.5px; }
-            .testing-print-check-col { background: #efefef; text-align: center; }
-            .testing-print-box { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #6d6d6d; font-size: 9px; font-weight: 700; color: #1e1e1e; background: #f7f7f7; }
-            .testing-print-box.checked { background: #ebf2fb; }
-            .testing-print-combine { font-size: 12px; line-height: 1.2; margin: 7px 10px 0; display: flex; align-items: center; gap: 6px; }
-            .testing-print-combine-box { width: 14px; height: 14px; border: 2px solid #394450; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
-            .testing-print-comments-label { font-size: 16px; font-weight: 700; margin: 7px 10px 0; }
-            .testing-print-comments-box { margin: 0 10px; height: 30px; background: #d5deea; }
-            .testing-print-ack-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 7px 10px 8px; align-items: start; }
-            .testing-print-ack-title { font-size: 11px; font-weight: 700; margin-bottom: 1px; }
-            .testing-print-ack-copy { font-size: 8px; line-height: 1.2; max-width: 320px; }
-            .testing-print-signature-line, .testing-print-date-line { border-bottom: 2px solid #6f6f6f; height: 18px; display: inline-flex; align-items: flex-end; min-width: 220px; }
-            .testing-print-signature-line { min-width: 290px; }
-            .testing-print-field { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 6px; }
-            .testing-print-date-fill { background: #d5deea; width: 100%; height: 100%; display: inline-flex; align-items: center; padding: 0 6px; box-sizing: border-box; font-size: 10px; font-weight: 600; }
-          </style>
-        </head>
-        <body>
-          <div class="testing-print-block">
-            <div class="testing-print-header">
-              <h1 class="testing-print-title">Sample Details & Testing Selection</h1>
-              <div class="testing-print-meta testing-print-meta-center">Select All Testing Options</div>
-              <div class="testing-print-meta testing-print-meta-right">Disclaimer: All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.</div>
-            </div>
-            <table class="testing-print-table">
-              <thead>
-                <tr>
-                  <th class="left" style="width:14%;">Sample Name / ID</th>
-                  <th class="left" style="width:10%;">Expected mg</th>
-                  <th class="left" style="width:14%;">Lot Number</th>
-                  <th style="width:7%;">Select All</th>
-                  <th style="width:8%;">Purity & ID<br/><small>($200)</small></th>
-                  <th style="width:11%;">Net Peptide (+$25)</th>
-                  <th style="width:12%;">Endotoxins ($175)<br/><small>(Additional Vial Needed)</small></th>
-                  <th style="width:12%;">Conformity Test<br/><small>(Additional 50.00 Per Vial)</small></th>
-                  <th style="width:12%;">Vial Photo<br/><small>(No Fee)</small></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${tableRows}
-              </tbody>
-            </table>
-            <div class="testing-print-combine">
-              <span class="testing-print-combine-box">${testingFormOptions.combineCoa ? "X" : ""}</span>
-              <span>Combine Endotoxin and/or Conformity test results with the primary Purity & Identification results on a single COA.</span>
-            </div>
-            <div class="testing-print-comments-label">Comments:</div>
-            <div class="testing-print-comments-box"></div>
-            <div class="testing-print-ack-wrap">
-              <div>
-                <div class="testing-print-ack-title">Acknowledgment</div>
-                <div class="testing-print-ack-copy">By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.</div>
-              </div>
-              <div>
-                <div class="testing-print-field">Signature: <span class="testing-print-signature-line"></span></div>
-                <div class="testing-print-field">Date: <span class="testing-print-date-line"><span class="testing-print-date-fill">${esc(today)}</span></span></div>
-              </div>
+    const gt = testingGlobalTests;
+    const testOptionRows = [
+      { label: "Purity &amp; ID",   price: "$200",      note: "",           checked: gt.purityId },
+      { label: "Net Content",       price: "+$25",      note: "",           checked: gt.netPeptide },
+      { label: "Endotoxins",        price: "$175",      note: "*Addl Vial", checked: gt.endotoxins },
+      { label: "Sterility (PCR)",   price: "$150",      note: "*Addl Vial", checked: gt.sterility },
+      { label: "Conformity Test",   price: "+$50/vial", note: "*Addl Vial", checked: gt.conformityTest },
+      { label: "Vial Photo",        price: "No Fee",    note: "",           checked: gt.vialPhoto },
+    ].map(({ label, price, note, checked }) => `
+      <div class="tp-opt-col${checked ? " tp-opt-col-checked" : ""}">
+        <div class="tp-opt-col-name">${label}${note ? `<span class="tp-opt-note">${note}</span>` : ""}<span class="tp-opt-price">${price}</span></div>
+        <span class="tp-box${checked ? " tp-checked" : ""}">${checked ? "&#10003;" : ""}</span>
+      </div>
+    `).join("");
+
+    const sampleRows = testingQueue.map((entry, i) => `
+      <tr>
+        <td class="tp-num">${i + 1}</td>
+        <td class="tp-info">${esc(entry.sampleName)}</td>
+        <td class="tp-info tp-center">${esc(entry.expectedMg)}</td>
+        <td class="tp-info tp-lot">${esc(entry.lotNumber)}</td>
+      </tr>
+    `).join("");
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <title>Testing Form</title>
+    <style>
+      @page { size: 4in auto; margin: 0; }
+      html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      html, body { margin: 0; padding: 0; width: 4in; background: #fff; font-family: Arial, sans-serif; }
+      #label { width: 4in; min-height: 6in; padding: 0.12in; box-sizing: border-box; font-family: Arial, sans-serif; color: #1a1a1a; display: flex; flex-direction: column; }
+      .tp-footer { margin-top: auto; padding-top: 8pt; }
+      .tp-sub-info { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin-bottom: 4px; padding: 3px 5px; background: #f3f5f8; border: 1px solid #c8d0da; }
+      .tp-sub-field { display: flex; flex-direction: column; gap: 1px; }
+      .tp-sub-label { font-size: 5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #5a6a7a; }
+      .tp-sub-value { font-size: 7pt; font-weight: 700; color: #1a2535; border-bottom: 1px solid #aab4c0; padding-bottom: 1px; }
+      .tp-combine { font-size: 6.5pt; margin: 2px 0 4px; display: flex; align-items: center; gap: 4px; }
+      .tp-combine-box { width: 9pt; height: 9pt; border: 2px solid #394450; display: inline-flex; align-items: center; justify-content: center; font-size: 7pt; font-weight: 700; flex-shrink: 0; }
+      .tp-body { display: flex; flex-direction: column; gap: 5pt; }
+      .tp-opt-section { border: 1px solid #b9c4d2; }
+      .tp-opt-header { background: #0c365b; color: #fff; font-weight: 700; font-size: 6pt; padding: 2px 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .tp-opt-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+      .tp-opt-col { display: grid; grid-template-rows: 1fr auto; align-items: end; justify-items: center; text-align: center; padding: 2pt 1pt; border-right: 1px solid #d0d7e0; gap: 2pt; }
+      .tp-opt-col:last-child { border-right: none; }
+      .tp-opt-col-checked { background: #eef3fb; }
+      .tp-opt-fentanyl { background: #f7f8fa; border-left: 2px solid #0c365b; }
+      .tp-opt-col-name { font-size: 5pt; font-weight: 700; line-height: 1.2; color: #1e2d3b; }
+      .tp-opt-note { display: block; font-size: 4pt; font-weight: 400; color: #777; line-height: 1.1; }
+      .tp-opt-price { display: block; font-size: 4.5pt; font-weight: 600; color: #2a3a47; margin-top: 1pt; }
+      .tp-box { width: 8pt; height: 8pt; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #5a6a7a; background: #fff; font-size: 6pt; font-weight: 900; color: #1a2535; }
+      .tp-checked { background: #d5deea; }
+      .tp-samples { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      .tp-samples thead th { background: #0c365b; color: #fff; font-weight: 700; border: 1px solid #1a4d72; padding: 3px 4px; font-size: 6.5pt; text-align: center; }
+      .tp-samples thead th.left { text-align: left; }
+      .tp-samples td { border: 1px solid #c2c7cf; padding: 2px 4px; height: 16pt; vertical-align: middle; font-size: 8pt; font-weight: 700; }
+      .tp-num { text-align: center; background: #eef3fb; width: 8%; }
+      .tp-info { background: #d5deea; }
+      .tp-center { text-align: center; }
+      .tp-lot { font-size: 6pt; white-space: nowrap; }
+      .tp-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 8pt; align-items: start; }
+      .tp-comments-label { font-size: 6.5pt; font-weight: 700; margin-bottom: 2px; }
+      .tp-comments-box { min-height: 30pt; background: #d5deea; border: 1px solid #b9c4d2; padding: 2px 3px; font-size: 6.5pt; word-break: break-word; }
+      .tp-ack-title { font-size: 6.5pt; font-weight: 700; margin-bottom: 2px; }
+      .tp-ack-copy { font-size: 4.5pt; line-height: 1.25; margin-bottom: 6pt; }
+      .tp-sig-block { display: flex; flex-direction: column; gap: 6pt; }
+      .tp-sig-row { display: flex; align-items: flex-end; gap: 4pt; font-size: 6.5pt; white-space: nowrap; }
+      .tp-sig-line { flex: 1; border-bottom: 1.5px solid #444; min-height: 26pt; display: flex; align-items: flex-end; padding-bottom: 1pt; }
+      .tp-sig-img { max-height: 22pt; max-width: 1.2in; display: block; }
+      .tp-date-line { flex: 1; border-bottom: 1.5px solid #444; min-height: 14pt; display: flex; align-items: flex-end; padding-bottom: 1pt; }
+      .tp-date-fill { background: #d5deea; padding: 1px 4px; font-size: 7pt; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div id="label">
+      <div class="tp-sub-info">
+        <div class="tp-sub-field"><span class="tp-sub-label">Company / Organization</span><span class="tp-sub-value">${esc(testingContact.company)}</span></div>
+        <div class="tp-sub-field"><span class="tp-sub-label">Contact Person</span><span class="tp-sub-value">${esc(testingContact.contact)}</span></div>
+        <div class="tp-sub-field" style="margin-top:3px;"><span class="tp-sub-label">Phone</span><span class="tp-sub-value">${esc(testingContact.phone)}</span></div>
+        <div class="tp-sub-field" style="margin-top:3px;"><span class="tp-sub-label">Email</span><span class="tp-sub-value">${esc(testingContact.email)}</span></div>
+        <div class="tp-sub-field" style="margin-top:3px;"><span class="tp-sub-label">Date</span><span class="tp-sub-value">${esc(today)}</span></div>
+      </div>
+      <div class="tp-combine">
+        <span class="tp-combine-box">${testingFormOptions.combineCoa ? "&#10003;" : ""}</span>
+        Combine test results to display on one CoA per sample.
+      </div>
+      <div class="tp-body">
+        <div class="tp-opt-section">
+          <div class="tp-opt-header">Testing Options</div>
+          <div class="tp-opt-grid">
+            ${testOptionRows}
+            <div class="tp-opt-col tp-opt-fentanyl${gt.fentanyl ? " tp-opt-col-checked" : ""}">
+              <div class="tp-opt-col-name">Fentanyl Screen<span class="tp-opt-note">Addl Screening</span><span class="tp-opt-price">$40</span></div>
+              <span class="tp-box${gt.fentanyl ? " tp-checked" : ""}">${gt.fentanyl ? "&#10003;" : ""}</span>
             </div>
           </div>
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    win.document.close();
+        </div>
+        <table class="tp-samples">
+          <thead>
+            <tr>
+              <th style="width:6%;">#</th>
+              <th class="left" style="width:36%;">Sample Name / ID</th>
+              <th style="width:14%;">mg</th>
+              <th class="left" style="width:44%;">Lot Number</th>
+            </tr>
+          </thead>
+          <tbody>${sampleRows}</tbody>
+        </table>
+      </div>
+      <div class="tp-footer">
+        <div>
+          <div class="tp-comments-label">Comments:</div>
+          <div class="tp-comments-box">${esc(testingFormOptions.comments)}</div>
+        </div>
+        <div>
+          <div class="tp-ack-title">Acknowledgment</div>
+          <div class="tp-ack-copy">By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only.</div>
+          <div class="tp-sig-block">
+            <div class="tp-sig-row">Sig:&nbsp;<span class="tp-sig-line"><img class="tp-sig-img" src="${sigUrl}" /></span></div>
+            <div class="tp-sig-row">Date:&nbsp;<span class="tp-date-line"><span class="tp-date-fill">${esc(today)}</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+    const iframe = document.createElement("iframe");
+    // Give the iframe the exact label dimensions so the browser lays out at the right size
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:384px;height:2400px;border:none;visibility:hidden;";
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    iframe.contentWindow.focus();
+    setTimeout(() => {
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 2000);
+    }, 250);
   };
 
   const handlePrintAllVialLabels = async () => {
@@ -3228,178 +3267,174 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
         createPortal(
           <div className="lot-modal-backdrop" onClick={() => setTestingFormOpen(false)}>
             <div className="lot-modal lot-testing-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Peptide Purity Testing Intake Form</h3>
-              <p className="lot-modal-sub">Freedom Diagnostics sample detail form</p>
-
-              <div className="lot-testing-section">
-                <div className="lot-testing-section-title lot-testing-section-title-submission">Sample Submission Information</div>
-                <label className="lot-modal-label">Company / Organization Name</label>
-                <input
-                  type="text"
-                  className="lot-modal-input"
-                  value={testingContact.company}
-                  onChange={(e) => setTestingContact((prev) => ({ ...prev, company: e.target.value }))}
-                />
-                <label className="lot-modal-label">Contact Person</label>
-                <input
-                  type="text"
-                  className="lot-modal-input"
-                  value={testingContact.contact}
-                  onChange={(e) => setTestingContact((prev) => ({ ...prev, contact: e.target.value }))}
-                />
-                <div className="lot-testing-contact-grid">
-                  <div>
-                    <label className="lot-modal-label">Phone Number</label>
-                    <input
-                      type="text"
-                      className="lot-modal-input"
-                      value={testingContact.phone}
-                      onChange={(e) => setTestingContact((prev) => ({ ...prev, phone: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="lot-modal-label">Email Address</label>
-                    <input
-                      type="email"
-                      className="lot-modal-input"
-                      value={testingContact.email}
-                      onChange={(e) => setTestingContact((prev) => ({ ...prev, email: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <label className="lot-testing-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={testingContact.emailOptIn}
-                    onChange={(e) => setTestingContact((prev) => ({ ...prev, emailOptIn: e.target.checked }))}
-                  />
-                  Opt in to email updates from Freedom Diagnostics
-                </label>
+              <div className="lot-testing-modal-header-bar">
+                <h3>Peptide Purity Testing Form</h3>
+                <p className="lot-modal-sub">Preview matches print &mdash; click fields to edit</p>
               </div>
 
-              <div className="lot-testing-section">
-                <div className="lot-testing-header-meta">
-                  <div className="lot-testing-header-title">Sample Details & Testing Selection</div>
-                  <div className="lot-testing-header-meta-center">Select All Testing Options</div>
-                  <div className="lot-testing-header-meta-right">Disclaimer: All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.</div>
-                </div>
-                <div className="lot-testing-table-wrap">
-                  <table className="lot-testing-table">
-                    <thead>
-                      <tr>
-                        <th className="lot-testing-col-left">Sample Name / ID</th>
-                        <th className="lot-testing-col-left">Expected mg</th>
-                        <th className="lot-testing-col-left">Lot Number</th>
-                        <th>Select All</th>
-                        <th>Purity &amp; ID <small>($200)</small></th>
-                        <th>Net Peptide (+$25)</th>
-                        <th>Endotoxins ($175) <small>(Additional Vial Needed)</small></th>
-                        <th>Conformity Test <small>(Additional 50.00 Per Vial)</small></th>
-                        <th>Vial Photo <small>(No Fee)</small></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {testingDisplayRows.map((entry, rowIndex) => (
-                        <tr key={entry?.id || `blank-${rowIndex}`}>
-                          <td className="lot-testing-sample-col">{entry?.sampleName || ""}</td>
-                          <td className="lot-testing-sample-col">
-                            {entry ? (
-                              <input
-                                type="text"
-                                className="lot-testing-cell-input"
-                                value={entry.expectedMg}
-                                onChange={(e) => updateTestingQueueItem(entry.id, "expectedMg", e.target.value)}
-                              />
-                            ) : null}
-                          </td>
-                          <td className={`lot-testing-sample-col ${getLotCellClassName(entry?.lotNumber)}`}>{entry?.lotNumber || ""}</td>
-                          <td className="lot-testing-check-col">
-                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.selectAll} onChange={(e) => updateTestingQueueItem(entry.id, "selectAll", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
-                          </td>
-                          <td className="lot-testing-check-col">
-                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.purityId} onChange={(e) => updateTestingQueueItem(entry.id, "purityId", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
-                          </td>
-                          <td className="lot-testing-check-col">
-                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.netPeptide} onChange={(e) => updateTestingQueueItem(entry.id, "netPeptide", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
-                          </td>
-                          <td className="lot-testing-check-col">
-                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.endotoxins} onChange={(e) => updateTestingQueueItem(entry.id, "endotoxins", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
-                          </td>
-                          <td className="lot-testing-check-col">
-                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.conformityTest} onChange={(e) => updateTestingQueueItem(entry.id, "conformityTest", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
-                          </td>
-                          <td className="lot-testing-check-col">
-                            {entry ? <input className="lot-testing-grid-check" type="checkbox" checked={entry.vialPhoto} onChange={(e) => updateTestingQueueItem(entry.id, "vialPhoto", e.target.checked)} /> : <span className="lot-testing-grid-check static" />}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <label className="lot-testing-checkbox-row lot-testing-combine-row">
-                  <input
-                    type="checkbox"
-                    checked={testingFormOptions.combineCoa}
-                    onChange={(e) => setTestingFormOptions((prev) => ({ ...prev, combineCoa: e.target.checked }))}
-                  />
-                  Combine Endotoxin and/or Conformity results with primary Purity & Identification COA
-                </label>
-                <label className="lot-modal-label">Comments</label>
-                <textarea
-                  className="lot-modal-input lot-modal-textarea"
-                  rows={3}
-                  value={testingFormOptions.comments}
-                  onChange={(e) => setTestingFormOptions((prev) => ({ ...prev, comments: e.target.value }))}
-                />
-                {testingQueue.length === 0 ? (
-                  <div className="lot-testing-empty">No lots in queue. Use Send for Testing on any lot card.</div>
-                ) : (
-                  <div className="lot-testing-remove-list">
-                    {testingQueue.map((entry) => (
-                      <button
-                        key={`rm-${entry.id}`}
-                        type="button"
-                        className="lot-testing-remove-btn"
-                        onClick={() => removeTestingQueueItem(entry.id)}
-                      >
-                        Remove {entry.sampleName} ({entry.lotNumber})
-                      </button>
-                    ))}
+              {/* Label preview — styled to match the 4×6 print output */}
+              <div className="lot-testing-label-preview">
+
+                {/* Submission info: compact 3-col grid */}
+                <div className="lot-tp-sub-info">
+                  <div className="lot-tp-sub-field">
+                    <span className="lot-tp-sub-label">Company / Organization</span>
+                    <input className="lot-tp-sub-input" value={testingContact.company}
+                      onChange={(e) => setTestingContact((prev) => ({ ...prev, company: e.target.value }))} />
                   </div>
-                )}
-                <div className="lot-testing-ack-wrap">
+                  <div className="lot-tp-sub-field">
+                    <span className="lot-tp-sub-label">Contact Person</span>
+                    <select className="lot-tp-sub-input lot-tp-sub-select"
+                      value={testingContact.contact}
+                      onChange={(e) => {
+                        const picked = TESTING_CONTACTS.find((c) => c.name === e.target.value);
+                        setTestingContact((prev) => ({
+                          ...prev,
+                          contact: e.target.value,
+                          phone: picked ? picked.phone : prev.phone,
+                        }));
+                      }}>
+                      {TESTING_CONTACTS.map((c) => (
+                        <option key={c.name} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="lot-tp-sub-field">
+                    <span className="lot-tp-sub-label">Phone</span>
+                    <input className="lot-tp-sub-input" value={testingContact.phone}
+                      onChange={(e) => setTestingContact((prev) => ({ ...prev, phone: e.target.value }))} />
+                  </div>
+                  <div className="lot-tp-sub-field" style={{ marginTop: "4px" }}>
+                    <span className="lot-tp-sub-label">Email</span>
+                    <input className="lot-tp-sub-input" type="email" value={testingContact.email}
+                      onChange={(e) => setTestingContact((prev) => ({ ...prev, email: e.target.value }))} />
+                  </div>
+                  <div className="lot-tp-sub-field" style={{ marginTop: "4px" }}>
+                    <span className="lot-tp-sub-label">Date</span>
+                    <span className="lot-tp-sub-value-static">{new Date().toLocaleDateString("en-US")}</span>
+                  </div>
+                </div>
+
+                {/* Combine CoA */}
+                <label className="lot-tp-combine">
+                  <span className="lot-tp-combine-box">{testingFormOptions.combineCoa ? "✓" : ""}</span>
+                  <input type="checkbox" checked={testingFormOptions.combineCoa}
+                    onChange={(e) => setTestingFormOptions((prev) => ({ ...prev, combineCoa: e.target.checked }))}
+                    style={{ display: "none" }} />
+                  Combine test results to display on one CoA per sample.
+                </label>
+
+                {/* Testing options — horizontal grid, one column per test */}
+                <div className="lot-testing-horiz-options">
+                  <div className="lot-testing-horiz-options-header">Testing Options</div>
+                  <div className="lot-testing-horiz-options-grid">
+                    {[
+                      { key: "purityId",       label: "Purity & ID",     price: "$200",      note: "" },
+                      { key: "netPeptide",     label: "Net Content",      price: "+$25",      note: "" },
+                      { key: "endotoxins",     label: "Endotoxins",       price: "$175",      note: "*Addl Vial" },
+                      { key: "sterility",      label: "Sterility (PCR)",  price: "$150",      note: "*Addl Vial" },
+                      { key: "conformityTest", label: "Conformity Test",  price: "+$50/vial", note: "*Addl Vial" },
+                      { key: "vialPhoto",      label: "Vial Photo",       price: "No Fee",    note: "" },
+                    ].map(({ key, label, price, note }) => (
+                      <label key={key} className="lot-testing-horiz-option-col">
+                        <span className="lot-testing-horiz-option-name">
+                          {label}
+                          {note && <span className="lot-testing-horiz-option-note">{note}</span>}
+                          <span className="lot-testing-horiz-option-price">{price}</span>
+                        </span>
+                        <input className="lot-testing-grid-check" type="checkbox"
+                          checked={testingGlobalTests[key]}
+                          onChange={(e) => updateGlobalTest(key, e.target.checked)} />
+                      </label>
+                    ))}
+                    <label className="lot-testing-horiz-option-col lot-testing-horiz-fentanyl">
+                      <span className="lot-testing-horiz-option-name">
+                        Fentanyl Screen
+                        <span className="lot-testing-horiz-option-note">Addl Screening</span>
+                        <span className="lot-testing-horiz-option-price">$40</span>
+                      </span>
+                      <input className="lot-testing-grid-check" type="checkbox"
+                        checked={testingGlobalTests.fentanyl}
+                        onChange={(e) => updateGlobalTest("fentanyl", e.target.checked)} />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Sample list — dynamic */}
+                <div className="lot-testing-samples-section">
+                  <div className="lot-testing-samples-header">
+                    <span>Sample Details</span>
+                    <span className="lot-testing-samples-count">{testingQueue.length} in queue</span>
+                  </div>
+                  {testingQueue.length === 0 ? (
+                    <div className="lot-testing-empty">No samples yet — use &ldquo;Send for Testing&rdquo; on any lot card.</div>
+                  ) : (
+                    <table className="lot-testing-samples-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: "6%" }}>#</th>
+                          <th className="lot-testing-col-left" style={{ width: "38%" }}>Sample Name / ID</th>
+                          <th style={{ width: "14%" }}>mg</th>
+                          <th className="lot-testing-col-left" style={{ width: "36%" }}>Lot Number</th>
+                          <th style={{ width: "6%" }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {testingQueue.map((entry, i) => (
+                          <tr key={entry.id}>
+                            <td className="lot-testing-check-col">{i + 1}</td>
+                            <td className="lot-testing-sample-col">{entry.sampleName}</td>
+                            <td className="lot-testing-sample-col">
+                              <input type="text" className="lot-testing-cell-input" value={entry.expectedMg}
+                                onChange={(e) => updateTestingQueueItem(entry.id, "expectedMg", e.target.value)} />
+                            </td>
+                            <td className={`lot-testing-sample-col ${getLotCellClassName(entry.lotNumber)}`}>{entry.lotNumber}</td>
+                            <td className="lot-testing-check-col">
+                              <button type="button" className="lot-testing-remove-inline" onClick={() => removeTestingQueueItem(entry.id)}>✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* Footer: comments + acknowledgment */}
+                <div className="lot-tp-footer">
                   <div>
-                    <div className="lot-testing-ack-title">Acknowledgment</div>
-                    <div className="lot-testing-ack-copy">
-                      By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only. Results are not intended for diagnostic, therapeutic, or medical purposes.
+                    <div className="lot-tp-comments-label">Comments:</div>
+                    <textarea className="lot-tp-comments-input" rows={2}
+                      value={testingFormOptions.comments}
+                      onChange={(e) => setTestingFormOptions((prev) => ({ ...prev, comments: e.target.value }))} />
+                  </div>
+                  <div>
+                    <div className="lot-tp-ack-title">Acknowledgment</div>
+                    <div className="lot-tp-ack-copy">By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only.</div>
+                    <div className="lot-tp-sig-block">
+                      <div className="lot-tp-sig-row">
+                        <span>Sig:</span>
+                        <span className="lot-tp-sig-line">
+                          <img
+                            className="lot-tp-sig-img"
+                            src={`/assets/${testingContact.contact === "Daniel Mata" ? "danielsignature.png" : "coltonsignature.png"}`}
+                            alt={testingContact.contact}
+                          />
+                        </span>
+                      </div>
+                      <div className="lot-tp-sig-row">
+                        <span>Date:</span>
+                        <span className="lot-tp-date-line"><span className="lot-tp-date-fill">{new Date().toLocaleDateString("en-US")}</span></span>
+                      </div>
                     </div>
                   </div>
-                  <div className="lot-testing-signature-area">
-                    <div className="lot-testing-signature-row"><span>Signature:</span><span className="lot-testing-signature-line" /></div>
-                    <div className="lot-testing-signature-row"><span>Date:</span><span className="lot-testing-date-line" /></div>
-                  </div>
                 </div>
-              </div>
+
+              </div>{/* end label preview */}
 
               <div className="lot-modal-actions">
-                <button type="button" className="lot-modal-btn secondary" onClick={() => setTestingFormOpen(false)}>
-                  Close
-                </button>
-                <button
-                  type="button"
-                  className="lot-modal-btn danger"
-                  onClick={() => setTestingQueue([])}
-                >
-                  Clear Queue
-                </button>
-                <button
-                  type="button"
-                  className="lot-modal-btn primary"
-                  onClick={printTestingForm}
-                  disabled={!testingQueue.length}
-                >
-                  Print Form
-                </button>
+                <button type="button" className="lot-modal-btn secondary" onClick={() => setTestingFormOpen(false)}>Close</button>
+                <button type="button" className="lot-modal-btn danger" onClick={() => setTestingQueue([])}>Clear Queue</button>
+                <button type="button" className="lot-modal-btn primary" onClick={printTestingForm} disabled={!testingQueue.length}>Print Form</button>
               </div>
             </div>
           </div>,
