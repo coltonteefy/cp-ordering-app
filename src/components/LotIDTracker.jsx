@@ -2045,15 +2045,15 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
 
     const gt = testingGlobalTests;
     const testOptionRows = [
-      { label: "Purity &amp; ID",   price: "$200",      note: "",           checked: gt.purityId },
-      { label: "Net Content",       price: "+$25",      note: "",           checked: gt.netPeptide },
-      { label: "Endotoxins",        price: "$175",      note: "*Addl Vial", checked: gt.endotoxins },
-      { label: "Sterility (PCR)",   price: "$150",      note: "*Addl Vial", checked: gt.sterility },
-      { label: "Conformity Test",   price: "+$50/vial", note: "*Addl Vial", checked: gt.conformityTest },
-      { label: "Vial Photo",        price: "No Fee",    note: "",           checked: gt.vialPhoto },
-    ].map(({ label, price, note, checked }) => `
+      { label: "Purity &amp; ID",   price: "$200",      checked: gt.purityId },
+      { label: "Net Content",       price: "+$25",      checked: gt.netPeptide },
+      { label: "Endotoxins",        price: "$175",      checked: gt.endotoxins },
+      { label: "Sterility (PCR)",   price: "$150",      checked: gt.sterility },
+      { label: "Conformity Test",   price: "+$50/vial", checked: gt.conformityTest },
+      { label: "Vial Photo",        price: "No Fee",    checked: gt.vialPhoto },
+    ].map(({ label, price, checked }) => `
       <div class="tp-opt-col${checked ? " tp-opt-col-checked" : ""}">
-        <div class="tp-opt-col-name">${label}${note ? `<span class="tp-opt-note">${note}</span>` : ""}<span class="tp-opt-price">${price}</span></div>
+        <div class="tp-opt-col-name">${label}<span class="tp-opt-price">${price}</span></div>
         <span class="tp-box${checked ? " tp-checked" : ""}">${checked ? "&#10003;" : ""}</span>
       </div>
     `).join("");
@@ -2077,10 +2077,14 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       html, body { margin: 0; padding: 0; width: 4in; background: #fff; font-family: Arial, sans-serif; }
       #label { width: 4in; min-height: 6in; padding: 0.12in; box-sizing: border-box; font-family: Arial, sans-serif; color: #1a1a1a; display: flex; flex-direction: column; }
       .tp-footer { margin-top: auto; padding-top: 8pt; }
-      .tp-sub-info { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin-bottom: 4px; padding: 3px 5px; background: #f3f5f8; border: 1px solid #c8d0da; }
+      .tp-sub-info { display: grid; grid-template-columns: 1.1in 1fr; gap: 0; margin-bottom: 4px; background: #f3f5f8; border: 1px solid #c8d0da; }
+      .tp-sub-logo { display: flex; align-items: center; justify-content: center; padding: 6pt 5pt; border-right: 1px solid #c8d0da; }
+      .tp-logo { max-width: 1in; max-height: 30pt; display: block; object-fit: contain; }
+      .tp-sub-details { padding: 5pt 7pt; display: flex; flex-direction: column; gap: 4pt; }
+      .tp-sub-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8pt; }
       .tp-sub-field { display: flex; flex-direction: column; gap: 1px; }
       .tp-sub-label { font-size: 5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #5a6a7a; }
-      .tp-sub-value { font-size: 7pt; font-weight: 700; color: #1a2535; border-bottom: 1px solid #aab4c0; padding-bottom: 1px; }
+      .tp-sub-value { font-size: 7.5pt; font-weight: 700; color: #1a2535; border-bottom: 1px solid #aab4c0; padding-bottom: 1px; }
       .tp-combine { font-size: 6.5pt; margin: 2px 0 4px; display: flex; align-items: center; gap: 4px; }
       .tp-combine-box { width: 9pt; height: 9pt; border: 2px solid #394450; display: inline-flex; align-items: center; justify-content: center; font-size: 7pt; font-weight: 700; flex-shrink: 0; }
       .tp-body { display: flex; flex-direction: column; gap: 5pt; }
@@ -2091,9 +2095,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       .tp-opt-col:last-child { border-right: none; }
       .tp-opt-col-checked { background: #eef3fb; }
       .tp-opt-fentanyl { background: #f7f8fa; border-left: 2px solid #0c365b; }
-      .tp-opt-col-name { font-size: 5pt; font-weight: 700; line-height: 1.2; color: #1e2d3b; }
-      .tp-opt-note { display: block; font-size: 4pt; font-weight: 400; color: #777; line-height: 1.1; }
-      .tp-opt-price { display: block; font-size: 4.5pt; font-weight: 600; color: #2a3a47; margin-top: 1pt; }
+      .tp-opt-col-name { font-size: 6.5pt; font-weight: 700; line-height: 1.2; color: #1e2d3b; }
+      .tp-opt-price { display: block; font-size: 5.5pt; font-weight: 600; color: #2a3a47; margin-top: 1pt; }
       .tp-box { width: 8pt; height: 8pt; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #5a6a7a; background: #fff; font-size: 6pt; font-weight: 900; color: #1a2535; }
       .tp-checked { background: #d5deea; }
       .tp-samples { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -2115,16 +2118,31 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       .tp-sig-img { max-height: 22pt; max-width: 1.2in; display: block; }
       .tp-date-line { flex: 1; border-bottom: 1.5px solid #444; min-height: 14pt; display: flex; align-items: flex-end; padding-bottom: 1pt; }
       .tp-date-fill { background: #d5deea; padding: 1px 4px; font-size: 7pt; font-weight: 700; }
+      .tp-logo { max-height: 30pt; max-width: 1.4in; display: block; }
     </style>
   </head>
   <body>
     <div id="label">
       <div class="tp-sub-info">
-        <div class="tp-sub-field"><span class="tp-sub-label">Company / Organization</span><span class="tp-sub-value">${esc(testingContact.company)}</span></div>
-        <div class="tp-sub-field"><span class="tp-sub-label">Contact Person</span><span class="tp-sub-value">${esc(testingContact.contact)}</span></div>
-        <div class="tp-sub-field" style="margin-top:3px;"><span class="tp-sub-label">Phone</span><span class="tp-sub-value">${esc(testingContact.phone)}</span></div>
-        <div class="tp-sub-field" style="margin-top:3px;"><span class="tp-sub-label">Email</span><span class="tp-sub-value">${esc(testingContact.email)}</span></div>
-        <div class="tp-sub-field" style="margin-top:3px;"><span class="tp-sub-label">Date</span><span class="tp-sub-value">${esc(today)}</span></div>
+        <div class="tp-sub-logo">
+          <img class="tp-logo" src="${window.location.origin}/assets/labelLogo.png" />
+        </div>
+        <div class="tp-sub-details">
+          <div class="tp-sub-field">
+            <span class="tp-sub-label">Contact Person</span>
+            <span class="tp-sub-value">${esc(testingContact.contact)}</span>
+          </div>
+          <div class="tp-sub-2col">
+            <div class="tp-sub-field">
+              <span class="tp-sub-label">Phone</span>
+              <span class="tp-sub-value">${esc(testingContact.phone)}</span>
+            </div>
+            <div class="tp-sub-field">
+              <span class="tp-sub-label">Email</span>
+              <span class="tp-sub-value">${esc(testingContact.email)}</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="tp-combine">
         <span class="tp-combine-box">${testingFormOptions.combineCoa ? "&#10003;" : ""}</span>
@@ -2136,7 +2154,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           <div class="tp-opt-grid">
             ${testOptionRows}
             <div class="tp-opt-col tp-opt-fentanyl${gt.fentanyl ? " tp-opt-col-checked" : ""}">
-              <div class="tp-opt-col-name">Fentanyl Screen<span class="tp-opt-note">Addl Screening</span><span class="tp-opt-price">$40</span></div>
+              <div class="tp-opt-col-name">Fentanyl Screen<span class="tp-opt-price">$40</span></div>
               <span class="tp-box${gt.fentanyl ? " tp-checked" : ""}">${gt.fentanyl ? "&#10003;" : ""}</span>
             </div>
           </div>
@@ -3275,43 +3293,41 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
               {/* Label preview — styled to match the 4×6 print output */}
               <div className="lot-testing-label-preview">
 
-                {/* Submission info: compact 3-col grid */}
+                {/* Submission info: logo replaces company field */}
                 <div className="lot-tp-sub-info">
-                  <div className="lot-tp-sub-field">
-                    <span className="lot-tp-sub-label">Company / Organization</span>
-                    <input className="lot-tp-sub-input" value={testingContact.company}
-                      onChange={(e) => setTestingContact((prev) => ({ ...prev, company: e.target.value }))} />
+                  <div className="lot-tp-sub-logo-cell">
+                    <img className="lot-tp-logo" src="/assets/labelLogo.png" alt="Coffee and Peppers" />
                   </div>
-                  <div className="lot-tp-sub-field">
-                    <span className="lot-tp-sub-label">Contact Person</span>
-                    <select className="lot-tp-sub-input lot-tp-sub-select"
-                      value={testingContact.contact}
-                      onChange={(e) => {
-                        const picked = TESTING_CONTACTS.find((c) => c.name === e.target.value);
-                        setTestingContact((prev) => ({
-                          ...prev,
-                          contact: e.target.value,
-                          phone: picked ? picked.phone : prev.phone,
-                        }));
-                      }}>
-                      {TESTING_CONTACTS.map((c) => (
-                        <option key={c.name} value={c.name}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="lot-tp-sub-field">
-                    <span className="lot-tp-sub-label">Phone</span>
-                    <input className="lot-tp-sub-input" value={testingContact.phone}
-                      onChange={(e) => setTestingContact((prev) => ({ ...prev, phone: e.target.value }))} />
-                  </div>
-                  <div className="lot-tp-sub-field" style={{ marginTop: "4px" }}>
-                    <span className="lot-tp-sub-label">Email</span>
-                    <input className="lot-tp-sub-input" type="email" value={testingContact.email}
-                      onChange={(e) => setTestingContact((prev) => ({ ...prev, email: e.target.value }))} />
-                  </div>
-                  <div className="lot-tp-sub-field" style={{ marginTop: "4px" }}>
-                    <span className="lot-tp-sub-label">Date</span>
-                    <span className="lot-tp-sub-value-static">{new Date().toLocaleDateString("en-US")}</span>
+                  <div className="lot-tp-sub-details">
+                    <div className="lot-tp-sub-field">
+                      <span className="lot-tp-sub-label">Contact Person</span>
+                      <select className="lot-tp-sub-input lot-tp-sub-select"
+                        value={testingContact.contact}
+                        onChange={(e) => {
+                          const picked = TESTING_CONTACTS.find((c) => c.name === e.target.value);
+                          setTestingContact((prev) => ({
+                            ...prev,
+                            contact: e.target.value,
+                            phone: picked ? picked.phone : prev.phone,
+                          }));
+                        }}>
+                        {TESTING_CONTACTS.map((c) => (
+                          <option key={c.name} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="lot-tp-sub-2col">
+                      <div className="lot-tp-sub-field">
+                        <span className="lot-tp-sub-label">Phone</span>
+                        <input className="lot-tp-sub-input" value={testingContact.phone}
+                          onChange={(e) => setTestingContact((prev) => ({ ...prev, phone: e.target.value }))} />
+                      </div>
+                      <div className="lot-tp-sub-field">
+                        <span className="lot-tp-sub-label">Email</span>
+                        <input className="lot-tp-sub-input" type="email" value={testingContact.email}
+                          onChange={(e) => setTestingContact((prev) => ({ ...prev, email: e.target.value }))} />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -3329,17 +3345,16 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                   <div className="lot-testing-horiz-options-header">Testing Options</div>
                   <div className="lot-testing-horiz-options-grid">
                     {[
-                      { key: "purityId",       label: "Purity & ID",     price: "$200",      note: "" },
-                      { key: "netPeptide",     label: "Net Content",      price: "+$25",      note: "" },
-                      { key: "endotoxins",     label: "Endotoxins",       price: "$175",      note: "*Addl Vial" },
-                      { key: "sterility",      label: "Sterility (PCR)",  price: "$150",      note: "*Addl Vial" },
-                      { key: "conformityTest", label: "Conformity Test",  price: "+$50/vial", note: "*Addl Vial" },
-                      { key: "vialPhoto",      label: "Vial Photo",       price: "No Fee",    note: "" },
-                    ].map(({ key, label, price, note }) => (
+                      { key: "purityId",       label: "Purity & ID",     price: "$200"      },
+                      { key: "netPeptide",     label: "Net Content",      price: "+$25"      },
+                      { key: "endotoxins",     label: "Endotoxins",       price: "$175"      },
+                      { key: "sterility",      label: "Sterility (PCR)",  price: "$150"      },
+                      { key: "conformityTest", label: "Conformity Test",  price: "+$50/vial" },
+                      { key: "vialPhoto",      label: "Vial Photo",       price: "No Fee"    },
+                    ].map(({ key, label, price }) => (
                       <label key={key} className="lot-testing-horiz-option-col">
                         <span className="lot-testing-horiz-option-name">
                           {label}
-                          {note && <span className="lot-testing-horiz-option-note">{note}</span>}
                           <span className="lot-testing-horiz-option-price">{price}</span>
                         </span>
                         <input className="lot-testing-grid-check" type="checkbox"
@@ -3350,7 +3365,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                     <label className="lot-testing-horiz-option-col lot-testing-horiz-fentanyl">
                       <span className="lot-testing-horiz-option-name">
                         Fentanyl Screen
-                        <span className="lot-testing-horiz-option-note">Addl Screening</span>
                         <span className="lot-testing-horiz-option-price">$40</span>
                       </span>
                       <input className="lot-testing-grid-check" type="checkbox"

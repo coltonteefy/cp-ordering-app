@@ -1235,15 +1235,38 @@
   flex-direction: column;
 }
 
-/* Submission info — 2-col grid matching 4in print */
+.lot-tp-logo {
+  max-height: 40px;
+  max-width: 160px;
+  display: block;
+  object-fit: contain;
+}
+/* Submission info — logo left, details right */
 .lot-tp-sub-info {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 0;
+  margin-bottom: 6px;
+  background: #f3f5f8;
+  border: 1px solid #c8d0da;
+}
+.lot-tp-sub-logo-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 6px;
+  border-right: 1px solid #c8d0da;
+}
+.lot-tp-sub-details {
+  padding: 6px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.lot-tp-sub-2col {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 10px;
-  margin-bottom: 6px;
-  padding: 5px 7px;
-  background: #f3f5f8;
-  border: 1px solid #c8d0da;
 }
 .lot-tp-sub-field {
   display: flex;
@@ -1925,14 +1948,11 @@
   gap: 3px;
 }
 .lot-testing-label-preview .lot-testing-horiz-option-name {
-  font-size: 7px;
+  font-size: 9px;
   line-height: 1.2;
 }
-.lot-testing-label-preview .lot-testing-horiz-option-note {
-  font-size: 5.5px;
-}
 .lot-testing-label-preview .lot-testing-horiz-option-price {
-  font-size: 6px;
+  font-size: 8px;
   margin-top: 1px;
 }
 .lot-testing-label-preview .lot-testing-grid-check {
