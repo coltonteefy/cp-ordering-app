@@ -1402,6 +1402,10 @@
   display: block;
   object-fit: contain;
 }
+.lot-tp-sig-img--colton {
+  max-height: 48px;
+  max-width: 180px;
+}
 .lot-tp-date-fill {
   background: #d5deea;
   padding: 2px 5px;
