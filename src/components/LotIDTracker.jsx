@@ -2116,7 +2116,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       .tp-sig-row { display: flex; align-items: flex-end; gap: 4pt; font-size: 6.5pt; white-space: nowrap; }
       .tp-sig-line { flex: 1; border-bottom: 1.5px solid #444; min-height: 26pt; display: flex; align-items: flex-end; padding-bottom: 1pt; }
       .tp-sig-img { max-height: 22pt; max-width: 1.2in; display: block; }
-      .tp-sig-img--colton { max-height: 38pt; max-width: 1.6in; }
       .tp-date-line { flex: 1; border-bottom: 1.5px solid #444; min-height: 14pt; display: flex; align-items: flex-end; padding-bottom: 1pt; }
       .tp-date-fill { background: #d5deea; padding: 1px 4px; font-size: 7pt; font-weight: 700; }
       .tp-logo { max-height: 30pt; max-width: 1.4in; display: block; }
@@ -2181,7 +2180,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           <div class="tp-ack-title">Acknowledgment</div>
           <div class="tp-ack-copy">By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only.</div>
           <div class="tp-sig-block">
-            <div class="tp-sig-row">Sig:&nbsp;<span class="tp-sig-line"><img class="tp-sig-img${testingContact.contact !== "Daniel Mata" ? " tp-sig-img--colton" : ""}" src="${sigUrl}" /></span></div>
+            <div class="tp-sig-row">Sig:&nbsp;<span class="tp-sig-line"><img class="tp-sig-img" src="${sigUrl}" /></span></div>
             <div class="tp-sig-row">Date:&nbsp;<span class="tp-date-line"><span class="tp-date-fill">${esc(today)}</span></span></div>
           </div>
         </div>
@@ -3430,7 +3429,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                         <span>Sig:</span>
                         <span className="lot-tp-sig-line">
                           <img
-                            className={`lot-tp-sig-img${testingContact.contact !== "Daniel Mata" ? " lot-tp-sig-img--colton" : ""}`}
+                            className="lot-tp-sig-img"
                             src={`/assets/${testingContact.contact === "Daniel Mata" ? "danielsignature.png" : "coltonsignature.png"}`}
                             alt={testingContact.contact}
                           />
