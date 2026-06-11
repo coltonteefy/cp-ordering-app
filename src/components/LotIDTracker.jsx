@@ -2203,6 +2203,176 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     }, 250);
   };
 
+  const printTestingFormLetter = () => {
+    const esc = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;");
+
+    const today = new Date().toLocaleDateString("en-US");
+    const sigFile = testingContact.contact === "Daniel Mata" ? "danielsignature.png" : "coltonsignature.png";
+    const sigUrl = `${window.location.origin}/assets/${sigFile}`;
+    const gt = testingGlobalTests;
+
+    const testOptionRows = [
+      { label: "Purity &amp; ID",   price: "$200",      checked: gt.purityId },
+      { label: "Net Content",       price: "+$25",      checked: gt.netPeptide },
+      { label: "Endotoxins",        price: "$175",      checked: gt.endotoxins },
+      { label: "Sterility (PCR)",   price: "$150",      checked: gt.sterility },
+      { label: "Conformity Test",   price: "+$50/vial", checked: gt.conformityTest },
+      { label: "Vial Photo",        price: "No Fee",    checked: gt.vialPhoto },
+    ].map(({ label, price, checked }) => `
+      <div class="tp-opt-col${checked ? " tp-opt-col-checked" : ""}">
+        <div class="tp-opt-col-name">${label}<span class="tp-opt-price">${price}</span></div>
+        <span class="tp-box${checked ? " tp-checked" : ""}">${checked ? "&#10003;" : ""}</span>
+      </div>
+    `).join("");
+
+    const sampleRows = testingQueue.map((entry, i) => `
+      <tr>
+        <td class="tp-num">${i + 1}</td>
+        <td class="tp-info">${esc(entry.sampleName)}</td>
+        <td class="tp-info tp-center">${esc(entry.expectedMg)}</td>
+        <td class="tp-info tp-lot">${esc(entry.lotNumber)}</td>
+      </tr>
+    `).join("");
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <title>Testing Form</title>
+    <style>
+      @page { size: 8.5in 11in; margin: 0.65in 0.75in; }
+      html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      html, body { margin: 0; padding: 0; background: #fff; font-family: Arial, sans-serif; }
+      #label { width: 100%; min-height: 9.7in; box-sizing: border-box; font-family: Arial, sans-serif; color: #1a1a1a; display: flex; flex-direction: column; }
+      .tp-footer { margin-top: auto; padding-top: 18pt; }
+      .tp-sub-info { display: grid; grid-template-columns: 1.9in 1fr; gap: 0; margin-bottom: 10px; background: #f3f5f8; border: 1px solid #c8d0da; }
+      .tp-sub-logo { display: flex; align-items: center; justify-content: center; padding: 10pt 8pt; border-right: 1px solid #c8d0da; }
+      .tp-logo { max-width: 1.7in; max-height: 52pt; display: block; object-fit: contain; }
+      .tp-sub-details { padding: 9pt 12pt; display: flex; flex-direction: column; gap: 7pt; }
+      .tp-sub-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14pt; }
+      .tp-sub-field { display: flex; flex-direction: column; gap: 2px; }
+      .tp-sub-label { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #5a6a7a; }
+      .tp-sub-value { font-size: 13pt; font-weight: 700; color: #1a2535; border-bottom: 1px solid #aab4c0; padding-bottom: 2px; }
+      .tp-combine { font-size: 11pt; margin: 4px 0 8px; display: flex; align-items: center; gap: 7px; }
+      .tp-combine-box { width: 15pt; height: 15pt; border: 2px solid #394450; display: inline-flex; align-items: center; justify-content: center; font-size: 12pt; font-weight: 700; flex-shrink: 0; }
+      .tp-body { display: flex; flex-direction: column; gap: 10pt; }
+      .tp-opt-section { border: 1px solid #b9c4d2; }
+      .tp-opt-header { background: #0c365b; color: #fff; font-weight: 700; font-size: 10pt; padding: 4px 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .tp-opt-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+      .tp-opt-col { display: grid; grid-template-rows: 1fr auto; align-items: end; justify-items: center; text-align: center; padding: 5pt 3pt; border-right: 1px solid #d0d7e0; gap: 4pt; }
+      .tp-opt-col:last-child { border-right: none; }
+      .tp-opt-col-checked { background: #eef3fb; }
+      .tp-opt-fentanyl { background: #f7f8fa; border-left: 2px solid #0c365b; }
+      .tp-opt-col-name { font-size: 11pt; font-weight: 700; line-height: 1.2; color: #1e2d3b; }
+      .tp-opt-price { display: block; font-size: 9pt; font-weight: 600; color: #2a3a47; margin-top: 2pt; }
+      .tp-box { width: 14pt; height: 14pt; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #5a6a7a; background: #fff; font-size: 11pt; font-weight: 900; color: #1a2535; }
+      .tp-checked { background: #d5deea; }
+      .tp-samples { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      .tp-samples thead th { background: #0c365b; color: #fff; font-weight: 700; border: 1px solid #1a4d72; padding: 5px 7px; font-size: 11pt; text-align: center; }
+      .tp-samples thead th.left { text-align: left; }
+      .tp-samples td { border: 1px solid #c2c7cf; padding: 4px 7px; height: 26pt; vertical-align: middle; font-size: 13pt; font-weight: 700; }
+      .tp-num { text-align: center; background: #eef3fb; width: 6%; }
+      .tp-info { background: #d5deea; }
+      .tp-center { text-align: center; }
+      .tp-lot { font-size: 10pt; white-space: nowrap; }
+      .tp-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 16pt; align-items: start; }
+      .tp-comments-label { font-size: 11pt; font-weight: 700; margin-bottom: 4px; }
+      .tp-comments-box { min-height: 54pt; background: #d5deea; border: 1px solid #b9c4d2; padding: 4px 6px; font-size: 11pt; word-break: break-word; }
+      .tp-ack-title { font-size: 11pt; font-weight: 700; margin-bottom: 4px; }
+      .tp-ack-copy { font-size: 8pt; line-height: 1.35; margin-bottom: 10pt; }
+      .tp-sig-block { display: flex; flex-direction: column; gap: 10pt; }
+      .tp-sig-row { display: flex; align-items: flex-end; gap: 7pt; font-size: 11pt; white-space: nowrap; }
+      .tp-sig-line { flex: 1; border-bottom: 1.5px solid #444; min-height: 44pt; display: flex; align-items: flex-end; padding-bottom: 2pt; }
+      .tp-sig-img { max-height: 38pt; max-width: 2.2in; display: block; }
+      .tp-date-line { flex: 1; border-bottom: 1.5px solid #444; min-height: 22pt; display: flex; align-items: flex-end; padding-bottom: 2pt; }
+      .tp-date-fill { background: #d5deea; padding: 2px 6px; font-size: 12pt; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div id="label">
+      <div class="tp-sub-info">
+        <div class="tp-sub-logo">
+          <img class="tp-logo" src="${window.location.origin}/assets/labelLogo.png" />
+        </div>
+        <div class="tp-sub-details">
+          <div class="tp-sub-field">
+            <span class="tp-sub-label">Contact Person</span>
+            <span class="tp-sub-value">${esc(testingContact.contact)}</span>
+          </div>
+          <div class="tp-sub-2col">
+            <div class="tp-sub-field">
+              <span class="tp-sub-label">Phone</span>
+              <span class="tp-sub-value">${esc(testingContact.phone)}</span>
+            </div>
+            <div class="tp-sub-field">
+              <span class="tp-sub-label">Email</span>
+              <span class="tp-sub-value">${esc(testingContact.email)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tp-combine">
+        <span class="tp-combine-box">${testingFormOptions.combineCoa ? "&#10003;" : ""}</span>
+        Combine test results to display on one CoA per sample.
+      </div>
+      <div class="tp-body">
+        <div class="tp-opt-section">
+          <div class="tp-opt-header">Testing Options</div>
+          <div class="tp-opt-grid">
+            ${testOptionRows}
+            <div class="tp-opt-col tp-opt-fentanyl${gt.fentanyl ? " tp-opt-col-checked" : ""}">
+              <div class="tp-opt-col-name">Fentanyl Screen<span class="tp-opt-price">$40</span></div>
+              <span class="tp-box${gt.fentanyl ? " tp-checked" : ""}">${gt.fentanyl ? "&#10003;" : ""}</span>
+            </div>
+          </div>
+        </div>
+        <table class="tp-samples">
+          <thead>
+            <tr>
+              <th style="width:6%;">#</th>
+              <th class="left" style="width:36%;">Sample Name / ID</th>
+              <th style="width:14%;">mg</th>
+              <th class="left" style="width:44%;">Lot Number</th>
+            </tr>
+          </thead>
+          <tbody>${sampleRows}</tbody>
+        </table>
+      </div>
+      <div class="tp-footer">
+        <div>
+          <div class="tp-comments-label">Comments:</div>
+          <div class="tp-comments-box">${esc(testingFormOptions.comments)}</div>
+        </div>
+        <div>
+          <div class="tp-ack-title">Acknowledgment</div>
+          <div class="tp-ack-copy">By signing below, you confirm that all information provided is accurate to the best of your knowledge, you also acknowledge that the sample(s) comply with all applicable regulations for transportation and handling. All sample testing services are for research use only.</div>
+          <div class="tp-sig-block">
+            <div class="tp-sig-row">Sig:&nbsp;<span class="tp-sig-line"><img class="tp-sig-img" src="${sigUrl}" /></span></div>
+            <div class="tp-sig-row">Date:&nbsp;<span class="tp-date-line"><span class="tp-date-fill">${esc(today)}</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:816px;height:1056px;border:none;visibility:hidden;";
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    iframe.contentWindow.focus();
+    setTimeout(() => {
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 2000);
+    }, 250);
+  };
+
   const handlePrintAllVialLabels = async () => {
     const labelEntries = products
       .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
@@ -3448,7 +3618,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
               <div className="lot-modal-actions">
                 <button type="button" className="lot-modal-btn secondary" onClick={() => setTestingFormOpen(false)}>Close</button>
                 <button type="button" className="lot-modal-btn danger" onClick={() => setTestingQueue([])}>Clear Queue</button>
-                <button type="button" className="lot-modal-btn primary" onClick={printTestingForm} disabled={!testingQueue.length}>Print Form</button>
+                <button type="button" className="lot-modal-btn secondary" onClick={printTestingFormLetter} disabled={!testingQueue.length}>Print (Letter)</button>
+                <button type="button" className="lot-modal-btn primary" onClick={printTestingForm} disabled={!testingQueue.length}>Print (Label)</button>
               </div>
             </div>
           </div>,
