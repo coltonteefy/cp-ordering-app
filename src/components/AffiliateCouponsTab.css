@@ -1,0 +1,257 @@
+.aff-coupons-tab {
+  margin-top: 0.5rem;
+}
+
+/* Summary bar */
+.aff-summary-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  background: linear-gradient(135deg, #e8f8f0, #d4f0e4);
+  border: 1px solid #a8dfc7;
+  border-radius: 12px;
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.aff-summary-chips {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.aff-summary-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid #b8e6ce;
+  border-radius: 999px;
+  padding: 0.25rem 0.85rem;
+}
+
+.aff-chip-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1a5c3a;
+}
+
+.aff-chip-amount {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #1a7a48;
+}
+
+.aff-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.aff-total-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.aff-total-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #2e7d56;
+}
+
+.aff-total-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #1a5c3a;
+}
+
+.aff-minimum-note {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #b85c00;
+  margin-top: 0.1rem;
+}
+
+/* PayPal button */
+.btn-paypal {
+  background: #003087;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.btn-paypal:hover:not(:disabled) {
+  background: #001f5b;
+}
+
+.btn-paypal:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Table */
+.aff-table td {
+  vertical-align: middle;
+}
+
+.aff-row-active td {
+  background: #f6fff9;
+}
+
+.aff-unlinked {
+  color: #bbb;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.aff-paypal-cell {
+  font-size: 0.82rem;
+  color: #003087;
+}
+
+/* Edit row */
+.aff-edit-row td {
+  background: #f5f4ff;
+  border-top: 1px dashed #d0c8ff;
+  border-bottom: 2px solid #d0c8ff;
+  padding-top: 0.6rem;
+  padding-bottom: 0.75rem;
+}
+
+.aff-inline-input {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: #fff;
+  width: 100%;
+  min-width: 130px;
+}
+
+.aff-inline-input:focus {
+  outline: none;
+  border-color: #9575cd;
+}
+
+.aff-rate-input {
+  min-width: 60px;
+  max-width: 72px;
+}
+
+.aff-edit-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.aff-edit-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: #555;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.aff-edit-btn:hover {
+  border-color: #8b6f47;
+  color: #8b6f47;
+}
+
+.aff-save-btn {
+  background: #1a7a48;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.aff-save-btn:hover:not(:disabled) {
+  background: #145e38;
+}
+
+.aff-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.aff-cancel-btn {
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+}
+
+.aff-cancel-btn:hover {
+  background: #f5f5f5;
+}
+
+/* Tfoot */
+.aff-tfoot-label {
+  text-align: right;
+  font-weight: 700;
+  color: #444;
+  padding-top: 0.85rem;
+}
+
+.aff-tfoot-value {
+  font-weight: 800;
+  font-size: 1.05rem;
+  padding-top: 0.85rem;
+}
+
+/* Payout history */
+.aff-history {
+  margin-top: 2rem;
+  border-top: 1px solid #f0e8dc;
+  padding-top: 1rem;
+}
+
+.aff-history-toggle {
+  background: transparent;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.aff-history-toggle:hover {
+  color: #8b6f47;
+}
+
+.aff-batch-id {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: #666;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -13,6 +13,7 @@ import IncomingProducts from './components/IncomingProducts';
 import SkuPoPage from './components/SkuPoPage';
 import CoaLookup from './components/CoaLookup';
 import CostAnalytics from './components/CostAnalytics';
+import AffiliatePayouts from './components/AffiliatePayouts';
 import './App.css';
 
 const NavIcon = ({ type }) => {
@@ -114,7 +115,7 @@ function App() {
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
   const [toast, setToast] = useState({ visible: false, message: '' });
-  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup', 'cost-analytics'];
+  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup', 'cost-analytics', 'affiliates'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -296,6 +297,7 @@ function App() {
                   <div className="sidebar-menu">
                     <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
                     <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
+                    <button onClick={() => goToPage('affiliates')} className={`nav-link ${activePage === 'affiliates' ? 'active' : ''}`}>Affiliates</button>
                     <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
                   </div>
 
@@ -337,7 +339,12 @@ function App() {
               {/* Main Content */}
               <div className="main-content">
                 <div className="page-transition" key={activePage}>
-            {activePage === 'coa-lookup' ? (
+            {activePage === 'affiliates' ? (
+              <AffiliatePayouts
+                onSuccess={showToast}
+                onError={showModal}
+              />
+            ) : activePage === 'coa-lookup' ? (
               <CoaLookup />
             ) : activePage === 'cost-analytics' ? (
               <CostAnalytics />

@@ -13,6 +13,7 @@ import {
 import { deleteObject, getBytes, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
 import { costDatabase, getCost } from '../data/costDatabase';
+import AffiliateCouponsTab from './AffiliateCouponsTab';
 import './CostAnalytics.css';
 
 const CostAnalytics = () => {
@@ -284,10 +285,15 @@ const CostAnalytics = () => {
       if (!response.ok) {
         let details = '';
         try {
-          const payload = await response.json();
-          details = payload?.error || '';
+          const text = await response.text();
+          try {
+            const payload = JSON.parse(text);
+            details = payload?.error || text;
+          } catch {
+            details = text;
+          }
         } catch {
-          details = await response.text();
+          // ignore read error
         }
         throw new Error(details || `Woo sync failed (${response.status})`);
       }
@@ -1634,53 +1640,24 @@ const CostAnalytics = () => {
         <div className="woo-sync-section">
           <h2>Affiliate & Coupon Performance</h2>
           {wooPullInfo ? (
-            <>
-              <p className="breakdown-subtitle">
-                Pulled {wooPullInfo.orderCount} orders for {wooPullInfo.startDate === wooPullInfo.endDate
-                  ? wooPullInfo.startDate
-                  : `${wooPullInfo.startDate} to ${wooPullInfo.endDate}`}.
-              </p>
+            <p className="breakdown-subtitle">
+              {wooPullInfo.orderCount} orders ·{' '}
+              {wooPullInfo.startDate === wooPullInfo.endDate
+                ? wooPullInfo.startDate
+                : `${wooPullInfo.startDate} to ${wooPullInfo.endDate}`}
               {Object.keys(wooPullInfo.orderStatusCounts || {}).length > 0 && (
-                <p className="breakdown-subtitle">
-                  Status mix: {Object.entries(wooPullInfo.orderStatusCounts)
-                    .map(([status, count]) => `${status}: ${count}`)
-                    .join(' • ')}
-                </p>
+                <> · {Object.entries(wooPullInfo.orderStatusCounts).map(([s, n]) => `${s}: ${n}`).join(', ')}</>
               )}
-              <p className="breakdown-subtitle">
-                Totals source: {wooPullInfo.metricsSource === 'wc-analytics' ? 'Woo Analytics (dashboard aligned)' : 'Order line items (fallback)'}
-              </p>
-            </>
+            </p>
           ) : (
-            <p className="breakdown-subtitle">Run Pull Woo Today to load today&apos;s affiliate/coupon data.</p>
+            <p className="breakdown-subtitle">Pull Woo data above to load affiliate commissions.</p>
           )}
-
-          {wooCouponUsage.length > 0 ? (
-            <div className="table-wrapper">
-              <table className="breakdown-table woo-coupon-table">
-                <thead>
-                  <tr>
-                    <th>Coupon Code</th>
-                    <th className="number-head">Orders</th>
-                    <th className="number-head">Discount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {wooCouponUsage.map((coupon) => (
-                    <tr key={coupon.code}>
-                      <td className="product-name">{coupon.code}</td>
-                      <td className="number">{coupon.orderCount}</td>
-                      <td className="number revenue">${Number(coupon.totalDiscount || 0).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="empty-state">
-              <p>No coupon data available yet for the selected pull.</p>
-            </div>
-          )}
+          <AffiliateCouponsTab
+            wooCouponUsage={wooCouponUsage}
+            wooPullInfo={wooPullInfo}
+            onSuccess={showSuccessToast}
+            onError={(msg) => alert(msg)}
+          />
         </div>
       )}
 

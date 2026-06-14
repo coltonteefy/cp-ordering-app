@@ -16,6 +16,7 @@ const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || 'http://localhost:
 
 const isOriginAllowed = (origin) => {
   if (!origin) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
   return ALLOWED_ORIGINS.includes(origin);
 };
 
@@ -54,6 +55,13 @@ const WOO_ORDER_STATUSES = WOO_ORDER_STATUSES_RAW
   .filter(Boolean);
 const WOO_FETCH_CONCURRENCY = Math.max(1, Number.parseInt(process.env.WOO_FETCH_CONCURRENCY || '4', 10) || 4);
 const WOO_REQUEST_TIMEOUT_MS = Math.max(5000, Number.parseInt(process.env.WOO_REQUEST_TIMEOUT_MS || '30000', 10) || 30000);
+
+const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || '';
+const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET || '';
+const PAYPAL_MODE = (process.env.PAYPAL_MODE || 'sandbox').toLowerCase();
+const PAYPAL_BASE_URL = PAYPAL_MODE === 'live'
+  ? 'https://api-m.paypal.com'
+  : 'https://api-m.sandbox.paypal.com';
 
 const SEARCH_CODE_RE = /Coff\d+/i;
 const LOT_RE = /CP[A-Z0-9]{6,}/;
@@ -291,12 +299,16 @@ const buildDailyWooReport = (orders, startDateKey, endDateKey, analyticsSummary 
           orderCount: 0,
           totalDiscount: 0,
           _orderIds: new Set(),
+          _orderTotals: new Map(),
         });
       }
 
       const item = couponMap.get(key);
       if (orderId !== undefined && orderId !== null) {
         item._orderIds.add(orderId);
+        if (!item._orderTotals.has(orderId)) {
+          item._orderTotals.set(orderId, parseMoney(order?.total));
+        }
       }
       item.totalDiscount += parseMoney(coupon?.discount) + parseMoney(coupon?.discount_tax);
     });
@@ -312,11 +324,15 @@ const buildDailyWooReport = (orders, startDateKey, endDateKey, analyticsSummary 
   }));
 
   const couponUsage = Array.from(couponMap.values())
-    .map((coupon) => ({
-      code: coupon.code,
-      orderCount: coupon._orderIds.size,
-      totalDiscount: Number(coupon.totalDiscount.toFixed(2)),
-    }))
+    .map((coupon) => {
+      const netSales = Array.from(coupon._orderTotals.values()).reduce((s, v) => s + v, 0);
+      return {
+        code: coupon.code,
+        orderCount: coupon._orderIds.size,
+        totalDiscount: Number(coupon.totalDiscount.toFixed(2)),
+        netSales: Number(netSales.toFixed(2)),
+      };
+    })
     .sort((a, b) => b.totalDiscount - a.totalDiscount);
 
   const lineItemNetSales = rows.reduce((sum, row) => sum + parseMoney(row['Net sales']), 0);
@@ -398,6 +414,39 @@ app.get('/api/woo/daily-report', async (req, res) => {
   }
 });
 
+app.get('/api/woo/coupons', async (req, res) => {
+  try {
+    const collected = [];
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+      const url = buildWooUrl('coupons', { per_page: 100, page });
+      const response = await fetch(url, { signal: AbortSignal.timeout(WOO_REQUEST_TIMEOUT_MS) });
+      if (!response.ok) {
+        const body = await response.text();
+        return res.status(response.status).json({ error: `Woo coupons API failed (${response.status}): ${body}` });
+      }
+      const rows = await response.json();
+      if (!Array.isArray(rows)) break;
+      collected.push(...rows);
+      totalPages = Number.parseInt(response.headers.get('x-wp-totalpages') || '1', 10) || 1;
+      page += 1;
+    } while (page <= totalPages);
+
+    res.json(collected.map((c) => ({
+      id: c.id,
+      code: String(c.code || '').toLowerCase().trim(),
+      description: c.description || '',
+      discountType: c.discount_type || '',
+      amount: c.amount || '0',
+      emailRestrictions: Array.isArray(c.email_restrictions) ? c.email_restrictions : [],
+    })));
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Failed to fetch coupons.' });
+  }
+});
+
 app.post('/api/parse-pdf', upload.array('files'), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'No files uploaded.' });
@@ -429,6 +478,87 @@ app.post('/api/parse-pdf', upload.array('files'), async (req, res) => {
   );
 
   res.json({ results });
+});
+
+const getPayPalAccessToken = async () => {
+  if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
+    throw new Error('PayPal credentials missing. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env.');
+  }
+  const credentials = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
+  const response = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`PayPal auth failed (${response.status}): ${body}`);
+  }
+  const data = await response.json();
+  return data.access_token;
+};
+
+app.post('/api/paypal/payout', async (req, res) => {
+  try {
+    const { payments, startDate, endDate } = req.body || {};
+    if (!Array.isArray(payments) || payments.length === 0) {
+      return res.status(400).json({ error: 'No payments provided.' });
+    }
+
+    const invalidRecipient = payments.find((p) => !p.paypalEmail || !p.amount || Number(p.amount) <= 0);
+    if (invalidRecipient) {
+      return res.status(400).json({ error: `Invalid payment entry for ${invalidRecipient.name || 'unknown'}: paypalEmail and a positive amount are required.` });
+    }
+
+    const accessToken = await getPayPalAccessToken();
+    const batchId = `aff-${Date.now()}`;
+    const period = startDate === endDate ? startDate : `${startDate} to ${endDate}`;
+
+    const payload = {
+      sender_batch_header: {
+        sender_batch_id: batchId,
+        email_subject: 'Your affiliate commission has arrived',
+        email_message: `Your affiliate commission for ${period} has been sent. Thank you!`,
+      },
+      items: payments.map((p, i) => ({
+        recipient_type: 'EMAIL',
+        amount: { value: Number(p.amount).toFixed(2), currency: 'USD' },
+        receiver: p.paypalEmail,
+        note: `Commission for ${period}${p.couponCodes?.length ? ` — codes: ${p.couponCodes.join(', ')}` : ''}`,
+        sender_item_id: `${batchId}-${i}`,
+      })),
+    };
+
+    const response = await fetch(`${PAYPAL_BASE_URL}/v1/payments/payouts`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: data?.message || 'PayPal payout request failed.',
+        details: data,
+      });
+    }
+
+    res.json({
+      success: true,
+      batchId: data.batch_header?.payout_batch_id || batchId,
+      status: data.batch_header?.batch_status || 'PENDING',
+    });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Payout failed.' });
+  }
 });
 
 app.listen(PORT, () => {
