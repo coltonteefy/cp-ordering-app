@@ -8,7 +8,7 @@
 
 .order-items-header {
   display: grid;
-  grid-template-columns: 0.8fr 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.85fr;
+  grid-template-columns: 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.7fr 0.75fr;
   font-weight: 700;
   color: #a67c3c;
   background: #f7f1e7;
@@ -21,7 +21,7 @@
 
 .order-item-grid-row {
   display: grid;
-  grid-template-columns: 0.8fr 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.85fr;
+  grid-template-columns: 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.7fr 0.75fr;
   align-items: center;
   padding: 10px 6px;
   border-bottom: 1px solid #f0e6da;
@@ -32,7 +32,54 @@
 }
 
 .order-item-grid-row.editing {
-  grid-template-columns: 0.8fr 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.85fr 0.5fr;
+  grid-template-columns: 1.45fr 0.85fr 0.75fr 0.95fr 1fr 0.7fr 0.75fr 0.5fr;
+}
+
+.order-item-grid-row.item-row-paid {
+  background: #f4fbf6;
+}
+
+.item-paid-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item-paid-badge {
+  background: #d4f0e4;
+  border: 1px solid #6ebb7b;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #1a5c3a;
+}
+
+.item-unpaid-badge {
+  background: #fff3cd;
+  border: 1px solid #ffe082;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #856404;
+}
+
+.item-paid-amount {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.item-paid-amount.item-paid-full {
+  color: #1a7a48;
+}
+
+.item-paid-amount.item-paid-partial {
+  color: #b87a00;
+}
+
+.item-total-paid {
+  color: #1a7a48;
 }
 
 .order-item-warehouse-divider {
@@ -93,24 +140,6 @@
   color: #b07a2a;
 }
 
-.item-unit-view,
-.item-total-view {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.item-price-original {
-  text-decoration: line-through;
-  color: #bba88a;
-  font-size: 0.8em;
-  font-weight: 400;
-}
-
-.item-price-adjusted {
-  color: #1a7a48;
-  font-weight: 700;
-}
 
 .order-grid-input {
   padding: 7px 10px;
@@ -2088,6 +2117,37 @@
   color: #5d3a1a;
 }
 
+/* Items row at top of tracking card (view mode) */
+.tvc-items-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid #ede3d4;
+  margin-bottom: 0.1rem;
+}
+
+.tvc-item-chip {
+  background: #fff8ee;
+  border: 1px solid #e6c98a;
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7a4f1b;
+  white-space: nowrap;
+}
+
+.tracking-card.delivered-card .tvc-items-row {
+  border-bottom-color: #cfe6d4;
+}
+
+.tracking-card.delivered-card .tvc-item-chip {
+  background: #eef8f1;
+  border-color: #9dd4ae;
+  color: #1a6636;
+}
+
   color: #5D3A1A;
   flex: 1;
   display: flex;
@@ -2367,8 +2427,43 @@
   color: #1a7a48;
 }
 
+.tn-carrier-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #f0f4ff;
+  border: 1px solid #c7d6f5;
+  border-radius: 4px;
+  padding: 0.08rem 0.4rem;
+  color: #3b5fc0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tnc-awaiting-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.7rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  border: 1px solid #fbbf24;
+  background: #fffbeb;
+  color: #92400e;
+}
+
 .tracking-number-checklist {
   padding: 0.25rem 0;
+}
+
+.tnc-carrier-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.tnc-carrier-group + .tnc-carrier-group {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(0,0,0,0.06);
 }
 
 .tnc-carrier-row {
@@ -2411,6 +2506,32 @@
   text-decoration: line-through;
 }
 
+.tn-copy-btn {
+  background: #f0e8da;
+  border: 1px solid #d9c9b0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #8b6f47;
+  padding: 0.1rem 0.4rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.tn-copy-btn:hover {
+  background: #e0d0b8;
+  color: #5d3a1a;
+}
+
+.tn-copy-btn.copied {
+  background: #d4f0e4;
+  border-color: #6ebb7b;
+  color: #1a5c3a;
+}
+
 .tn-check-row.tn-delivered {
   opacity: 0.65;
 }
@@ -2444,6 +2565,17 @@
   color: #1a7a48;
   background: #e9f8ee;
   border-color: #a8dfc7;
+}
+
+.tn-meta-paid {
+  color: #1a5c3a;
+  background: #d4f0e4;
+  border-color: #6ebb7b;
+  font-weight: 700;
+}
+
+.tn-check-row.tn-paid .tracking-number-link {
+  opacity: 0.5;
 }
 
 /* ── Tracking card summary strip ────────────────────────── */
@@ -2783,12 +2915,38 @@
 }
 
 .payment-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: #a08060;
   margin-bottom: 0.35rem;
+}
+
+.pl-reset-row {
+  margin-bottom: 0.65rem;
+}
+
+.pl-reset-paid {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #888;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+  transition: all 0.15s;
+}
+
+.pl-reset-paid:hover {
+  border-color: #b1432d;
+  color: #b1432d;
 }
 
 .payment-log-row {
@@ -2927,6 +3085,57 @@
   letter-spacing: 0.07em;
   color: #a08060;
   margin-bottom: 0.5rem;
+}
+
+.pf-type-toggle {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.pf-type-btn {
+  flex: 1;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 7px;
+  background: #fafafa;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pf-type-btn:hover {
+  border-color: #b07a2a;
+  color: #7a4f1b;
+}
+
+.pf-type-btn.active {
+  background: #fff8ee;
+  border-color: #e6a94a;
+  color: #7a4f1b;
+  font-weight: 700;
+}
+
+.pl-type-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+  flex-shrink: 0;
+}
+
+.pl-type-down {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffe082;
+}
+
+.pl-type-delivered {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
 }
 
 .payment-form-fields {
