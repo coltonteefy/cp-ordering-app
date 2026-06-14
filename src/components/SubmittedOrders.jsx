@@ -68,6 +68,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [selectedVendorFilter, setSelectedVendorFilter] = useState('all');
   const [selectedDeliveredVendorFilter, setSelectedDeliveredVendorFilter] = useState('all');
   const [showUndeliveredModal, setShowUndeliveredModal] = useState(false);
+  const [expandedPaymentPanels, setExpandedPaymentPanels] = useState(new Set());
+  const [downPaymentForms, setDownPaymentForms] = useState({});
+  const [trackingFillQtys, setTrackingFillQtys] = useState({});
 
   // Load vendor colors from Firestore
   useEffect(() => {
@@ -739,6 +742,103 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     await saveTrackingEntries(orderId, entries);
   };
 
+  const handleTrackingDone = async (orderId, entryIdx) => {
+    const order = orders.find((o) => o.id === orderId);
+    const entries = [...getEffectiveTrackingEntries(order)];
+    const entry = entries[entryIdx];
+
+    // Normalize tracking numbers to one per line
+    const nums = getTrackingNumbers(entry.number);
+    const normalizedNumber = nums.join('\n');
+
+    // Auto-fill qty from selected items if not already set
+    const selectedItemIds = Array.isArray(entry.itemIds) ? entry.itemIds : [];
+    const totalSelectedQty = selectedItemIds.reduce((s, itemId) => {
+      const item = order.items.find((i) => i.itemId === itemId);
+      return s + (Number(item?.quantity) || 0);
+    }, 0);
+
+    const pnd = { ...(entry.perNumberData || {}) };
+    if (nums.length > 0 && totalSelectedQty > 0) {
+      const qtyPerBox = Math.round(totalSelectedQty / nums.length);
+      nums.forEach((num) => {
+        if (!pnd[num]?.qty) {
+          pnd[num] = { ...(pnd[num] || {}), qty: qtyPerBox };
+        }
+      });
+    }
+
+    entries[entryIdx] = { ...entry, number: normalizedNumber, perNumberData: pnd };
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    await saveTrackingEntries(orderId, entries);
+    setTrackingCardEditing(orderId, entryIdx, false);
+  };
+
+  const updateAllPerNumberData = async (orderId, entryIdx, pndPatch) => {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const entries = [...getEffectiveTrackingEntries(o)];
+        if (!entries[entryIdx]) return o;
+        const entry = entries[entryIdx];
+        entries[entryIdx] = { ...entry, perNumberData: { ...(entry.perNumberData || {}), ...pndPatch } };
+        return { ...o, trackingEntries: entries };
+      })
+    );
+    const order = orders.find((o) => o.id === orderId);
+    const entries = [...getEffectiveTrackingEntries(order)];
+    if (!entries[entryIdx]) return;
+    const entry = entries[entryIdx];
+    entries[entryIdx] = { ...entry, perNumberData: { ...(entry.perNumberData || {}), ...pndPatch } };
+    await saveTrackingEntries(orderId, entries);
+  };
+
+  const updatePerNumberData = async (orderId, entryIdx, num, patch) => {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const entries = [...getEffectiveTrackingEntries(o)];
+        if (!entries[entryIdx]) return o;
+        const entry = entries[entryIdx];
+        entries[entryIdx] = {
+          ...entry,
+          perNumberData: {
+            ...(entry.perNumberData || {}),
+            [num]: { ...(entry.perNumberData?.[num] || {}), ...patch },
+          },
+        };
+        return { ...o, trackingEntries: entries };
+      })
+    );
+    const order = orders.find((o) => o.id === orderId);
+    const entries = [...getEffectiveTrackingEntries(order)];
+    if (!entries[entryIdx]) return;
+    const entry = entries[entryIdx];
+    entries[entryIdx] = {
+      ...entry,
+      perNumberData: {
+        ...(entry.perNumberData || {}),
+        [num]: { ...(entry.perNumberData?.[num] || {}), ...patch },
+      },
+    };
+    await saveTrackingEntries(orderId, entries);
+  };
+
+  const toggleDeliveredNumber = async (orderId, entryIdx, trackingNumber) => {
+    const order = orders.find((o) => o.id === orderId);
+    const entries = [...getEffectiveTrackingEntries(order)];
+    const entry = entries[entryIdx];
+    const current = entry.deliveredNumbers || [];
+    const updated = current.includes(trackingNumber)
+      ? current.filter((n) => n !== trackingNumber)
+      : [...current, trackingNumber];
+    const allNums = getTrackingNumbers(entry.number);
+    const allDelivered = allNums.length > 0 && allNums.every((n) => updated.includes(n));
+    entries[entryIdx] = { ...entry, deliveredNumbers: updated, status: allDelivered ? 'delivered' : 'pending' };
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    await saveTrackingEntries(orderId, entries);
+  };
+
   const removeTrackingEntry = async (orderId, entryIdx) => {
     const order = orders.find((o) => o.id === orderId);
     const entries = [...getEffectiveTrackingEntries(order)].filter((_, i) => i !== entryIdx);
@@ -871,6 +971,59 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     return [cleaned];
   };
 
+  // Payment panel helpers ------------------------------------
+  const togglePaymentPanel = (orderId) => {
+    setExpandedPaymentPanels((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  const patchDownPaymentForm = (orderId, patch) => {
+    setDownPaymentForms((prev) => ({
+      ...prev,
+      [orderId]: { amount: '', date: new Date().toISOString().slice(0, 10), method: 'Crypto', note: '', ...(prev[orderId] || {}), ...patch },
+    }));
+  };
+
+  const addDownPayment = async (orderId) => {
+    const form = downPaymentForms[orderId] || {};
+    const amount = parseFloat(form.amount);
+    if (!amount || amount <= 0) return;
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const newPayment = {
+      id: Date.now().toString(),
+      amount,
+      date: form.date || new Date().toISOString().slice(0, 10),
+      method: form.method || 'Card',
+      note: form.note || '',
+    };
+    const updated = [...(order.downPayments || []), newPayment];
+    try {
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { downPayments: updated });
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, downPayments: updated } : o)));
+      setDownPaymentForms((prev) => ({ ...prev, [orderId]: { amount: '', date: new Date().toISOString().slice(0, 10), method: 'Crypto', note: '' } }));
+      onSuccess?.('Down payment logged.');
+    } catch {
+      onError?.('Failed to save payment.');
+    }
+  };
+
+  const removeDownPayment = async (orderId, paymentId) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const updated = (order.downPayments || []).filter((p) => p.id !== paymentId);
+    try {
+      await updateDoc(doc(db, 'c&pProductOrders', orderId), { downPayments: updated });
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, downPayments: updated } : o)));
+    } catch {
+      onError?.('Failed to remove payment.');
+    }
+  };
+
   // Rendering helpers -----------------------------------------
   const getOrderFinancials = (order) => {
     const computedItemsSubtotal = (order.items || []).reduce(
@@ -897,6 +1050,20 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     const isEditing = editingOrders.has(order.id);
     const { itemsSubtotal, shippingCost, discountPercent, finalTotal } = getOrderFinancials(order);
     const discount = discountPercent;
+    const totalDownPaid = (order.downPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const paidFraction = finalTotal > 0 ? Math.min(1, totalDownPaid / finalTotal) : 0;
+    const totalUnitsOrdered = (order.items || []).reduce((s, item) => s + (Number(item.quantity) || 0), 0);
+    const deliveredUnits = (order.trackingEntries || []).reduce((s, e) => {
+      const pnd = e.perNumberData || {};
+      const dn = e.deliveredNumbers || [];
+      return s + dn.reduce((ds, num) => ds + (Number(pnd[num]?.qty) || 0), 0);
+    }, 0);
+    const deliveredCost = (order.trackingEntries || []).reduce((s, e) => {
+      const pnd = e.perNumberData || {};
+      const dn = e.deliveredNumbers || [];
+      return s + dn.reduce((ds, num) => ds + (Number(pnd[num]?.cost) || 0), 0);
+    }, 0);
+    const remainingUnits = Math.max(0, totalUnitsOrdered - deliveredUnits);
     const submittedAtDisplay = new Date(order.submittedAt).toLocaleString();
     const trackingEntries =
       order.trackingEntries && Array.isArray(order.trackingEntries) && order.trackingEntries.length > 0
@@ -998,9 +1165,13 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     };
 
     const renderTrackingCard = ({ entry, originalIndex }) => {
-      const isDelivered = (entry.status || 'pending') === 'delivered';
       const trackingNumbers = getTrackingNumbers(entry.number);
       const hasTrackingNumbers = trackingNumbers.length > 0;
+      const deliveredNums = entry.deliveredNumbers || [];
+      const perNumberData = entry.perNumberData || {};
+      const isDelivered = hasTrackingNumbers
+        ? (deliveredNums.length === trackingNumbers.length && trackingNumbers.length > 0)
+        : (entry.status || 'pending') === 'delivered';
       const isWaitingNoTracking = !isDelivered && !hasTrackingNumbers;
       const isCardEditing = isTrackingCardEditing(order.id, originalIndex);
       const selectedItemIds = Array.isArray(entry.itemIds) ? entry.itemIds : [];
@@ -1012,7 +1183,21 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         const nextItemIds = selectedItemIds.includes(itemId)
           ? selectedItemIds.filter((id) => id !== itemId)
           : [...selectedItemIds, itemId];
-        updateTrackingEntry(order.id, originalIndex, { itemIds: nextItemIds });
+        const nextItems = nextItemIds.map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
+        const totalQty = nextItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+        const totalVal = nextItems.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.pricePerKit) || 0), 0);
+        const avgUnitPrice = totalQty > 0 ? totalVal / totalQty : 0;
+        const nums = getTrackingNumbers(entry.number);
+        let pnd = { ...(entry.perNumberData || {}) };
+        if (nums.length > 0 && totalQty > 0) {
+          const qtyPerBox = Math.round(totalQty / nums.length);
+          const grossPerBox = qtyPerBox * avgUnitPrice;
+          const duePerBox = parseFloat((grossPerBox * (1 - paidFraction)).toFixed(2));
+          nums.forEach((num) => {
+            pnd[num] = { qty: qtyPerBox, cost: duePerBox };
+          });
+        }
+        updateTrackingEntry(order.id, originalIndex, { itemIds: nextItemIds, cardQty: totalQty, perNumberData: pnd });
       };
 
       return (
@@ -1043,7 +1228,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   </button>
                   <button
                     className="tracking-card-btn"
-                    onClick={() => setTrackingCardEditing(order.id, originalIndex, false)}
+                    onClick={() => handleTrackingDone(order.id, originalIndex)}
                   >
                     Done
                   </button>
@@ -1064,16 +1249,110 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   </div>
                 </div>
                 <label className="tracking-field">
-                  <span className="tracking-field-label">Tracking #</span>
-                  <input
-                    type="text"
-                    placeholder="Tracking Number"
+                  <span className="tracking-field-label">Tracking # — one per line, or paste all at once</span>
+                  <textarea
+                    placeholder={"872519343600\n872519345474\n872519346595"}
                     value={entry.number || ''}
+                    rows={Math.min(12, Math.max(3, getTrackingNumbers(entry.number).length + 1))}
                     onChange={(e) => updateTrackingEntry(order.id, originalIndex, { number: e.target.value })}
-                    className="tracking-input"
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = e.clipboardData.getData('text');
+                      const nums = getTrackingNumbers(pasted);
+                      updateTrackingEntry(order.id, originalIndex, { number: nums.join('\n') });
+                    }}
+                    className="tracking-note tracking-number-textarea"
                   />
                 </label>
               </div>
+              {(() => {
+                const editNums = getTrackingNumbers(entry.number);
+                if (!editNums.length) return null;
+                const editItemIds = Array.isArray(entry.itemIds) ? entry.itemIds : [];
+                const editItems = editItemIds.map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
+                const avgUnitPrice = (() => {
+                  const tq = editItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+                  const tv = editItems.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.pricePerKit) || 0), 0);
+                  return tq > 0 ? tv / tq : 0;
+                })();
+                const fillKey = `${order.id}-${originalIndex}`;
+                const fillQty = trackingFillQtys[fillKey] ?? '';
+                const previewCost = avgUnitPrice > 0 && parseInt(fillQty) > 0
+                  ? parseFloat((parseInt(fillQty) * avgUnitPrice * (1 - paidFraction)).toFixed(2))
+                  : 0;
+
+                const applyKitsPerBox = (rawVal) => {
+                  const qty = parseInt(rawVal) || 0;
+                  if (!qty || !editNums.length) return;
+                  const cost = avgUnitPrice > 0 ? parseFloat((qty * avgUnitPrice * (1 - paidFraction)).toFixed(2)) : 0;
+                  const pndPatch = {};
+                  editNums.forEach((num) => { pndPatch[num] = { qty, cost }; });
+                  updateAllPerNumberData(order.id, originalIndex, pndPatch);
+                };
+
+                return (
+                  <div className="tracking-field">
+                    <div className="tpb-header-row">
+                      <span className="tracking-field-label">Qty & Cost Per Box</span>
+                      {!editItemIds.length && <span className="tpb-hint-muted">Select items below for auto cost</span>}
+                    </div>
+                    <div className="tpb-kits-row">
+                      <input
+                        type="number"
+                        className="tpb-fill-input"
+                        placeholder="kits per box"
+                        value={fillQty}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTrackingFillQtys((prev) => ({ ...prev, [fillKey]: val }));
+                          applyKitsPerBox(val);
+                        }}
+                        onFocus={(e) => e.target.select()}
+                      />
+                      <span className="tpb-label">kits per box</span>
+                      {previewCost > 0 && (
+                        <span className="tpb-cost-preview">
+                          = ${previewCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due / box
+                        </span>
+                      )}
+                    </div>
+                    <div className="tpb-grid">
+                      {editNums.map((num) => {
+                        const pnd = (entry.perNumberData || {})[num] || {};
+                        return (
+                          <div key={num} className="tpb-row">
+                            <span className="tpb-num">{num}</span>
+                            <input
+                              type="number"
+                              className="tpb-input tpb-qty"
+                              placeholder="qty"
+                              value={pnd.qty ?? ''}
+                              onChange={(e) => {
+                                const qty = parseInt(e.target.value) || 0;
+                                const cost = avgUnitPrice > 0 && qty > 0
+                                  ? parseFloat((qty * avgUnitPrice * (1 - paidFraction)).toFixed(2))
+                                  : (pnd.cost ?? 0);
+                                updatePerNumberData(order.id, originalIndex, num, { qty, cost });
+                              }}
+                              onFocus={(e) => e.target.select()}
+                            />
+                            <span className="tpb-label">kits</span>
+                            <span className="tpb-dollar">$</span>
+                            <input
+                              type="number"
+                              className="tpb-input tpb-cost"
+                              placeholder="due"
+                              value={pnd.cost ?? ''}
+                              onChange={(e) => updatePerNumberData(order.id, originalIndex, num, { cost: parseFloat(e.target.value) || 0 })}
+                              onFocus={(e) => e.target.select()}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               <label className="tracking-field tracking-note-field">
                 <span className="tracking-field-label">Notes</span>
                 <textarea
@@ -1106,16 +1385,27 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           ) : (
             <>
               <div className="tracking-card-header">
-                <label className={`tracking-status-toggle tracking-status-toggle-card ${isDelivered ? 'delivered' : 'pending'}`}>
-                  <input
-                    type="checkbox"
-                    checked={(entry.status || 'pending') === 'delivered'}
-                    onChange={(e) =>
-                      updateTrackingStatus(order.id, originalIndex, e.target.checked ? 'delivered' : 'pending')
-                    }
-                  />
-                  <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
-                </label>
+                {hasTrackingNumbers ? (() => {
+                  const totalKits = trackingNumbers.reduce((s, n) => s + (Number(perNumberData[n]?.qty) || 0), 0);
+                  const deliveredKits = deliveredNums.reduce((s, n) => s + (Number(perNumberData[n]?.qty) || 0), 0);
+                  const chipClass = `tnc-count-chip ${isDelivered ? 'tnc-all-delivered' : deliveredNums.length > 0 ? 'tnc-partial' : 'tnc-none'}`;
+                  return totalKits > 0 ? (
+                    <span className={chipClass}>{deliveredKits}/{totalKits} kits delivered</span>
+                  ) : (
+                    <span className={chipClass}>{deliveredNums.length}/{trackingNumbers.length} delivered</span>
+                  );
+                })() : (
+                  <label className={`tracking-status-toggle tracking-status-toggle-card ${isDelivered ? 'delivered' : 'pending'}`}>
+                    <input
+                      type="checkbox"
+                      checked={(entry.status || 'pending') === 'delivered'}
+                      onChange={(e) =>
+                        updateTrackingStatus(order.id, originalIndex, e.target.checked ? 'delivered' : 'pending')
+                      }
+                    />
+                    <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+                  </label>
+                )}
                 <button
                   className="tracking-card-edit-link"
                   onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
@@ -1124,21 +1414,37 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 </button>
               </div>
               {entry.carrier && hasTrackingNumbers ? (
-                <div className={`tracking-display${isDelivered ? ' delivered' : ''}`}>
-                  <span className="carrier-text">{entry.carrier}</span>
-                  <div className="tracking-number-list">
-                    {trackingNumbers.map((trackingNumber, trackingIdx) => (
-                      <a
-                        key={`${entry.id || originalIndex}-${trackingIdx}-${trackingNumber}`}
-                        href={getTrackingUrl(entry.carrier, trackingNumber)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="tracking-number-link tracking-text"
-                      >
-                        {trackingNumber}
-                      </a>
-                    ))}
+                <div className="tracking-number-checklist">
+                  <div className="tnc-carrier-row">
+                    <span className="carrier-text">{entry.carrier}</span>
                   </div>
+                  {trackingNumbers.map((num) => {
+                    const numDelivered = deliveredNums.includes(num);
+                    const pnd = perNumberData[num] || {};
+                    return (
+                      <div key={num} className={`tn-check-row${numDelivered ? ' tn-delivered' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={numDelivered}
+                          onChange={() => toggleDeliveredNumber(order.id, originalIndex, num)}
+                        />
+                        <a
+                          href={getTrackingUrl(entry.carrier, num)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="tracking-number-link"
+                        >
+                          {num}
+                        </a>
+                        {(pnd.qty > 0 || pnd.cost > 0) && (
+                          <div className="tn-meta">
+                            {pnd.qty > 0 && <span className="tn-meta-badge">{pnd.qty} kits</span>}
+                            {pnd.cost > 0 && <span className="tn-meta-badge tn-meta-cost">${Number(pnd.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div
@@ -1148,6 +1454,28 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   <span className="tracking-text">No tracking number</span>
                 </div>
               )}
+              {(() => {
+                const cardQty = Number(entry.cardQty) || 0;
+                const cardItems = (Array.isArray(entry.itemIds) ? entry.itemIds : [])
+                  .map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
+                const totalVal = cardItems.reduce((v, i) => v + (Number(i.quantity) || 0) * (Number(i.pricePerKit) || 0), 0);
+                const totalQtyItems = cardItems.reduce((v, i) => v + (Number(i.quantity) || 0), 0);
+                const avgPrice = totalQtyItems > 0 ? totalVal / totalQtyItems : 0;
+                const grossCost = cardQty * avgPrice;
+                const netCost = grossCost * (1 - paidFraction);
+                if (!cardQty) return null;
+                return (
+                  <div className="tracking-card-summary">
+                    <span className="tcs-qty">{cardQty.toLocaleString()} kits</span>
+                    {netCost > 0 && (
+                      <span className="tcs-cost">
+                        ${netCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due
+                        {paidFraction > 0 && <span className="tcs-cost-note"> (after payments)</span>}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
               {entry.note ? (
                 <div className="tracking-note-display">{entry.note}</div>
               ) : null}
@@ -1441,13 +1769,24 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                         <div className="item-strength-view">{item.productStrength || item.strength || ''}</div>
                         <div className="item-qty-view">{item.quantity}</div>
                         <div className="item-unit-view">
-                          ${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {paidFraction > 0 ? (
+                            <>
+                              <span className="item-price-original">${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="item-price-adjusted">${(item.pricePerKit * (1 - paidFraction)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </>
+                          ) : (
+                            `$${item.pricePerKit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          )}
                         </div>
                         <div className="item-total-view">
-                          ${(item.quantity * item.pricePerKit).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          })}
+                          {paidFraction > 0 ? (
+                            <>
+                              <span className="item-price-original">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="item-price-adjusted">${(item.quantity * item.pricePerKit * (1 - paidFraction)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </>
+                          ) : (
+                            `$${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          )}
                         </div>
                         <div className="item-delivered-view">
                           <label className="item-status-toggle">
@@ -1543,8 +1882,142 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   <span>${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 {discount > 0 && <div className="discount-indicator">{discount}% discount applied</div>}
+                {totalUnitsOrdered > 0 && (
+                  <div className="delivery-progress-wrap">
+                    <div className="delivery-progress-bar-track">
+                      <div
+                        className="delivery-progress-bar-fill"
+                        style={{ width: `${Math.min(100, (deliveredUnits / totalUnitsOrdered) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="delivery-progress-labels">
+                      <span className="dp-delivered">{deliveredUnits} delivered</span>
+                      {deliveredCost > 0 && (
+                        <span className="dp-cost">(${deliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                      )}
+                      <span className="dp-separator">·</span>
+                      <span className="dp-remaining">{remainingUnits} remaining</span>
+                      <span className="dp-total">of {totalUnitsOrdered}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Payment Tracker */}
+            {(() => {
+              const downPayments = order.downPayments || [];
+              const totalPaid = totalDownPaid;
+              const remaining = finalTotal - totalPaid;
+              const pendingValue = (order.items || [])
+                .filter((item) => (item.status || 'pending') !== 'delivered')
+                .reduce((s, item) => s + (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0), 0);
+              const form = downPaymentForms[order.id] || {};
+
+              return (
+                <div className="payment-panel-wrap">
+                    <div className="payment-panel">
+                      <div className="payment-panel-heading">Payment Tracker</div>
+                      {/* Summary row */}
+                      <div className="payment-summary-row">
+                        <div className="payment-summary-cell">
+                          <span className="psc-label">Order Total</span>
+                          <span className="psc-value">${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="payment-summary-cell">
+                          <span className="psc-label">Total Paid</span>
+                          <span className="psc-value psc-paid">${totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="payment-summary-cell">
+                          <span className="psc-label">Balance Due</span>
+                          <span className={`psc-value ${remaining > 0 ? 'psc-owed' : 'psc-clear'}`}>
+                            ${Math.max(0, remaining).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        {deliveredCost > 0 && (
+                          <div className="payment-summary-cell">
+                            <span className="psc-label">Delivered Cost</span>
+                            <span className="psc-value psc-delivered">${deliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                        {pendingValue > 0 && (
+                          <div className="payment-summary-cell">
+                            <span className="psc-label">Pending Value</span>
+                            <span className="psc-value psc-pending">${pendingValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Logged payments */}
+                      {downPayments.length > 0 && (
+                        <div className="payment-log">
+                          <div className="payment-log-header">Payment History</div>
+                          {downPayments.map((p) => (
+                            <div key={p.id} className="payment-log-row">
+                              <span className="pl-date">{p.date}</span>
+                              <span className="pl-method">{p.method}</span>
+                              <span className="pl-amount">${Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              {p.note && <span className="pl-note">{p.note}</span>}
+                              <button
+                                className="pl-remove"
+                                onClick={() => removeDownPayment(order.id, p.id)}
+                                title="Remove"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Add payment form */}
+                      <div className="payment-form">
+                        <div className="payment-form-title">Log Payment</div>
+                        <div className="payment-form-fields">
+                          <input
+                            className="pf-input pf-amount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Amount"
+                            value={form.amount || ''}
+                            onChange={(e) => patchDownPaymentForm(order.id, { amount: e.target.value })}
+                            onFocus={(e) => e.target.select()}
+                          />
+                          <input
+                            className="pf-input pf-date"
+                            type="date"
+                            value={form.date || new Date().toISOString().slice(0, 10)}
+                            onChange={(e) => patchDownPaymentForm(order.id, { date: e.target.value })}
+                          />
+                          <select
+                            className="pf-input pf-method"
+                            value={form.method || 'Crypto'}
+                            onChange={(e) => patchDownPaymentForm(order.id, { method: e.target.value })}
+                          >
+                            <option>Crypto</option>
+                            <option>Wire</option>
+                          </select>
+                          <input
+                            className="pf-input pf-note"
+                            type="text"
+                            placeholder="Note (optional)"
+                            value={form.note || ''}
+                            onChange={(e) => patchDownPaymentForm(order.id, { note: e.target.value })}
+                          />
+                          <button
+                            className="pf-submit"
+                            onClick={() => addDownPayment(order.id)}
+                            disabled={!form.amount || parseFloat(form.amount) <= 0}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
