@@ -744,6 +744,24 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     await saveTrackingEntries(orderId, entries);
   };
 
+  const autoCreateTrackingEntries = async (orderId) => {
+    const order = orders.find((o) => o.id === orderId);
+    const existing = getEffectiveTrackingEntries(order);
+    const newCards = (order.items || []).map((item, i) => ({
+      id: (Date.now() + i).toString(),
+      carrier: order?.carrier || 'UPS',
+      number: '',
+      note: '',
+      status: 'pending',
+      itemIds: [item.itemId],
+      cardQty: Number(item.quantity) || 0,
+      perNumberData: {},
+    }));
+    const entries = [...newCards, ...existing];
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    await saveTrackingEntries(orderId, entries);
+  };
+
   const handleTrackingDone = async (orderId, entryIdx) => {
     const order = orders.find((o) => o.id === orderId);
     const entries = [...getEffectiveTrackingEntries(order)];
@@ -1779,6 +1797,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>
                   + Add Tracking
                 </button>
+                <button className="tracking-add tracking-auto-create" onClick={() => autoCreateTrackingEntries(order.id)}>
+                  + Auto-Create from Products
+                </button>
               </div>
               {pendingTrackingEntries.length > 0 && (
                 <div className="tracking-display-grid tracking-display-grid-pending">
@@ -2273,6 +2294,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const pendingTotal = orders.reduce((sum, o) => sum + calculateFinalTotal(o), 0);
   const deliveredTotal = deliveredOrders.reduce((sum, o) => sum + calculateFinalTotal(o), 0);
 
+  const fmt2 = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const pendingVendors = [...new Set(orders.map(o => o.vendor || 'TSC'))].sort((a, b) => {
     if (a === 'TSC') return -1;
     if (b === 'TSC') return 1;
@@ -2284,6 +2307,25 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const filteredPendingOrders = effectiveVendorFilter === 'all'
     ? orders
     : orders.filter(o => (o.vendor || 'TSC') === effectiveVendorFilter);
+
+  const vendorSummaryStats = pendingVendors.map((vendor) => {
+    const vendorOrders = orders.filter((o) => (o.vendor || 'TSC') === vendor);
+    const total = vendorOrders.reduce((s, o) => s + calculateFinalTotal(o), 0);
+    const paid = vendorOrders.reduce((s, o) =>
+      s + (o.downPayments || []).reduce((ps, p) => ps + (Number(p.amount) || 0), 0), 0);
+    const deliveredCost = vendorOrders.reduce((s, o) =>
+      s + (o.trackingEntries || []).reduce((es, e) => {
+        const pnd = e.perNumberData || {};
+        return es + (e.deliveredNumbers || []).reduce((ns, n) => ns + (Number(pnd[n]?.cost) || 0), 0);
+      }, 0), 0);
+    const paidDeliveredCost = vendorOrders.reduce((s, o) =>
+      s + (o.trackingEntries || []).reduce((es, e) => {
+        const pnd = e.perNumberData || {};
+        return es + (e.paidNumbers || []).reduce((ns, n) => ns + (Number(pnd[n]?.cost) || 0), 0);
+      }, 0), 0);
+    const deliveredUnpaid = Math.max(0, deliveredCost - paidDeliveredCost);
+    return { vendor, total, paid, deliveredUnpaid };
+  });
 
   const deliveredVendors = [...new Set(deliveredOrders.map(o => o.vendor || 'TSC'))].sort((a, b) => {
     if (a === 'TSC') return -1;
@@ -2377,15 +2419,34 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       {!deliveredOnly && (
         <div className="orders-group">
           <h2 className="text-glow-fuchsia">Pending Orders</h2>
-          <div className="orders-page-total">
-            <span className="orders-summary-pill">Total: ${pendingTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            {undeliveredTotal > 0 && (
-              <button
-                className="orders-summary-pill orders-summary-pill--undelivered orders-summary-pill--btn"
-                onClick={() => setShowUndeliveredModal(true)}
-              >
-                Not Delivered: ${undeliveredTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} →
-              </button>
+          <div className="vendor-summary-grid">
+            <div className="vendor-summary-header">
+              <span>Vendor</span>
+              <span>Total</span>
+              <span>Paid</span>
+              <span>Delivered (Unpaid)</span>
+            </div>
+            {vendorSummaryStats.map(({ vendor, total, paid, deliveredUnpaid }) => (
+              <div key={vendor} className="vendor-summary-row">
+                <span className="vsrow-vendor">{vendor}</span>
+                <span className="vsrow-total">${fmt2(total)}</span>
+                <span className="vsrow-paid">${fmt2(paid)}</span>
+                <span className={`vsrow-unpaid${deliveredUnpaid > 0 ? ' has-unpaid' : ''}`}>
+                  {deliveredUnpaid > 0 ? `$${fmt2(deliveredUnpaid)}` : '—'}
+                </span>
+              </div>
+            ))}
+            {vendorSummaryStats.length > 1 && (
+              <div className="vendor-summary-row vendor-summary-total-row">
+                <span className="vsrow-vendor">All</span>
+                <span className="vsrow-total">${fmt2(pendingTotal)}</span>
+                <span className="vsrow-paid">${fmt2(vendorSummaryStats.reduce((s, v) => s + v.paid, 0))}</span>
+                <span className={`vsrow-unpaid${vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0) > 0 ? ' has-unpaid' : ''}`}>
+                  {vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0) > 0
+                    ? `$${fmt2(vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0))}`
+                    : '—'}
+                </span>
+              </div>
             )}
           </div>
           {pendingVendors.length > 1 && (

@@ -295,6 +295,70 @@
   align-items: center;
 }
 
+.vendor-summary-grid {
+  margin: 0.4rem 0 1.1rem;
+  border: 1px solid #e0d0b8;
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 0.85rem;
+  max-width: 560px;
+}
+
+.vendor-summary-header {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1.2fr 1.4fr;
+  background: #f4ead8;
+  padding: 0.4rem 0.85rem;
+  font-weight: 800;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a5a2e;
+  border-bottom: 1px solid #e0d0b8;
+}
+
+.vendor-summary-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1.2fr 1.4fr;
+  padding: 0.45rem 0.85rem;
+  background: #fff;
+  border-bottom: 1px solid #f0e6d8;
+  align-items: center;
+}
+
+.vendor-summary-row:last-child {
+  border-bottom: none;
+}
+
+.vendor-summary-total-row {
+  background: #f9f3ea;
+  font-weight: 700;
+  border-top: 1px solid #e0d0b8;
+}
+
+.vsrow-vendor {
+  font-weight: 700;
+  color: #4a3a2b;
+}
+
+.vsrow-total {
+  color: #4a3a2b;
+}
+
+.vsrow-paid {
+  color: #1a7a48;
+  font-weight: 600;
+}
+
+.vsrow-unpaid {
+  color: #aaa;
+}
+
+.vsrow-unpaid.has-unpaid {
+  color: #b85c00;
+  font-weight: 700;
+}
+
 .orders-summary-pill--undelivered {
   background: #fef0e6;
   border-color: #e6b07a;
@@ -1469,7 +1533,7 @@
 .tracking-display-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .tracking-list-wrap {
@@ -1481,6 +1545,14 @@
 .tracking-list-footer {
   display: flex;
   justify-content: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tracking-auto-create {
+  background: #e8f0fe;
+  color: #3d5a9e;
+  border-color: #9ab0e8;
 }
 
 .tracking-delivered-section {
@@ -1496,35 +1568,39 @@
 }
 
 .tracking-card {
-  background: #f9f6f1;
-  border: 1px solid #ede3d4;
-  border-radius: 10px;
-  padding: 0.65rem 0.75rem;
+  background: #fff;
+  border: 1.5px solid #e0d0b8;
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .tracking-card.pending-card {
-  background: #fcf8f1;
-  border-color: #eadcc6;
+  background: #fff;
+  border-color: #d9c8b0;
+  border-top: 3px solid #e6a94a;
 }
 
 .tracking-card.delivered-card {
-  background: #f4fbf6;
-  border-color: #cfe6d4;
-  box-shadow: 0 4px 12px rgba(47, 122, 58, 0.08);
+  background: #f6fdf8;
+  border-color: #b8dfc4;
+  border-top: 3px solid #4caf72;
+  box-shadow: 0 2px 8px rgba(47, 122, 58, 0.1), 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .tracking-card.is-editing {
   border-color: #e9c17f;
-  box-shadow: 0 8px 18px rgba(138, 101, 42, 0.12);
+  border-top-color: #c8860a;
+  box-shadow: 0 4px 16px rgba(138, 101, 42, 0.15);
 }
 
 .tracking-card.delivered-card.is-editing {
   border-color: #84bf91;
-  box-shadow: 0 8px 18px rgba(47, 122, 58, 0.16);
+  border-top-color: #2e8b57;
+  box-shadow: 0 4px 16px rgba(47, 122, 58, 0.18);
 }
 
 @media (max-width: 720px) {
