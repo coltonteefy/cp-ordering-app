@@ -66,6 +66,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [vendorProfiles, setVendorProfiles] = useState([]);
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
   const [editingTrackingCards, setEditingTrackingCards] = useState({});
+  const [trackingCardSnapshots, setTrackingCardSnapshots] = useState({});
   const syncedIncomingOnce = useRef(false);
   const trackingTextareaRefs = useRef({});
   const [vendorColorMap, setVendorColorMap] = useState({});
@@ -277,6 +278,33 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       syncedIncomingOnce.current = true;
       syncIncomingAggregates(orders);
     }
+  }, [orders]);
+
+  // Auto-mark items as delivered when tracking confirms full qty delivered
+  useEffect(() => {
+    orders.forEach((order) => {
+      const toMark = (order.items || []).filter((item) => {
+        if ((item.status || 'pending') === 'delivered') return false;
+        const itemQty = Number(item.quantity) || 0;
+        if (itemQty === 0) return false;
+        const deliveredQty = (order.trackingEntries || []).reduce((s, e) => {
+          if (!(e.itemIds || []).includes(item.itemId)) return s;
+          const pnd = e.perNumberData || {};
+          return s + (e.deliveredNumbers || []).reduce((ds, n) => ds + (Number(pnd[n]?.qty) || 0), 0);
+        }, 0);
+        return deliveredQty >= itemQty;
+      });
+      if (toMark.length === 0) return;
+      const markIds = new Set(toMark.map((i) => i.itemId));
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id !== order.id) return o;
+          return { ...o, items: o.items.map((item) => markIds.has(item.itemId) ? { ...item, status: 'delivered' } : item) };
+        })
+      );
+      const updatedItems = order.items.map((item) => markIds.has(item.itemId) ? { ...item, status: 'delivered' } : item);
+      updateDoc(doc(db, 'c&pProductOrders', order.id), { items: updatedItems }).catch(console.error);
+    });
   }, [orders]);
 
   const deleteOrder = async (order) => {
@@ -675,10 +703,30 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const isTrackingCardEditing = (orderId, entryIdx) =>
     Boolean(editingTrackingCards[trackingCardKey(orderId, entryIdx)]);
 
+  const getEffectiveTrackingEntries = (ord) => {
+    if (ord?.trackingEntries && Array.isArray(ord.trackingEntries) && ord.trackingEntries.length) {
+      return ord.trackingEntries;
+    }
+    if (ord?.trackingNumber && ord?.carrier) {
+      return [{ id: 'legacy', carrier: ord.carrier, number: ord.trackingNumber, note: '', status: ord.status || 'pending' }];
+    }
+    return [];
+  };
+
   const setTrackingCardEditing = (orderId, entryIdx, isEditing) => {
+    const key = trackingCardKey(orderId, entryIdx);
+    if (isEditing) {
+      // Snapshot the entry so Cancel can revert
+      const order = orders.find((o) => o.id === orderId);
+      const entry = getEffectiveTrackingEntries(order)[entryIdx];
+      if (entry) {
+        setTrackingCardSnapshots((prev) => ({ ...prev, [key]: JSON.parse(JSON.stringify(entry)) }));
+      }
+    } else {
+      setTrackingCardSnapshots((prev) => { const n = { ...prev }; delete n[key]; return n; });
+    }
     setEditingTrackingCards((prev) => {
       const next = { ...prev };
-      const key = trackingCardKey(orderId, entryIdx);
       if (isEditing) {
         next[key] = true;
       } else {
@@ -686,6 +734,26 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       }
       return next;
     });
+  };
+
+  const cancelTrackingCardEdit = async (orderId, entryIdx) => {
+    const key = trackingCardKey(orderId, entryIdx);
+    const snapshot = trackingCardSnapshots[key];
+    if (snapshot) {
+      setOrders((prev) => prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const entries = [...getEffectiveTrackingEntries(o)];
+        entries[entryIdx] = snapshot;
+        return { ...o, trackingEntries: entries };
+      }));
+      await saveTrackingEntries(orderId, (() => {
+        const order = orders.find((o) => o.id === orderId);
+        const entries = [...getEffectiveTrackingEntries(order)];
+        entries[entryIdx] = snapshot;
+        return entries;
+      })());
+    }
+    setTrackingCardEditing(orderId, entryIdx, false);
   };
 
   const clearTrackingCardEditsForOrder = (orderId) => {
@@ -696,16 +764,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       });
       return next;
     });
-  };
-
-  const getEffectiveTrackingEntries = (ord) => {
-    if (ord?.trackingEntries && Array.isArray(ord.trackingEntries) && ord.trackingEntries.length) {
-      return ord.trackingEntries;
-    }
-    if (ord?.trackingNumber && ord?.carrier) {
-      return [{ id: 'legacy', carrier: ord.carrier, number: ord.trackingNumber, note: '', status: ord.status || 'pending' }];
-    }
-    return [];
   };
 
   const saveTrackingEntries = async (orderId, entries) => {
@@ -1289,15 +1347,16 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       amount,
       date: form.date || new Date().toISOString().slice(0, 10),
       method: form.method || 'Crypto',
-      paymentType: form.paymentType || 'down',
+      paymentType: 'delivered',
+      isDownPayment: form.isDownPayment || false,
       note: form.note || '',
     };
     const updatedPayments = [...(order.downPayments || []), newPayment];
     try {
       const firestoreUpdate = { downPayments: updatedPayments };
 
-      // When paying for delivered items, stamp all currently-delivered numbers + items as paid
-      if (newPayment.paymentType === 'delivered') {
+      // When paying for delivered items (and not flagged as down payment), stamp delivered numbers + items as paid
+      if (newPayment.paymentType === 'delivered' && !newPayment.isDownPayment) {
         const entries = getEffectiveTrackingEntries(order);
         // Record exactly what this payment covers so we can reverse it on delete
         const coveredItemIds = (order.items || [])
@@ -1331,7 +1390,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
       await updateDoc(doc(db, 'c&pProductOrders', orderId), firestoreUpdate);
       setDownPaymentForms((prev) => ({ ...prev, [orderId]: { amount: '', date: new Date().toISOString().slice(0, 10), method: 'Crypto', note: '' } }));
-      onSuccess?.(newPayment.paymentType === 'delivered' ? 'Delivered items payment logged.' : 'Down payment logged.');
+      onSuccess?.(newPayment.isDownPayment ? 'Down payment logged.' : 'Delivered items payment logged.');
     } catch {
       onError?.('Failed to save payment.');
     }
@@ -1635,6 +1694,12 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                     Remove Card
                   </button>
                   <button
+                    className="tracking-card-btn tracking-card-btn-cancel"
+                    onClick={() => cancelTrackingCardEdit(order.id, originalIndex)}
+                  >
+                    Cancel
+                  </button>
+                  <button
                     className="tracking-card-btn"
                     onClick={() => handleTrackingDone(order.id, originalIndex)}
                   >
@@ -1792,16 +1857,20 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
             </>
           ) : (
             <>
-              {/* Items row at top */}
-              {assignedItems.length ? (
-                <div className="tvc-items-row">
-                  {assignedItems.map((item) => (
-                    <span key={item.itemId} className="tvc-item-chip">{formatTrackingItemLabel(item)}</span>
-                  ))}
-                </div>
-              ) : null}
+              {/* Items row at top with Edit */}
+              <div className="tvc-items-row">
+                {assignedItems.map((item) => (
+                  <span key={item.itemId} className="tvc-item-chip">{formatTrackingItemLabel(item)}</span>
+                ))}
+                <button
+                  className="tracking-card-edit-link tvc-edit-btn"
+                  onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
+                >
+                  Edit
+                </button>
+              </div>
 
-              {/* Header: status chip + edit */}
+              {/* Status chip row */}
               <div className="tracking-card-header">
                 {hasTrackingNumbers ? (() => {
                   const deliveredKits = deliveredNums.reduce((s, n) => s + (Number(perNumberData[n]?.qty) || 0), 0);
@@ -1818,24 +1887,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   ) : (
                     <span className={chipClass}>{deliveredNums.length}/{trackingNumbers.length} delivered</span>
                   );
-                })() : (
-                  <label className={`tracking-status-toggle tracking-status-toggle-card ${isDelivered ? 'delivered' : 'pending'}`}>
-                    <input
-                      type="checkbox"
-                      checked={(entry.status || 'pending') === 'delivered'}
-                      onChange={(e) =>
-                        updateTrackingStatus(order.id, originalIndex, e.target.checked ? 'delivered' : 'pending')
-                      }
-                    />
-                    <span>{(entry.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
-                  </label>
-                )}
-                <button
-                  className="tracking-card-edit-link"
-                  onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
-                >
-                  Edit
-                </button>
+                })() : null}
               </div>
 
               {/* Tracking numbers grouped by carrier */}
@@ -1850,127 +1902,140 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                       if (!seen.has(c)) { seen.set(c, []); groups.push(c); }
                       seen.get(c).push(num);
                     });
-                    return groups.map((grpCarrier) => (
-                      <div key={grpCarrier} className="tnc-carrier-group">
-                        <div className="tnc-carrier-row">
-                          <span className="carrier-text">{grpCarrier}</span>
-                        </div>
-                        {seen.get(grpCarrier).map((num) => {
-                          const numDelivered = deliveredNums.includes(num);
-                          const numPending = pendingDeliveryNums.has(num);
-                          const numPaid = paidNums.has(num);
-                          const pnd = perNumberData[num] || {};
-                          const hasPills = pnd.trackStatus || pnd.subStatus || pnd.destination || pnd.currentLocation || pnd.deliveryDate || pnd.estimatedDelivery || pnd.lastUpdated || pnd.rejected || pnd.confirmedAt;
-                          const sub = pnd.subStatus || '';
-                          const isReturn = /return/i.test(sub);
-                          const isException = /exception/i.test(sub) && !isReturn;
-                          return (
-                            <div key={num} className={`tn-check-row${numDelivered ? ' tn-delivered' : ''}${numPending ? ' tn-pending-delivery' : ''}${numPaid ? ' tn-paid' : ''}`}>
-                              <div className="tn-main-row">
-                                <input
-                                  type="checkbox"
-                                  checked={numDelivered}
-                                  onChange={() => toggleDeliveredNumber(order.id, originalIndex, num)}
-                                />
-                                <a
-                                  href={getTrackingUrl(grpCarrier, num)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="tracking-number-link"
-                                >
-                                  {num}
-                                </a>
-                                <button
-                                  className={`tn-copy-btn${copiedTrackingNum === num ? ' copied' : ''}`}
-                                  title="Copy tracking number"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(num);
-                                    setCopiedTrackingNum(num);
-                                    setTimeout(() => setCopiedTrackingNum(null), 1500);
-                                  }}
-                                >
-                                  {copiedTrackingNum === num ? 'Copied!' : '⎘'}
-                                </button>
-                                <button
-                                  className={`tn-sync-btn${syncingNum === num ? ' syncing' : ''}`}
-                                  title="Sync this tracking number"
-                                  disabled={syncingNum === num}
-                                  onClick={() => syncSingleTracking(order.id, originalIndex, num)}
-                                >
-                                  {syncingNum === num ? '…' : '↻'}
-                                </button>
+                    return groups.map((grpCarrier) => {
+                      const allNums = seen.get(grpCarrier);
+                      const activeNums = allNums.filter((n) => !deliveredNums.includes(n));
+                      const doneNums = allNums.filter((n) => deliveredNums.includes(n));
+                      return (
+                        <div key={grpCarrier} className="tnc-carrier-group">
+                          <div className="tnc-carrier-row">
+                            <span className="carrier-text">{grpCarrier}</span>
+                          </div>
+
+                          {/* Active (undelivered) numbers — full detail */}
+                          {activeNums.map((num) => {
+                            const numPending = pendingDeliveryNums.has(num);
+                            const numPaid = paidNums.has(num);
+                            const pnd = perNumberData[num] || {};
+                            const hasPills = pnd.trackStatus || pnd.subStatus || pnd.destination || pnd.currentLocation || pnd.deliveryDate || pnd.estimatedDelivery || pnd.lastUpdated || pnd.rejected || pnd.confirmedAt;
+                            const sub = pnd.subStatus || '';
+                            const isReturn = /return/i.test(sub);
+                            const isException = /exception/i.test(sub) && !isReturn;
+                            return (
+                              <div key={num} className={`tn-check-row${numPending ? ' tn-pending-delivery' : ''}${numPaid ? ' tn-paid' : ''}`}>
+                                <div className="tn-main-row">
+                                  <input
+                                    type="checkbox"
+                                    checked={false}
+                                    onChange={() => toggleDeliveredNumber(order.id, originalIndex, num)}
+                                  />
+                                  <div className="tn-num-block">
+                                    <a
+                                      href={getTrackingUrl(grpCarrier, num)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="tracking-number-link"
+                                    >
+                                      {num}
+                                    </a>
+                                    {(pnd.qty > 0 || pnd.cost > 0) && (
+                                      <span className="tn-sub">
+                                        {pnd.qty > 0 && <span>{pnd.qty} kits</span>}
+                                        {pnd.qty > 0 && pnd.cost > 0 && <span className="tn-sub-dot">·</span>}
+                                        {pnd.cost > 0 && <span>${Number(pnd.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    className={`tn-copy-btn${copiedTrackingNum === num ? ' copied' : ''}`}
+                                    title="Copy tracking number"
+                                    onClick={() => { navigator.clipboard.writeText(num); setCopiedTrackingNum(num); setTimeout(() => setCopiedTrackingNum(null), 1500); }}
+                                  >
+                                    {copiedTrackingNum === num ? 'Copied!' : '⎘'}
+                                  </button>
+                                  <button
+                                    className={`tn-sync-btn${syncingNum === num ? ' syncing' : ''}`}
+                                    title="Sync this tracking number"
+                                    disabled={syncingNum === num}
+                                    onClick={() => syncSingleTracking(order.id, originalIndex, num)}
+                                  >
+                                    {syncingNum === num ? '…' : '↻'}
+                                  </button>
+                                </div>
+                                {numPending && (
+                                  <div className="tn-pending-confirm-row">
+                                    <span className="tn-pill tn-pill-pending-delivery">Delivered — confirm?</span>
+                                    <button className="tn-confirm-btn" title="Confirm delivery" onClick={() => confirmDelivery(order.id, originalIndex, num)}>✓ Yes</button>
+                                    <button className="tn-dismiss-btn" title="Not delivered yet" onClick={() => dismissPendingDelivery(order.id, originalIndex, num)}>✗ No</button>
+                                  </div>
+                                )}
+                                {hasPills && (
+                                  <div className="tn-info-pills">
+                                    {pnd.rejected && (
+                                      <span className="tn-pill tn-pill-rejected">
+                                        Not found
+                                        <button className="tn-retry-btn" title={pnd.rejected} disabled={syncingNum === num} onClick={() => syncSingleTracking(order.id, originalIndex, num)}>
+                                          {syncingNum === num ? '…' : '↻ Retry'}
+                                        </button>
+                                      </span>
+                                    )}
+                                    {pnd.trackStatus && (
+                                      <span className={isReturn ? 'tn-pill tn-pill-return' : isException ? 'tn-pill tn-pill-exception' : 'tn-pill tn-pill-status'}>
+                                        {isReturn ? 'Returned to Sender'
+                                          : isException ? `Exception: ${sub.replace('Exception_', '').replace(/([A-Z])/g, ' $1').trim()}`
+                                          : pnd.trackStatus.replace(/([a-z])([A-Z])/g, '$1 $2')}
+                                      </span>
+                                    )}
+                                    {!pnd.deliveryDate && pnd.estimatedDelivery && (
+                                      <span className="tn-pill tn-pill-eta">Est. {new Date(pnd.estimatedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    )}
+                                    {pnd.destination && (
+                                      <span className="tn-pill tn-pill-dest">→ {pnd.destination}</span>
+                                    )}
+                                    {pnd.currentLocation && (
+                                      <span className="tn-pill tn-pill-location">📍 {pnd.currentLocation}</span>
+                                    )}
+                                    {pnd.lastUpdated && (
+                                      <span className="tn-pill tn-pill-time">
+                                        {new Date(pnd.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                              {numPending && (
-                                <div className="tn-pending-confirm-row">
-                                  <span className="tn-pill tn-pill-pending-delivery">Delivered — confirm?</span>
-                                  <button className="tn-confirm-btn" title="Confirm delivery" onClick={() => confirmDelivery(order.id, originalIndex, num)}>✓ Yes</button>
-                                  <button className="tn-dismiss-btn" title="Not delivered yet" onClick={() => dismissPendingDelivery(order.id, originalIndex, num)}>✗ No</button>
-                                </div>
-                              )}
-                              {(hasPills || pnd.qty > 0 || pnd.cost > 0) && (
-                                <div className="tn-info-pills">
-                                  {(pnd.qty > 0 || pnd.cost > 0) && (
-                                    <>
-                                      {pnd.qty > 0 && <span className="tn-meta-badge">{pnd.qty} kits</span>}
-                                      {numPaid
-                                        ? <span className="tn-meta-badge tn-meta-paid">Paid</span>
-                                        : pnd.cost > 0 && <span className="tn-meta-badge tn-meta-cost">${Number(pnd.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due</span>
-                                      }
-                                    </>
-                                  )}
-                                  {pnd.rejected && (
-                                    <span className="tn-pill tn-pill-rejected">
-                                      Not found
-                                      <button
-                                        className="tn-retry-btn"
-                                        title={pnd.rejected}
-                                        disabled={syncingNum === num}
-                                        onClick={() => syncSingleTracking(order.id, originalIndex, num)}
-                                      >
-                                        {syncingNum === num ? '…' : '↻ Retry'}
-                                      </button>
-                                    </span>
-                                  )}
-                                  {pnd.trackStatus && (
-                                    <span className={isReturn ? 'tn-pill tn-pill-return' : isException ? 'tn-pill tn-pill-exception' : numDelivered ? 'tn-pill tn-pill-delivered' : 'tn-pill tn-pill-status'}>
-                                      {isReturn ? 'Returned to Sender'
-                                        : isException ? `Exception: ${sub.replace('Exception_', '').replace(/([A-Z])/g, ' $1').trim()}`
-                                        : pnd.trackStatus.replace(/([a-z])([A-Z])/g, '$1 $2')}
-                                    </span>
-                                  )}
-                                  {pnd.deliveryDate && (
-                                    <span className="tn-pill tn-pill-delivered">
-                                      Delivered {new Date(pnd.deliveryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </span>
-                                  )}
-                                  {pnd.confirmedAt && (
-                                    <span className="tn-pill tn-pill-confirmed" title={`Confirmed ${new Date(pnd.confirmedAt).toLocaleString()}`}>
-                                      ✓ Confirmed
-                                    </span>
-                                  )}
-                                  {!pnd.deliveryDate && pnd.estimatedDelivery && (
-                                    <span className="tn-pill tn-pill-eta">
-                                      Est. {new Date(pnd.estimatedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </span>
-                                  )}
-                                  {pnd.currentLocation && (
-                                    <span className="tn-pill tn-pill-location">📍 {pnd.currentLocation}</span>
-                                  )}
-                                  {pnd.destination && (
-                                    <span className="tn-pill tn-pill-dest">→ {pnd.destination}</span>
-                                  )}
-                                  {!pnd.deliveryDate && pnd.lastUpdated && (
-                                    <span className="tn-pill tn-pill-time">
-                                      Updated {new Date(pnd.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
+                            );
+                          })}
+
+                          {/* Delivered numbers — compact chip row */}
+                          {doneNums.length > 0 && (
+                            <div className="tnc-delivered-row">
+                              {doneNums.map((num) => {
+                                const pnd = perNumberData[num] || {};
+                                const numPaid = paidNums.has(num);
+                                return (
+                                  <span key={num} className={`tnc-done-chip${numPaid ? ' tnc-done-chip-paid' : ''}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked
+                                      onChange={() => toggleDeliveredNumber(order.id, originalIndex, num)}
+                                      title="Unmark delivered"
+                                    />
+                                    <a href={getTrackingUrl(grpCarrier, num)} target="_blank" rel="noopener noreferrer" className="tnc-done-num">
+                                      {num}
+                                    </a>
+                                    {pnd.qty > 0 && <span className="tnc-done-kits">{pnd.qty} kits</span>}
+                                    {pnd.confirmedAt
+                                      ? <span className="tnc-done-confirmed" title={`Confirmed ${new Date(pnd.confirmedAt).toLocaleString()}`}>✓ Confirmed</span>
+                                      : <span className="tnc-done-unconfirmed">unconfirmed</span>
+                                    }
+                                  </span>
+                                );
+                              })}
                             </div>
-                          );
-                        })}
-                      </div>
-                    ));
+                          )}
+                        </div>
+                      );
+                    });
                   })()}
                 </div>
               ) : (
@@ -2056,6 +2121,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
             </div>
           </div>
           <div className="order-status-top">
+            {totalUnitsOrdered > 0 && (
+              <div className="order-delivery-progress">
+                <span className={`order-delivery-count${deliveredUnits >= totalUnitsOrdered ? ' all-delivered' : deliveredUnits > 0 ? ' partial' : ''}`}>
+                  {deliveredUnits}/{totalUnitsOrdered} kits
+                </span>
+                <div className="order-delivery-bar">
+                  <div
+                    className="order-delivery-fill"
+                    style={{ width: `${Math.min(100, (deliveredUnits / totalUnitsOrdered) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
             <span className="status-label">Order Status:</span>
             <label className="status-toggle">
               <input
@@ -2121,6 +2199,36 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                   disabled={syncingOrderId === order.id}
                 >
                   {syncingOrderId === order.id ? 'Syncing…' : '↻ Sync Status'}
+                </button>
+                <button
+                  className={`tracking-add tracking-copy-all${copiedOrderId === order.id && copiedOrderType === 'tracking' ? ' copied' : ''}`}
+                  onClick={() => {
+                    const entries = getEffectiveTrackingEntries(order);
+                    const blocks = entries.flatMap((e) => {
+                      const nums = getTrackingNumbers(e.number);
+                      if (!nums.length) return [];
+                      const pnd = e.perNumberData || {};
+                      const delivered = new Set(e.deliveredNumbers || []);
+                      const items = (Array.isArray(e.itemIds) ? e.itemIds : [])
+                        .map((id) => order.items.find((i) => i.itemId === id))
+                        .filter(Boolean);
+                      const label = items.length
+                        ? items.map(formatTrackingItemLabel).join(', ')
+                        : (e.note || '');
+                      const numLines = nums.map((num) => {
+                        const status = delivered.has(num) ? 'Delivered' : (pnd[num]?.trackStatus || 'Pending');
+                        return `  ${num}  ${status}`;
+                      });
+                      return label ? [`${label}`, ...numLines] : numLines;
+                    });
+                    if (!blocks.length) return;
+                    navigator.clipboard.writeText(blocks.join('\n'));
+                    setCopiedOrderId(order.id);
+                    setCopiedOrderType('tracking');
+                    setTimeout(() => { setCopiedOrderId(null); setCopiedOrderType(null); }, 2000);
+                  }}
+                >
+                  {copiedOrderId === order.id && copiedOrderType === 'tracking' ? '✓ Copied' : '⎘ Copy All Tracking'}
                 </button>
               </div>
               {pendingTrackingEntries.length > 0 && (
@@ -2270,17 +2378,27 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                     ) : (() => {
                       const itemTotal = (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0);
                       const fmtAmt = (n) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                      const isDelivered = (item.status || 'pending') === 'delivered';
 
-                      // Down payment: proportional share of order total
+                      // Per-item delivered qty from confirmed tracking numbers
+                      const itemDeliveredQty = (order.trackingEntries || []).reduce((s, e) => {
+                        if (!(e.itemIds || []).includes(item.itemId)) return s;
+                        const pnd = e.perNumberData || {};
+                        return s + (e.deliveredNumbers || []).reduce((ds, n) => ds + (Number(pnd[n]?.qty) || 0), 0);
+                      }, 0);
+                      const itemQty = Number(item.quantity) || 0;
+                      const trackingFullyDelivered = itemQty > 0 && itemDeliveredQty >= itemQty;
+
+                      const isDelivered = trackingFullyDelivered || (item.status || 'pending') === 'delivered';
+
+                      // Down payment: proportional share of order total (legacy 'down' type OR new isDownPayment flag)
                       const downPmtTotal = (order.downPayments || [])
-                        .filter((p) => !p.paymentType || p.paymentType === 'down')
+                        .filter((p) => p.paymentType === 'down' || p.isDownPayment)
                         .reduce((s, p) => s + (Number(p.amount) || 0), 0);
                       const downPaidForItem = finalTotal > 0 ? (itemTotal / finalTotal) * downPmtTotal : 0;
 
-                      // Delivered payment: only for delivered items, split among them
+                      // Delivered payment: full payment for delivered items (not flagged as down payment)
                       const deliveredPmtTotal = (order.downPayments || [])
-                        .filter((p) => p.paymentType === 'delivered')
+                        .filter((p) => p.paymentType === 'delivered' && !p.isDownPayment)
                         .reduce((s, p) => s + (Number(p.amount) || 0), 0);
                       const totalDeliveredCost = (order.items || [])
                         .filter((i) => (i.status || 'pending') === 'delivered')
@@ -2306,17 +2424,23 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                             {fmtAmt(itemTotal)}
                           </div>
                           <div className="item-delivered-view">
-                            <label className="item-status-toggle">
-                              <input
-                                type="checkbox"
-                                checked={(item.status || 'pending') === 'delivered'}
-                                onChange={(e) => {
-                                  const newStatus = e.target.checked ? 'delivered' : 'pending';
-                                  updateItemStatus(order.id, item.itemId, newStatus);
-                                }}
-                              />
-                              <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
-                            </label>
+                            {itemQty > 0 ? (
+                              <span className={`item-delivered-progress${isDelivered ? ' item-delivered-done' : itemDeliveredQty > 0 ? ' item-delivered-partial' : ''}`}>
+                                {itemDeliveredQty}/{itemQty}
+                              </span>
+                            ) : (
+                              <label className="item-status-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={isDelivered}
+                                  onChange={(e) => {
+                                    const newStatus = e.target.checked ? 'delivered' : 'pending';
+                                    updateItemStatus(order.id, item.itemId, newStatus);
+                                  }}
+                                />
+                                <span>{isDelivered ? '✓' : ''}</span>
+                              </label>
+                            )}
                           </div>
                           <div className="item-paid-view">
                             {hasPaid ? (
@@ -2485,8 +2609,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                           <div className="payment-log-header">Payment History</div>
                           {downPayments.map((p) => (
                             <div key={p.id} className="payment-log-row">
-                              <span className={`pl-type-badge ${p.paymentType === 'delivered' ? 'pl-type-delivered' : 'pl-type-down'}`}>
-                                {p.paymentType === 'delivered' ? 'Delivered' : 'Down'}
+                              <span className={`pl-type-badge ${p.isDownPayment ? 'pl-type-down' : 'pl-type-delivered'}`}>
+                                {p.isDownPayment ? 'Down' : 'Delivered'}
                               </span>
                               <span className="pl-date">{p.date}</span>
                               <span className="pl-method">{p.method}</span>
@@ -2507,16 +2631,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                       {/* Add payment form */}
                       <div className="payment-form">
                         <div className="payment-form-title">Log Payment</div>
-                        <div className="pf-type-toggle">
-                          {[['down', 'Down Payment'], ['delivered', 'Delivered Items']].map(([val, label]) => (
-                            <button
-                              key={val}
-                              type="button"
-                              className={`pf-type-btn${(form.paymentType || 'down') === val ? ' active' : ''}`}
-                              onClick={() => patchDownPaymentForm(order.id, { paymentType: val })}
-                            >{label}</button>
-                          ))}
-                        </div>
+                        <label className="pf-down-check">
+                          <input
+                            type="checkbox"
+                            checked={form.isDownPayment || false}
+                            onChange={(e) => patchDownPaymentForm(order.id, { isDownPayment: e.target.checked })}
+                          />
+                          Down payment only
+                        </label>
                         <div className="payment-form-fields">
                           <input
                             className="pf-input pf-amount"
