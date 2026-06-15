@@ -14,6 +14,7 @@ import SkuPoPage from './components/SkuPoPage';
 import CoaLookup from './components/CoaLookup';
 import CostAnalytics from './components/CostAnalytics';
 import AffiliatePayouts from './components/AffiliatePayouts';
+import WooProducts from './components/WooProducts';
 import './App.css';
 
 const NavIcon = ({ type }) => {
@@ -115,7 +116,7 @@ function App() {
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
   const [toast, setToast] = useState({ visible: false, message: '' });
-  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup', 'cost-analytics', 'affiliates'];
+  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup', 'cost-analytics', 'affiliates', 'products'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -195,7 +196,7 @@ function App() {
     setToolsMenuOpen(false);
   };
 
-  const isToolsPage = ['lotid', 'sku-po', 'coa-lookup', 'cost-analytics'].includes(activePage);
+  const isToolsPage = ['lotid', 'sku-po', 'coa-lookup', 'cost-analytics', 'products'].includes(activePage);
 
   const handleAddUser = async (e) => {
     e.preventDefault();
@@ -316,6 +317,7 @@ function App() {
                       <button onClick={() => goToPage('sku-po')} className={`nav-link nav-sublink ${activePage === 'sku-po' ? 'active' : ''}`}>Package Slip</button>
                       <button onClick={() => goToPage('coa-lookup')} className={`nav-link nav-sublink ${activePage === 'coa-lookup' ? 'active' : ''}`}>COA Lookup</button>
                       <button onClick={() => goToPage('cost-analytics')} className={`nav-link nav-sublink ${activePage === 'cost-analytics' ? 'active' : ''}`}>Cost Tool</button>
+                      <button onClick={() => goToPage('products')} className={`nav-link nav-sublink ${activePage === 'products' ? 'active' : ''}`}>Products</button>
                     </div>
                   </div>
                 </>
@@ -339,7 +341,9 @@ function App() {
               {/* Main Content */}
               <div className="main-content">
                 <div className="page-transition" key={activePage}>
-            {activePage === 'affiliates' ? (
+            {activePage === 'products' ? (
+              <WooProducts />
+            ) : activePage === 'affiliates' ? (
               <AffiliatePayouts
                 onSuccess={showToast}
                 onError={showModal}

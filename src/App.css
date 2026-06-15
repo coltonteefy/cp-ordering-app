@@ -257,7 +257,7 @@ body {
 .sidebar-dropdown:hover .sidebar-dropdown-menu,
 .sidebar-dropdown:focus-within .sidebar-dropdown-menu,
 .sidebar-dropdown.open .sidebar-dropdown-menu {
-  max-height: 220px;
+  max-height: 360px;
   opacity: 1;
   transform: translateY(0);
   padding: 0.35rem;
@@ -920,7 +920,7 @@ body {
 
   .sidebar-dropdown.open .sidebar-dropdown-menu,
   .sidebar-dropdown:focus-within .sidebar-dropdown-menu {
-    max-height: 220px;
+    max-height: 360px;
     opacity: 1;
     transform: translateY(0);
     padding: 0.35rem;

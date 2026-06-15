@@ -447,6 +447,45 @@ app.get('/api/woo/coupons', async (req, res) => {
   }
 });
 
+app.get('/api/woo/products', async (_req, res) => {
+  try {
+    const allProducts = [];
+    let page = 1;
+    const perPage = 100;
+    while (true) {
+      const url = buildWooUrl('products', {
+        per_page: perPage,
+        page,
+        status: 'publish',
+        _fields: 'id,name,regular_price,sale_price,categories,permalink',
+      });
+      const response = await fetch(url, { signal: AbortSignal.timeout(WOO_REQUEST_TIMEOUT_MS) });
+      if (!response.ok) {
+        const body = await response.text();
+        return res.status(response.status).json({ error: `WooCommerce products error: ${body}` });
+      }
+      const batch = await response.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      for (const p of batch) {
+        allProducts.push({
+          id: p.id,
+          name: p.name,
+          regularPrice: p.regular_price || '',
+          salePrice: p.sale_price || '',
+          categories: (p.categories || []).map((c) => c.name),
+          permalink: p.permalink || '',
+        });
+      }
+      const total = parseInt(response.headers.get('x-wp-totalpages') || '1', 10) || 1;
+      if (page >= total) break;
+      page++;
+    }
+    res.json({ products: allProducts });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Failed to fetch products.' });
+  }
+});
+
 app.post('/api/parse-pdf', upload.array('files'), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'No files uploaded.' });

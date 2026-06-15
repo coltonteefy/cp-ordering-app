@@ -389,6 +389,41 @@ export const handler = async (event) => {
       return jsonResponse(200, { ok: true });
     }
 
+    if (pathname.endsWith('/woo/products')) {
+      const allProducts = [];
+      let page = 1;
+      const perPage = 100;
+      while (true) {
+        const url = buildWooUrl('products', {
+          per_page: perPage,
+          page,
+          status: 'publish',
+          _fields: 'id,name,regular_price,sale_price,categories,permalink',
+          signal: undefined,
+        });
+        const res = await fetch(url, { signal: AbortSignal.timeout(WOO_REQUEST_TIMEOUT_MS) });
+        if (!res.ok) {
+          return jsonResponse(res.status, { error: `WooCommerce products error: ${await res.text()}` });
+        }
+        const batch = await res.json();
+        if (!Array.isArray(batch) || batch.length === 0) break;
+        for (const p of batch) {
+          allProducts.push({
+            id: p.id,
+            name: p.name,
+            regularPrice: p.regular_price || '',
+            salePrice: p.sale_price || '',
+            categories: (p.categories || []).map((c) => c.name),
+            permalink: p.permalink || '',
+          });
+        }
+        const total = parseInt(res.headers.get('X-WP-TotalPages') || '1', 10);
+        if (page >= total) break;
+        page++;
+      }
+      return jsonResponse(200, { products: allProducts });
+    }
+
     if (pathname.endsWith('/woo/daily-report')) {
       const query = event.queryStringParameters || {};
       const queryDate = query.date || '';
