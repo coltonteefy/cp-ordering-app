@@ -13,7 +13,7 @@ import {
 import { deleteObject, getBytes, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
 import { costDatabase, getCost } from '../data/costDatabase';
-import AffiliateCouponsTab from './AffiliateCouponsTab';
+import AffiliatePayouts from './AffiliatePayouts';
 import './CostAnalytics.css';
 
 const CostAnalytics = () => {
@@ -1637,28 +1637,10 @@ const CostAnalytics = () => {
       )}
 
       {activeTab === 'coupons' && (
-        <div className="woo-sync-section">
-          <h2>Affiliate & Coupon Performance</h2>
-          {wooPullInfo ? (
-            <p className="breakdown-subtitle">
-              {wooPullInfo.orderCount} orders ·{' '}
-              {wooPullInfo.startDate === wooPullInfo.endDate
-                ? wooPullInfo.startDate
-                : `${wooPullInfo.startDate} to ${wooPullInfo.endDate}`}
-              {Object.keys(wooPullInfo.orderStatusCounts || {}).length > 0 && (
-                <> · {Object.entries(wooPullInfo.orderStatusCounts).map(([s, n]) => `${s}: ${n}`).join(', ')}</>
-              )}
-            </p>
-          ) : (
-            <p className="breakdown-subtitle">Pull Woo data above to load affiliate commissions.</p>
-          )}
-          <AffiliateCouponsTab
-            wooCouponUsage={wooCouponUsage}
-            wooPullInfo={wooPullInfo}
-            onSuccess={showSuccessToast}
-            onError={(msg) => alert(msg)}
-          />
-        </div>
+        <AffiliatePayouts
+          onSuccess={showSuccessToast}
+          onError={(msg) => alert(msg)}
+        />
       )}
 
       {activeTab === 'analysis' && (

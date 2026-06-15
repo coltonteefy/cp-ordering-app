@@ -13,7 +13,6 @@ import IncomingProducts from './components/IncomingProducts';
 import SkuPoPage from './components/SkuPoPage';
 import CoaLookup from './components/CoaLookup';
 import CostAnalytics from './components/CostAnalytics';
-import AffiliatePayouts from './components/AffiliatePayouts';
 import WooProducts from './components/WooProducts';
 import './App.css';
 
@@ -116,7 +115,7 @@ function App() {
   const [status, setStatus] = useState('Initializing...');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
   const [toast, setToast] = useState({ visible: false, message: '' });
-  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup', 'cost-analytics', 'affiliates', 'products'];
+  const validPages = ['orders', 'vendors', 'promo', 'lotid', 'payments', 'sku-po', 'coa-lookup', 'cost-analytics', 'products'];
   const parseHashPage = () => {
     if (typeof window === 'undefined') return 'orders';
     const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -298,7 +297,7 @@ function App() {
                   <div className="sidebar-menu">
                     <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
                     <button onClick={() => goToPage('payments')} className={`nav-link ${activePage === 'payments' ? 'active' : ''}`}>Payments</button>
-                    <button onClick={() => goToPage('affiliates')} className={`nav-link ${activePage === 'affiliates' ? 'active' : ''}`}>Affiliates</button>
+
                     <button onClick={() => goToPage('vendors')} className={`nav-link ${activePage === 'vendors' ? 'active' : ''}`}>Vendor Profiles</button>
                   </div>
 
@@ -343,11 +342,6 @@ function App() {
                 <div className="page-transition" key={activePage}>
             {activePage === 'products' ? (
               <WooProducts />
-            ) : activePage === 'affiliates' ? (
-              <AffiliatePayouts
-                onSuccess={showToast}
-                onError={showModal}
-              />
             ) : activePage === 'coa-lookup' ? (
               <CoaLookup />
             ) : activePage === 'cost-analytics' ? (
