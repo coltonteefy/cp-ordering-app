@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   collection,
@@ -326,6 +326,12 @@ const normalizePrintHistoryFromDoc = (docId, rawData) => ({
   printedBy: rawData?.printedBy || '',
   trackingCarrier: normalizeTrackingCarrier(rawData?.trackingCarrier),
   trackingNumber: normalizeTrackingNumber(rawData?.trackingNumber),
+  trackStatus: rawData?.trackStatus || null,
+  isDelivered: rawData?.isDelivered || false,
+  estimatedDelivery: rawData?.estimatedDelivery || null,
+  deliveryDate: rawData?.deliveryDate || null,
+  lastSynced: rawData?.lastSynced || null,
+  trackRejected: rawData?.trackRejected || null,
   items: Array.isArray(rawData?.items)
     ? rawData.items.map((item) => ({
         skuCode: item?.skuCode || '',
@@ -359,6 +365,8 @@ const SkuPoPage = ({ onSuccess, onError, user }) => {
     }
   });
   const [printHistory, setPrintHistory] = useState([]);
+  const [syncingHistoryEntries, setSyncingHistoryEntries] = useState(new Set());
+  const hasSyncedOnLoad = useRef(false);
   const [selectedSentInMonth, setSelectedSentInMonth] = useState('all');
   const [historyViewTab, setHistoryViewTab] = useState('history');
   const [trackingEditor, setTrackingEditor] = useState({
@@ -858,21 +866,115 @@ const SkuPoPage = ({ onSuccess, onError, user }) => {
       ? normalizeTrackingCarrier(rawTrackingCarrier) || TRACKING_CARRIERS[0]
       : '';
 
-    updateEntryTrackingLocally(entryId, { trackingNumber, trackingCarrier });
+    updateEntryTrackingLocally(entryId, { trackingNumber, trackingCarrier, trackStatus: null, isDelivered: false, estimatedDelivery: null, deliveryDate: null, lastSynced: null, trackRejected: null });
 
     try {
       await setDoc(
         doc(db, PRINT_HISTORY_COLLECTION_NAME, entryId),
-        { trackingNumber, trackingCarrier },
+        { trackingNumber, trackingCarrier, trackStatus: null, isDelivered: false, estimatedDelivery: null, deliveryDate: null, lastSynced: null, trackRejected: null },
         { merge: true }
       );
       onSuccess?.('Package tracking saved.');
+      if (trackingNumber) syncHistoryEntryTracking(entryId, trackingNumber, trackingCarrier);
       return true;
     } catch {
       onError?.('Unable to save package tracking.', 'Error');
       return false;
     }
   };
+
+  const applyTrackingResults = (updates) => {
+    setPrintHistory((prev) => prev.map((entry) => {
+      const u = updates.find((x) => x.entryId === entry.id);
+      return u ? { ...entry, ...u.patch } : entry;
+    }));
+    updates.forEach(({ entryId, patch }) => {
+      setDoc(doc(db, PRINT_HISTORY_COLLECTION_NAME, entryId), patch, { merge: true }).catch(() => {});
+    });
+  };
+
+  const syncHistoryEntryTracking = async (entryId, overrideNumber, overrideCarrier) => {
+    const entry = printHistory.find((e) => e.id === entryId);
+    const trackingNumber = overrideNumber || entry?.trackingNumber;
+    const trackingCarrier = overrideCarrier || entry?.trackingCarrier || 'UPS';
+    if (!trackingNumber) return;
+
+    setSyncingHistoryEntries((prev) => new Set([...prev, entryId]));
+    try {
+      const res = await fetch('/api/17track/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingItems: [{ number: trackingNumber, carrier: trackingCarrier }] }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const result = (data.results || []).find((r) => r.number === trackingNumber);
+      const rejected = (data.rejected || []).find((r) => r.number === trackingNumber);
+      const patch = { lastSynced: new Date().toISOString() };
+      if (result) {
+        patch.trackStatus = result.latestDesc || result.status || null;
+        patch.isDelivered = result.isDelivered || false;
+        patch.estimatedDelivery = result.estimatedDelivery || null;
+        patch.deliveryDate = result.deliveryDate || null;
+        patch.trackRejected = null;
+      } else if (rejected) {
+        patch.trackRejected = rejected.reason || 'Not found';
+      }
+      applyTrackingResults([{ entryId, patch }]);
+    } catch {
+      // silent
+    } finally {
+      setSyncingHistoryEntries((prev) => { const n = new Set(prev); n.delete(entryId); return n; });
+    }
+  };
+
+  // Auto-sync undelivered entries on first load
+  useEffect(() => {
+    if (hasSyncedOnLoad.current || !printHistory.length) return;
+    const ONE_HOUR = 60 * 60 * 1000;
+    const toSync = printHistory.filter((e) => {
+      if (!e.trackingNumber || e.isDelivered) return false;
+      if (e.lastSynced && Date.now() - new Date(e.lastSynced).getTime() < ONE_HOUR) return false;
+      return true;
+    });
+    if (!toSync.length) { hasSyncedOnLoad.current = true; return; }
+    hasSyncedOnLoad.current = true;
+
+    const syncAll = async () => {
+      const trackingItems = toSync.map((e) => ({ number: e.trackingNumber, carrier: e.trackingCarrier || 'UPS' }));
+      try {
+        const res = await fetch('/api/17track/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trackingItems }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const resultsByNum = Object.fromEntries((data.results || []).map((r) => [r.number, r]));
+        const rejectedByNum = Object.fromEntries((data.rejected || []).map((r) => [r.number, r]));
+        const updates = toSync.map((entry) => {
+          const result = resultsByNum[entry.trackingNumber];
+          const rejected = rejectedByNum[entry.trackingNumber];
+          const patch = { lastSynced: new Date().toISOString() };
+          if (result) {
+            patch.trackStatus = result.latestDesc || result.status || null;
+            patch.isDelivered = result.isDelivered || false;
+            patch.estimatedDelivery = result.estimatedDelivery || null;
+            patch.deliveryDate = result.deliveryDate || null;
+            patch.trackRejected = null;
+          } else if (rejected) {
+            patch.trackRejected = rejected.reason || 'Not found';
+          }
+          return { entryId: entry.id, patch };
+        });
+        applyTrackingResults(updates);
+      } catch {
+        // silent
+      }
+    };
+    syncAll();
+  }, [printHistory.length]);
 
   return (
     <section className="sku-po-page">
@@ -1267,24 +1369,48 @@ const SkuPoPage = ({ onSuccess, onError, user }) => {
                         <span>Package Tracking</span>
                         {entry.trackingNumber ? (
                           (() => {
-                            const trackingLabel = `${entry.trackingCarrier ? `${entry.trackingCarrier}: ` : ''}${entry.trackingNumber}`;
                             const trackingUrl = buildTrackingUrl(entry.trackingCarrier, entry.trackingNumber);
-
-                            if (trackingUrl) {
-                              return (
-                                <a
-                                  href={trackingUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="sku-po-history-tracking-link"
-                                  aria-label={`Track package via ${entry.trackingCarrier || 'carrier'}`}
+                            const isSyncing = syncingHistoryEntries.has(entry.id);
+                            return (
+                              <div className="sku-po-track-row">
+                                {trackingUrl ? (
+                                  <a
+                                    href={trackingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="sku-po-history-tracking-link"
+                                    aria-label={`Track package via ${entry.trackingCarrier || 'carrier'}`}
+                                  >
+                                    {entry.trackingCarrier ? `${entry.trackingCarrier}: ` : ''}{entry.trackingNumber}
+                                  </a>
+                                ) : (
+                                  <strong>{entry.trackingCarrier ? `${entry.trackingCarrier}: ` : ''}{entry.trackingNumber}</strong>
+                                )}
+                                <button
+                                  type="button"
+                                  className={`sku-po-track-sync-btn${isSyncing ? ' syncing' : ''}`}
+                                  title="Refresh tracking status"
+                                  disabled={isSyncing}
+                                  onClick={() => syncHistoryEntryTracking(entry.id)}
                                 >
-                                  {trackingLabel}
-                                </a>
-                              );
-                            }
-
-                            return <strong>{trackingLabel}</strong>;
+                                  {isSyncing ? '…' : '↻'}
+                                </button>
+                                {entry.isDelivered ? (
+                                  <span className="sku-po-track-pill sku-po-track-delivered">Delivered</span>
+                                ) : entry.trackRejected ? (
+                                  <span className="sku-po-track-pill sku-po-track-rejected">Not found</span>
+                                ) : entry.trackStatus ? (
+                                  <span className="sku-po-track-pill sku-po-track-status">{entry.trackStatus.replace(/([a-z])([A-Z])/g, '$1 $2')}</span>
+                                ) : isSyncing ? (
+                                  <span className="sku-po-track-pill sku-po-track-syncing">Checking…</span>
+                                ) : null}
+                                {!entry.isDelivered && entry.estimatedDelivery && (
+                                  <span className="sku-po-track-pill sku-po-track-eta">
+                                    Est. {new Date(entry.estimatedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  </span>
+                                )}
+                              </div>
+                            );
                           })()
                         ) : (
                           <em>Not added yet</em>

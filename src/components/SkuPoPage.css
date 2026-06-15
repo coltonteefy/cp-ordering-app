@@ -863,6 +863,68 @@
   font-size: 0.84rem;
 }
 
+.sku-po-track-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.sku-po-track-sync-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #a08060;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.sku-po-track-sync-btn:hover:not(:disabled) {
+  color: #5d3a1a;
+}
+
+.sku-po-track-sync-btn.syncing {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sku-po-track-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.sku-po-track-delivered {
+  background: #d4edda;
+  color: #1a5c2a;
+}
+
+.sku-po-track-status {
+  background: #fff3cd;
+  color: #7a5a00;
+}
+
+.sku-po-track-eta {
+  background: #ede7ff;
+  color: #5b3fa0;
+}
+
+.sku-po-track-rejected {
+  background: #fde8e8;
+  color: #9b2020;
+}
+
+.sku-po-track-syncing {
+  background: #f0f0f0;
+  color: #888;
+}
+
 .sku-po-history-tracking-editor {
   margin: 0.4rem 0 0.7rem;
   border: 1px solid #eadfcc;
