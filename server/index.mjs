@@ -561,6 +561,127 @@ app.post('/api/paypal/payout', async (req, res) => {
   }
 });
 
+const SEVENTEEN_TRACK_API_KEY = process.env.SEVENTEEN_TRACK_API_KEY || '';
+
+// Map carrier names → 17track carrier codes (outbound)
+const CARRIER_CODES = {
+  FedEx: 100003,
+  UPS: 100002,
+  USPS: 21051,
+  DHL: 100016,
+};
+
+// Map 17track carrier codes → our carrier names (inbound)
+const CARRIER_CODE_NAMES = {
+  100003: 'FedEx',
+  100002: 'UPS',
+  21051:  'USPS',
+  100016: 'DHL',
+};
+
+app.post('/api/17track/sync', async (req, res) => {
+  try {
+    if (!SEVENTEEN_TRACK_API_KEY) {
+      return res.status(500).json({ error: '17track API key not configured.' });
+    }
+    const { trackingItems } = req.body || {};
+    if (!Array.isArray(trackingItems) || trackingItems.length === 0) {
+      return res.status(400).json({ error: 'No tracking numbers provided.' });
+    }
+
+    // Use locally-detected carrier as a hint so 17track can register ambiguous formats
+    // (e.g. FedEx 87... numbers that fail without a hint). The response carrier field
+    // is still used for correction — the hint only aids registration, not detection.
+    const registerPayload = trackingItems.map(({ number, carrier }) => {
+      const entry = { number };
+      const code = CARRIER_CODES[carrier];
+      if (code) entry.carrier = code;
+      return entry;
+    });
+
+    // Register numbers — 17track queues a fetch from the carrier
+    const regRes = await fetch('https://api.17track.net/track/v2.2/register', {
+      method: 'POST',
+      headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(registerPayload),
+      signal: AbortSignal.timeout(15000),
+    });
+    const regData = await regRes.json();
+    console.log('[17track] register response:', JSON.stringify(regData?.data || regData, null, 2));
+
+    // Brief wait so 17track can fetch fresh data for newly-registered numbers
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // Query tracking info
+    const infoRes = await fetch('https://api.17track.net/track/v2.2/gettrackinfo', {
+      method: 'POST',
+      headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(registerPayload),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!infoRes.ok) {
+      const text = await infoRes.text();
+      return res.status(infoRes.status).json({ error: `17track API error: ${text}` });
+    }
+
+    const data = await infoRes.json();
+    console.log('[17track] gettrackinfo response:', JSON.stringify(data?.data, null, 2));
+    const accepted = data?.data?.accepted || [];
+    const rejected = (data?.data?.rejected || []).map((r) => ({
+      number: r.number,
+      reason: r.error?.message || 'No data available',
+    }));
+
+    const isAscii = (s) => /^[\x00-\x7F]*$/.test(s);
+
+    const results = accepted.map((item) => {
+      const latestStatus = item.track_info?.latest_status?.status || '';
+      const subStatus = item.track_info?.latest_status?.sub_status || '';
+      const isDelivered = latestStatus === 'Delivered';
+      const latestEvent = item.track_info?.latest_event;
+      const rawDesc = latestEvent?.description || '';
+      const KNOWN_STATUSES = new Set(['Delivered','InTransit','OutForDelivery','InfoReceived','FailedAttempt','Exception','Expired','NotFound']);
+      const latestDesc = KNOWN_STATUSES.has(latestStatus) ? latestStatus : (rawDesc && isAscii(rawDesc) ? rawDesc : latestStatus);
+      const detectedCarrier = CARRIER_CODE_NAMES[item.carrier] || null;
+
+      const addr = item.track_info?.shipping_info?.recipient_address;
+      const destination = addr
+        ? [addr.city, addr.state, addr.country].filter(Boolean).join(', ')
+        : null;
+
+      const rawLocation = latestEvent?.location || '';
+      const currentLocation = rawLocation && isAscii(rawLocation) ? rawLocation : null;
+
+      const lastUpdated = latestEvent?.time_iso || null;
+      const deliveryDate = isDelivered ? (lastUpdated || null) : null;
+
+      const timeMetrics = item.track_info?.time_metrics;
+      const estFrom = timeMetrics?.estimated_delivery_date?.from || null;
+      const estTo = timeMetrics?.estimated_delivery_date?.to || null;
+      const estimatedDelivery = !isDelivered ? (estTo || estFrom || null) : null;
+
+      return {
+        number: item.number,
+        isDelivered,
+        status: latestStatus,
+        subStatus,
+        latestDesc,
+        detectedCarrier,
+        destination,
+        currentLocation,
+        lastUpdated,
+        deliveryDate,
+        estimatedDelivery,
+      };
+    });
+
+    res.json({ results, rejected });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || '17track sync failed.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`API server running at http://localhost:${PORT}`);
   console.log(`Allowed browser origins: ${ALLOWED_ORIGINS.join(', ') || '(none)'}`);

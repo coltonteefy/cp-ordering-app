@@ -306,7 +306,7 @@
 
 .vendor-summary-header {
   display: grid;
-  grid-template-columns: 1fr 1.2fr 1.2fr 1.4fr;
+  grid-template-columns: 1fr 0.9fr 1.2fr 1.2fr 1.4fr;
   background: #f4ead8;
   padding: 0.4rem 0.85rem;
   font-weight: 800;
@@ -319,7 +319,7 @@
 
 .vendor-summary-row {
   display: grid;
-  grid-template-columns: 1fr 1.2fr 1.2fr 1.4fr;
+  grid-template-columns: 1fr 0.9fr 1.2fr 1.2fr 1.4fr;
   padding: 0.45rem 0.85rem;
   background: #fff;
   border-bottom: 1px solid #f0e6d8;
@@ -339,6 +339,16 @@
 .vsrow-vendor {
   font-weight: 700;
   color: #4a3a2b;
+}
+
+.vsrow-kits {
+  font-weight: 600;
+  color: #4a3a2b;
+}
+
+.vsrow-kits-total {
+  color: #aaa;
+  font-weight: 400;
 }
 
 .vsrow-total {
@@ -1248,8 +1258,8 @@
 }
 
 .order-body-split {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 1.25rem;
   padding: 1rem 1.5rem 1.25rem 1.5rem;
 }
@@ -1261,11 +1271,8 @@
   gap: 0.9rem;
 }
 
-@media (max-width: 980px) {
-  .order-body-split {
-    grid-template-columns: 1fr;
-  }
-}
+.order-col-right { order: 1; }
+.order-col-left  { order: 2; }
 
 .order-edit-link {
   background: none;
@@ -1532,8 +1539,9 @@
 
 .tracking-display-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(max(280px, calc((100% - 1.5rem) / 3)), 1fr));
+  gap: 0.75rem;
+  align-items: start;
 }
 
 .tracking-list-wrap {
@@ -1553,6 +1561,17 @@
   background: #e8f0fe;
   color: #3d5a9e;
   border-color: #9ab0e8;
+}
+
+.tracking-sync {
+  background: #edf7f0;
+  color: #1a7a48;
+  border-color: #7ec89a;
+}
+
+.tracking-sync:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .tracking-delivered-section {
@@ -1576,6 +1595,7 @@
   flex-direction: column;
   gap: 0.55rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  min-width: 0;
 }
 
 .tracking-card.pending-card {
@@ -1604,9 +1624,6 @@
 }
 
 @media (max-width: 720px) {
-  .tracking-display-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .tracking-inline {
@@ -2548,16 +2565,22 @@
 
 .tn-check-row {
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
+  flex-direction: column;
+  gap: 0.25rem;
   padding: 0.28rem 0.35rem;
   border-radius: 5px;
-  cursor: pointer;
   transition: background 0.1s;
 }
 
 .tn-check-row:hover {
   background: rgba(0, 0, 0, 0.04);
+}
+
+.tn-main-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  cursor: pointer;
 }
 
 .tn-check-row input[type="checkbox"] {
@@ -2566,39 +2589,57 @@
   flex-shrink: 0;
   accent-color: #1a7a48;
   cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tn-check-row.tn-delivered input[type="checkbox"],
+.tn-check-row.tn-pending-delivery input[type="checkbox"] {
+  opacity: 1;
+}
+
+.tn-check-row:hover input[type="checkbox"] {
+  opacity: 1;
 }
 
 .tn-check-row .tracking-number-link {
-  font-size: 0.82rem;
+  font-size: 0.86rem;
+  font-weight: 700;
   color: #5d3a1a;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  flex: 1;
-  min-width: 0;
+  text-decoration: none;
+  flex: 0 0 auto;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  margin-left: 0.45rem;
+  transition: color 0.15s;
+}
+
+.tn-check-row .tracking-number-link:hover {
+  color: #3b1e06;
 }
 
 .tn-check-row.tn-delivered .tracking-number-link {
-  color: #aaa;
+  color: #bbb;
   text-decoration: line-through;
 }
 
 .tn-copy-btn {
-  background: #f0e8da;
-  border: 1px solid #d9c9b0;
+  background: transparent;
+  border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #8b6f47;
-  padding: 0.1rem 0.4rem;
+  font-size: 0.78rem;
+  color: #a08060;
+  padding: 0.1rem 0.3rem;
   line-height: 1.4;
   flex-shrink: 0;
+  margin-left: 0.15rem;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
 }
 
 .tn-copy-btn:hover {
-  background: #e0d0b8;
+  background: #eddfc8;
   color: #5d3a1a;
 }
 
@@ -2608,8 +2649,127 @@
   color: #1a5c3a;
 }
 
+.tn-sync-btn {
+  background: transparent;
+  border: 1px solid #d9c9b0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #8b6f47;
+  padding: 0.1rem 0.35rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+  margin-left: 0.3rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tn-sync-btn:hover:not(:disabled) {
+  background: #f0e8da;
+  color: #5d3a1a;
+}
+
+.tn-sync-btn.syncing {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .tn-check-row.tn-delivered {
   opacity: 0.65;
+}
+
+.tn-check-row.tn-pending-delivery {
+  background: #fffbf0;
+  border-radius: 6px;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid #f0d060;
+}
+
+.tn-pending-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-left: 1.75rem;
+  margin-top: 0.15rem;
+}
+
+.tn-pill-pending-delivery {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffc107;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+
+.tn-confirm-btn {
+  background: #1a7a48;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tn-confirm-btn:hover {
+  background: #145e38;
+}
+
+.tn-dismiss-btn {
+  background: transparent;
+  color: #888;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tn-dismiss-btn:hover {
+  background: #f5f5f5;
+  color: #555;
+}
+
+.tn-pill-rejected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #fff0f0;
+  color: #b83232;
+  border: 1px solid #f5a0a0;
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+
+.tn-retry-btn {
+  background: #ffd5d5;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #b83232;
+  padding: 0.05rem 0.45rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tn-retry-btn:hover:not(:disabled) {
+  background: #ffbbbb;
+}
+
+.tn-retry-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .tn-meta {
@@ -2652,6 +2812,88 @@
 
 .tn-check-row.tn-paid .tracking-number-link {
   opacity: 0.5;
+}
+
+.tn-info-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  padding-left: 1.75rem; /* indent past checkbox to align under tracking number */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tn-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  white-space: nowrap;
+  border: 1px solid;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tn-pill-status {
+  color: #7a5c00;
+  background: #fff8e6;
+  border-color: #f0d080;
+  max-width: 220px;
+}
+
+.tn-pill-delivered {
+  color: #2a6e40;
+  background: #edf8f2;
+  border-color: #a8dfc7;
+}
+
+.tn-pill-return {
+  color: #9b1c1c;
+  background: #fff0f0;
+  border-color: #f5a0a0;
+  font-weight: 700;
+}
+
+.tn-pill-exception {
+  color: #92400e;
+  background: #fff7ed;
+  border-color: #fcd34d;
+  font-weight: 700;
+}
+
+.tn-pill-location {
+  color: #374151;
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.tn-pill-dest {
+  color: #3a5a8a;
+  background: #eef4ff;
+  border-color: #b8d0f0;
+}
+
+.tn-pill-time {
+  color: #6b7280;
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  font-weight: 500;
+}
+
+.tn-pill-eta {
+  color: #7c3aed;
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+  font-weight: 700;
+}
+
+.tn-pill-confirmed {
+  color: #1a5c3a;
+  background: #d4f0e4;
+  border-color: #6ebb7b;
+  font-weight: 700;
 }
 
 /* ── Tracking card summary strip ────────────────────────── */

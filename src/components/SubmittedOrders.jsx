@@ -54,6 +54,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [copiedOrderType, setCopiedOrderType] = useState(null); // 'price' or 'no-price'
   const [copiedTrackingNum, setCopiedTrackingNum] = useState(null);
+  const [syncingOrderId, setSyncingOrderId] = useState(null);
+  const [syncingNum, setSyncingNum] = useState(null);
   const [orders, setOrders] = useState([]);
   const [deliveredOrders, setDeliveredOrders] = useState([]);
   const [editingOrders, setEditingOrders] = useState(new Set());
@@ -65,6 +67,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [addingItemToOrder, setAddingItemToOrder] = useState(null);
   const [editingTrackingCards, setEditingTrackingCards] = useState({});
   const syncedIncomingOnce = useRef(false);
+  const trackingTextareaRefs = useRef({});
   const [vendorColorMap, setVendorColorMap] = useState({});
   const [selectedVendorFilter, setSelectedVendorFilter] = useState('all');
   const [selectedDeliveredVendorFilter, setSelectedDeliveredVendorFilter] = useState('all');
@@ -707,7 +710,9 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
   const saveTrackingEntries = async (orderId, entries) => {
     try {
-      await updateDoc(doc(db, 'c&pProductOrders', orderId), { trackingEntries: entries });
+      const isDeliveredOrder = deliveredOrders.some((o) => o.id === orderId);
+      const collection = isDeliveredOrder ? 'c&pPastInventoryOrders' : 'c&pProductOrders';
+      await updateDoc(doc(db, collection, orderId), { trackingEntries: entries });
     } catch (error) {
       console.error('Error saving tracking entries:', error);
       onError && onError('Failed to update tracking entries.');
@@ -742,6 +747,222 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
     setTrackingCardEditing(orderId, 0, true);
     await saveTrackingEntries(orderId, entries);
+  };
+
+  const syncTrackingStatus = async (orderId) => {
+    const order = orders.find((o) => o.id === orderId) || deliveredOrders.find((o) => o.id === orderId);
+    if (!order) return;
+    const entries = getEffectiveTrackingEntries(order);
+    const undeliveredItems = entries.flatMap((e) => {
+      const all = getTrackingNumbers(e.number);
+      const skip = new Set([...(e.deliveredNumbers || []), ...(e.pendingDeliveryNumbers || [])]);
+      return all
+        .filter((n) => !skip.has(n))
+        .map((n) => ({ number: n, carrier: detectCarrier(n) || e.carrier || 'UPS' }));
+    });
+    if (!undeliveredItems.length) {
+      onSuccess?.('All tracking numbers already marked delivered.');
+      return;
+    }
+    setSyncingOrderId(orderId);
+    try {
+      const res = await fetch('/api/17track/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingItems: undeliveredItems }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sync failed.');
+      const deliveredNums = new Set((data.results || []).filter((r) => r.isDelivered).map((r) => r.number));
+      const rejectedByNum = Object.fromEntries((data.rejected || []).map((r) => [r.number, r.reason || 'Not tracked by 17track']));
+      const statusByNum = {};
+      const carrierByNum = {};
+      const infoByNum = {};
+      (data.results || []).forEach((r) => {
+        if (r.latestDesc || r.status) statusByNum[r.number] = r.latestDesc || r.status;
+        if (r.detectedCarrier) carrierByNum[r.number] = r.detectedCarrier;
+        infoByNum[r.number] = {
+          ...(r.subStatus && { subStatus: r.subStatus }),
+          ...(r.destination && { destination: r.destination }),
+          ...(r.currentLocation && { currentLocation: r.currentLocation }),
+          ...(r.lastUpdated && { lastUpdated: r.lastUpdated }),
+          ...(r.deliveryDate && { deliveryDate: r.deliveryDate }),
+          ...(r.estimatedDelivery && { estimatedDelivery: r.estimatedDelivery }),
+        };
+      });
+
+      // Always compute updatedEntries so carrier corrections happen even when
+      // 17track rejects all numbers. Detected deliveries go to pendingDeliveryNumbers
+      // so the user can confirm before they're checked off.
+      const updatedEntries = entries.map((e) => {
+        const nums = getTrackingNumbers(e.number);
+        const newPending = [...new Set([...(e.pendingDeliveryNumbers || []), ...nums.filter((n) => deliveredNums.has(n))])];
+        const updatedPnd = { ...(e.perNumberData || {}) };
+        nums.forEach((n) => {
+          const patch = {};
+          if (statusByNum[n]) patch.trackStatus = statusByNum[n];
+          if (infoByNum[n]) Object.assign(patch, infoByNum[n]);
+          if (rejectedByNum[n]) patch.rejected = rejectedByNum[n];
+          // Clear stale rejection if this number now has a result
+          if (statusByNum[n] && updatedPnd[n]?.rejected) patch.rejected = null;
+          if (Object.keys(patch).length) updatedPnd[n] = { ...(updatedPnd[n] || {}), ...patch };
+        });
+        // 17track detection first, local detectCarrier as fallback. Use majority vote.
+        const allDetected = nums.map((n) => carrierByNum[n] || detectCarrier(n)).filter(Boolean);
+        const freq = allDetected.reduce((m, c) => { m[c] = (m[c] || 0) + 1; return m; }, {});
+        const majority = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+        const newCarrier = majority ? majority[0] : e.carrier;
+        return { ...e, carrier: newCarrier, pendingDeliveryNumbers: newPending, perNumberData: updatedPnd };
+      });
+
+      const carrierUpdates = updatedEntries.filter((e, i) => e.carrier !== entries[i].carrier).length;
+      const newPendingCount = updatedEntries.reduce((s, e) => s + (e.pendingDeliveryNumbers || []).length, 0)
+        - entries.reduce((s, e) => s + (e.pendingDeliveryNumbers || []).length, 0);
+      const rejectedCount = Object.keys(rejectedByNum).length;
+      const anythingChanged = newPendingCount > 0 || rejectedCount > 0 || Object.keys(statusByNum).length > 0 || carrierUpdates > 0;
+
+      if (!anythingChanged) {
+        onSuccess?.('Synced — no changes detected.');
+        return;
+      }
+
+      await saveTrackingEntries(orderId, updatedEntries);
+      const isAlreadyDelivered = !orders.find((o) => o.id === orderId);
+      if (isAlreadyDelivered) {
+        setDeliveredOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+      } else {
+        setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+      }
+      const pendingMsg = newPendingCount > 0 ? `${newPendingCount} awaiting confirmation. ` : '';
+      const rejectedMsg = rejectedCount > 0 ? `${rejectedCount} not found — see cards. ` : '';
+      const carrierMsg = carrierUpdates ? `${carrierUpdates} carrier${carrierUpdates > 1 ? 's' : ''} corrected. ` : '';
+      const statusMsg = Object.keys(statusByNum).length ? `Statuses updated.` : '';
+      onSuccess?.(`Synced — ${pendingMsg}${rejectedMsg}${carrierMsg}${statusMsg}`.trim());
+    } catch (err) {
+      onError?.(err.message || 'Sync failed.');
+    } finally {
+      setSyncingOrderId(null);
+    }
+  };
+
+  const syncSingleTracking = async (orderId, entryIndex, num) => {
+    const order = orders.find((o) => o.id === orderId) || deliveredOrders.find((o) => o.id === orderId);
+    if (!order) return;
+    setSyncingNum(num);
+    try {
+      const carrier = detectCarrier(num) || 'UPS';
+      const res = await fetch('/api/17track/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingItems: [{ number: num, carrier }] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sync failed.');
+
+      const result = (data.results || []).find((r) => r.number === num);
+      const rejected = (data.rejected || []).find((r) => r.number === num);
+
+      if (!result) {
+        const reason = rejected?.reason || 'Not tracked by 17track.';
+        // Store the rejection so it's visible on the card
+        const entries = getEffectiveTrackingEntries(order);
+        const updatedEntries = entries.map((e, i) => {
+          if (i !== entryIndex) return e;
+          const updatedPnd = { ...(e.perNumberData || {}) };
+          updatedPnd[num] = { ...(updatedPnd[num] || {}), rejected: reason };
+          return { ...e, perNumberData: updatedPnd };
+        });
+        await saveTrackingEntries(orderId, updatedEntries);
+        const isAlreadyDelivered = !orders.find((o) => o.id === orderId);
+        if (isAlreadyDelivered) {
+          setDeliveredOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+        } else {
+          setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+        }
+        onError?.(reason);
+        return;
+      }
+
+      const entries = getEffectiveTrackingEntries(order);
+      const updatedEntries = entries.map((e, i) => {
+        if (i !== entryIndex) return e;
+        const newPending = result.isDelivered
+          ? [...new Set([...(e.pendingDeliveryNumbers || []), num])]
+          : (e.pendingDeliveryNumbers || []);
+        const updatedPnd = { ...(e.perNumberData || {}) };
+        const patch = { rejected: null }; // clear any prior rejection
+        if (result.latestDesc || result.status) patch.trackStatus = result.latestDesc || result.status;
+        if (result.subStatus) patch.subStatus = result.subStatus;
+        if (result.destination) patch.destination = result.destination;
+        if (result.currentLocation) patch.currentLocation = result.currentLocation;
+        if (result.lastUpdated) patch.lastUpdated = result.lastUpdated;
+        if (result.deliveryDate) patch.deliveryDate = result.deliveryDate;
+        if (result.estimatedDelivery) patch.estimatedDelivery = result.estimatedDelivery;
+        else patch.estimatedDelivery = null;
+        updatedPnd[num] = { ...(updatedPnd[num] || {}), ...patch };
+        const newCarrier = result.detectedCarrier || e.carrier;
+        return { ...e, carrier: newCarrier, pendingDeliveryNumbers: newPending, perNumberData: updatedPnd };
+      });
+
+      await saveTrackingEntries(orderId, updatedEntries);
+      const isAlreadyDelivered = !orders.find((o) => o.id === orderId);
+      if (isAlreadyDelivered) {
+        setDeliveredOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+      } else {
+        setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+      }
+      const statusText = result.latestDesc || result.status || '';
+      onSuccess?.(result.isDelivered ? `${num} delivered — confirm when received.` : `${num} synced — ${statusText || 'no change'}.`);
+    } catch (err) {
+      onError?.(err.message || 'Sync failed.');
+    } finally {
+      setSyncingNum(null);
+    }
+  };
+
+  const confirmDelivery = async (orderId, entryIndex, num) => {
+    const order = orders.find((o) => o.id === orderId) || deliveredOrders.find((o) => o.id === orderId);
+    if (!order) return;
+    const entries = getEffectiveTrackingEntries(order);
+    const updatedEntries = entries.map((e, i) => {
+      if (i !== entryIndex) return e;
+      const newDelivered = [...new Set([...(e.deliveredNumbers || []), num])];
+      const newPending = (e.pendingDeliveryNumbers || []).filter((n) => n !== num);
+      const nums = getTrackingNumbers(e.number);
+      const allDelivered = nums.length > 0 && nums.every((n) => newDelivered.includes(n));
+      const updatedPnd = { ...(e.perNumberData || {}) };
+      updatedPnd[num] = { ...(updatedPnd[num] || {}), confirmedAt: new Date().toISOString() };
+      return { ...e, deliveredNumbers: newDelivered, pendingDeliveryNumbers: newPending, status: allDelivered ? 'delivered' : e.status, perNumberData: updatedPnd };
+    });
+    await saveTrackingEntries(orderId, updatedEntries);
+    const isAlreadyDelivered = !orders.find((o) => o.id === orderId);
+    if (isAlreadyDelivered) {
+      setDeliveredOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+    } else {
+      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+      const allDone = updatedEntries.every((e) => {
+        const nums = getTrackingNumbers(e.number);
+        return nums.length > 0 && nums.every((n) => (e.deliveredNumbers || []).includes(n));
+      });
+      if (allDone) await markOrderDelivered(orderId);
+    }
+  };
+
+  const dismissPendingDelivery = async (orderId, entryIndex, num) => {
+    const order = orders.find((o) => o.id === orderId) || deliveredOrders.find((o) => o.id === orderId);
+    if (!order) return;
+    const entries = getEffectiveTrackingEntries(order);
+    const updatedEntries = entries.map((e, i) => {
+      if (i !== entryIndex) return e;
+      return { ...e, pendingDeliveryNumbers: (e.pendingDeliveryNumbers || []).filter((n) => n !== num) };
+    });
+    await saveTrackingEntries(orderId, updatedEntries);
+    const isAlreadyDelivered = !orders.find((o) => o.id === orderId);
+    if (isAlreadyDelivered) {
+      setDeliveredOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+    } else {
+      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
+    }
   };
 
   const autoCreateTrackingEntries = async (orderId) => {
@@ -851,7 +1072,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   };
 
   const toggleDeliveredNumber = async (orderId, entryIdx, trackingNumber) => {
-    const order = orders.find((o) => o.id === orderId);
+    const order = orders.find((o) => o.id === orderId) || deliveredOrders.find((o) => o.id === orderId);
+    const isAlreadyDelivered = !orders.find((o) => o.id === orderId);
     const entries = [...getEffectiveTrackingEntries(order)];
     const entry = entries[entryIdx];
     const current = entry.deliveredNumbers || [];
@@ -861,8 +1083,27 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     const allNums = getTrackingNumbers(entry.number);
     const allDelivered = allNums.length > 0 && allNums.every((n) => updated.includes(n));
     entries[entryIdx] = { ...entry, deliveredNumbers: updated, status: allDelivered ? 'delivered' : 'pending' };
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+
+    // Check if every entry is now fully delivered — if so, auto-mark the order as delivered
+    const allEntriesDelivered = entries.length > 0 && entries.every((e) => {
+      const nums = getTrackingNumbers(e.number);
+      const pnd = e.perNumberData || {};
+      const cardQty = Number(e.cardQty) || 0;
+      const trackingKits = nums.reduce((s, n) => s + (Number(pnd[n]?.qty) || 0), 0);
+      const hasUnassigned = cardQty > 0 && trackingKits < cardQty;
+      const delivNums = e === entries[entryIdx] ? updated : (e.deliveredNumbers || []);
+      return nums.length > 0 && nums.every((n) => delivNums.includes(n)) && !hasUnassigned;
+    });
+
+    if (isAlreadyDelivered) {
+      setDeliveredOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    } else {
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    }
     await saveTrackingEntries(orderId, entries);
+    if (!isAlreadyDelivered && allEntriesDelivered) {
+      await markOrderDelivered(orderId);
+    }
   };
 
   const removeTrackingEntry = async (orderId, entryIdx) => {
@@ -1004,15 +1245,20 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     const cleaned = String(rawNumber).replace(/\r/g, '\n').trim();
     if (!cleaned) return [];
 
-    // Split pasted tracking blobs by common separators while keeping carrier tokens intact.
+    // Split on newlines/commas/semicolons. Require ≥6 chars to exclude corrupted
+    // single-character tokens (e.g. data stored char-by-char with newlines).
     const byCommonDelimiters = cleaned
       .replace(/\|/g, '\n')
-      .split(/[\n,;\t\s]+/)
+      .split(/[\n,;]+/)
       .map((value) => value.trim())
-      .filter((value) => Boolean(value));
+      .filter((value) => value.length >= 6);
 
-    if (byCommonDelimiters.length > 1) return [...new Set(byCommonDelimiters)];
-    return [cleaned];
+    if (byCommonDelimiters.length >= 1) return [...new Set(byCommonDelimiters)];
+
+    // Nothing valid found — try collapsing all whitespace to recover a single number
+    // (handles data stored as "E\nF\n0\n0\n1..." → "EF001...")
+    const collapsed = cleaned.replace(/\s+/g, '');
+    return collapsed.length >= 6 ? [collapsed] : [];
   };
 
   // Payment panel helpers ------------------------------------
@@ -1325,6 +1571,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       const trackingNumbers = getTrackingNumbers(entry.number);
       const hasTrackingNumbers = trackingNumbers.length > 0;
       const deliveredNums = entry.deliveredNumbers || [];
+      const pendingDeliveryNums = new Set(entry.pendingDeliveryNumbers || []);
       const paidNums = new Set(entry.paidNumbers || []);
       const perNumberData = entry.perNumberData || {};
       const cardQtyTotal = Number(entry.cardQty) || 0;
@@ -1412,19 +1659,15 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <label className="tracking-field">
                   <span className="tracking-field-label">Tracking # — one per line, or paste all at once</span>
                   <textarea
+                    key={`tn-textarea-${entry.id}`}
+                    ref={(el) => { trackingTextareaRefs.current[entry.id] = el; }}
                     placeholder={"872519343600\n872519345474\n872519346595"}
-                    value={entry.number || ''}
+                    defaultValue={entry.number || ''}
                     rows={Math.min(12, Math.max(3, getTrackingNumbers(entry.number).length + 1))}
-                    onChange={(e) => updateTrackingEntry(order.id, originalIndex, { number: e.target.value })}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const pasted = e.clipboardData.getData('text');
-                      const nums = getTrackingNumbers(pasted);
-                      const autoCarrier = !entry.carrier && nums.length > 0 ? detectCarrier(nums[0]) : null;
-                      updateTrackingEntry(order.id, originalIndex, {
-                        number: nums.join('\n'),
-                        ...(autoCarrier ? { carrier: autoCarrier } : {}),
-                      });
+                    onBlur={(e) => {
+                      if (e.target.value !== entry.number) {
+                        updateTrackingEntry(order.id, originalIndex, { number: e.target.value });
+                      }
                     }}
                     className="tracking-note tracking-number-textarea"
                   />
@@ -1607,48 +1850,120 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                       if (!seen.has(c)) { seen.set(c, []); groups.push(c); }
                       seen.get(c).push(num);
                     });
-                    return groups.map((carrier) => (
-                      <div key={carrier} className="tnc-carrier-group">
+                    return groups.map((grpCarrier) => (
+                      <div key={grpCarrier} className="tnc-carrier-group">
                         <div className="tnc-carrier-row">
-                          <span className="carrier-text">{carrier}</span>
+                          <span className="carrier-text">{grpCarrier}</span>
                         </div>
-                        {seen.get(carrier).map((num) => {
+                        {seen.get(grpCarrier).map((num) => {
                           const numDelivered = deliveredNums.includes(num);
+                          const numPending = pendingDeliveryNums.has(num);
                           const numPaid = paidNums.has(num);
                           const pnd = perNumberData[num] || {};
+                          const hasPills = pnd.trackStatus || pnd.subStatus || pnd.destination || pnd.currentLocation || pnd.deliveryDate || pnd.estimatedDelivery || pnd.lastUpdated || pnd.rejected || pnd.confirmedAt;
+                          const sub = pnd.subStatus || '';
+                          const isReturn = /return/i.test(sub);
+                          const isException = /exception/i.test(sub) && !isReturn;
                           return (
-                            <div key={num} className={`tn-check-row${numDelivered ? ' tn-delivered' : ''}${numPaid ? ' tn-paid' : ''}`}>
-                              <input
-                                type="checkbox"
-                                checked={numDelivered}
-                                onChange={() => toggleDeliveredNumber(order.id, originalIndex, num)}
-                              />
-                              <a
-                                href={getTrackingUrl(carrier, num)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="tracking-number-link"
-                              >
-                                {num}
-                              </a>
-                              <button
-                                className={`tn-copy-btn${copiedTrackingNum === num ? ' copied' : ''}`}
-                                title="Copy tracking number"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(num);
-                                  setCopiedTrackingNum(num);
-                                  setTimeout(() => setCopiedTrackingNum(null), 1500);
-                                }}
-                              >
-                                {copiedTrackingNum === num ? 'Copied!' : '⎘'}
-                              </button>
-                              {(pnd.qty > 0 || pnd.cost > 0) && (
-                                <div className="tn-meta">
-                                  {pnd.qty > 0 && <span className="tn-meta-badge">{pnd.qty} kits</span>}
-                                  {numPaid
-                                    ? <span className="tn-meta-badge tn-meta-paid">Paid</span>
-                                    : pnd.cost > 0 && <span className="tn-meta-badge tn-meta-cost">${Number(pnd.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due</span>
-                                  }
+                            <div key={num} className={`tn-check-row${numDelivered ? ' tn-delivered' : ''}${numPending ? ' tn-pending-delivery' : ''}${numPaid ? ' tn-paid' : ''}`}>
+                              <div className="tn-main-row">
+                                <input
+                                  type="checkbox"
+                                  checked={numDelivered}
+                                  onChange={() => toggleDeliveredNumber(order.id, originalIndex, num)}
+                                />
+                                <a
+                                  href={getTrackingUrl(grpCarrier, num)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="tracking-number-link"
+                                >
+                                  {num}
+                                </a>
+                                <button
+                                  className={`tn-copy-btn${copiedTrackingNum === num ? ' copied' : ''}`}
+                                  title="Copy tracking number"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(num);
+                                    setCopiedTrackingNum(num);
+                                    setTimeout(() => setCopiedTrackingNum(null), 1500);
+                                  }}
+                                >
+                                  {copiedTrackingNum === num ? 'Copied!' : '⎘'}
+                                </button>
+                                <button
+                                  className={`tn-sync-btn${syncingNum === num ? ' syncing' : ''}`}
+                                  title="Sync this tracking number"
+                                  disabled={syncingNum === num}
+                                  onClick={() => syncSingleTracking(order.id, originalIndex, num)}
+                                >
+                                  {syncingNum === num ? '…' : '↻'}
+                                </button>
+                              </div>
+                              {numPending && (
+                                <div className="tn-pending-confirm-row">
+                                  <span className="tn-pill tn-pill-pending-delivery">Delivered — confirm?</span>
+                                  <button className="tn-confirm-btn" title="Confirm delivery" onClick={() => confirmDelivery(order.id, originalIndex, num)}>✓ Yes</button>
+                                  <button className="tn-dismiss-btn" title="Not delivered yet" onClick={() => dismissPendingDelivery(order.id, originalIndex, num)}>✗ No</button>
+                                </div>
+                              )}
+                              {(hasPills || pnd.qty > 0 || pnd.cost > 0) && (
+                                <div className="tn-info-pills">
+                                  {(pnd.qty > 0 || pnd.cost > 0) && (
+                                    <>
+                                      {pnd.qty > 0 && <span className="tn-meta-badge">{pnd.qty} kits</span>}
+                                      {numPaid
+                                        ? <span className="tn-meta-badge tn-meta-paid">Paid</span>
+                                        : pnd.cost > 0 && <span className="tn-meta-badge tn-meta-cost">${Number(pnd.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due</span>
+                                      }
+                                    </>
+                                  )}
+                                  {pnd.rejected && (
+                                    <span className="tn-pill tn-pill-rejected">
+                                      Not found
+                                      <button
+                                        className="tn-retry-btn"
+                                        title={pnd.rejected}
+                                        disabled={syncingNum === num}
+                                        onClick={() => syncSingleTracking(order.id, originalIndex, num)}
+                                      >
+                                        {syncingNum === num ? '…' : '↻ Retry'}
+                                      </button>
+                                    </span>
+                                  )}
+                                  {pnd.trackStatus && (
+                                    <span className={isReturn ? 'tn-pill tn-pill-return' : isException ? 'tn-pill tn-pill-exception' : numDelivered ? 'tn-pill tn-pill-delivered' : 'tn-pill tn-pill-status'}>
+                                      {isReturn ? 'Returned to Sender'
+                                        : isException ? `Exception: ${sub.replace('Exception_', '').replace(/([A-Z])/g, ' $1').trim()}`
+                                        : pnd.trackStatus.replace(/([a-z])([A-Z])/g, '$1 $2')}
+                                    </span>
+                                  )}
+                                  {pnd.deliveryDate && (
+                                    <span className="tn-pill tn-pill-delivered">
+                                      Delivered {new Date(pnd.deliveryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                  )}
+                                  {pnd.confirmedAt && (
+                                    <span className="tn-pill tn-pill-confirmed" title={`Confirmed ${new Date(pnd.confirmedAt).toLocaleString()}`}>
+                                      ✓ Confirmed
+                                    </span>
+                                  )}
+                                  {!pnd.deliveryDate && pnd.estimatedDelivery && (
+                                    <span className="tn-pill tn-pill-eta">
+                                      Est. {new Date(pnd.estimatedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                  )}
+                                  {pnd.currentLocation && (
+                                    <span className="tn-pill tn-pill-location">📍 {pnd.currentLocation}</span>
+                                  )}
+                                  {pnd.destination && (
+                                    <span className="tn-pill tn-pill-dest">→ {pnd.destination}</span>
+                                  )}
+                                  {!pnd.deliveryDate && pnd.lastUpdated && (
+                                    <span className="tn-pill tn-pill-time">
+                                      Updated {new Date(pnd.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1800,6 +2115,13 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <button className="tracking-add tracking-auto-create" onClick={() => autoCreateTrackingEntries(order.id)}>
                   + Auto-Create from Products
                 </button>
+                <button
+                  className="tracking-add tracking-sync"
+                  onClick={() => syncTrackingStatus(order.id)}
+                  disabled={syncingOrderId === order.id}
+                >
+                  {syncingOrderId === order.id ? 'Syncing…' : '↻ Sync Status'}
+                </button>
               </div>
               {pendingTrackingEntries.length > 0 && (
                 <div className="tracking-display-grid tracking-display-grid-pending">
@@ -1879,7 +2201,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <div>Paid</div>
                 {isEditing && <div></div>}
               </div>
-              {[...order.items]
+              {[...(order.items || [])]
                 .slice()
                 .sort((a, b) => {
                   const warehouseA = (a.warehouse || order.warehouse || 'US').toUpperCase();
@@ -2324,7 +2646,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         return es + (e.paidNumbers || []).reduce((ns, n) => ns + (Number(pnd[n]?.cost) || 0), 0);
       }, 0), 0);
     const deliveredUnpaid = Math.max(0, deliveredCost - paidDeliveredCost);
-    return { vendor, total, paid, deliveredUnpaid };
+    const totalKits = vendorOrders.reduce((s, o) =>
+      s + (o.items || []).reduce((is, i) => is + (Number(i.quantity) || 0), 0), 0);
+    const deliveredKits = vendorOrders.reduce((s, o) =>
+      s + (o.trackingEntries || []).reduce((es, e) => {
+        const pnd = e.perNumberData || {};
+        return es + (e.deliveredNumbers || []).reduce((ns, n) => ns + (Number(pnd[n]?.qty) || 0), 0);
+      }, 0), 0);
+    return { vendor, total, paid, deliveredUnpaid, totalKits, deliveredKits };
   });
 
   const deliveredVendors = [...new Set(deliveredOrders.map(o => o.vendor || 'TSC'))].sort((a, b) => {
@@ -2422,13 +2751,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           <div className="vendor-summary-grid">
             <div className="vendor-summary-header">
               <span>Vendor</span>
+              <span>Kits</span>
               <span>Total</span>
               <span>Paid</span>
               <span>Delivered (Unpaid)</span>
             </div>
-            {vendorSummaryStats.map(({ vendor, total, paid, deliveredUnpaid }) => (
+            {vendorSummaryStats.map(({ vendor, total, paid, deliveredUnpaid, totalKits, deliveredKits }) => (
               <div key={vendor} className="vendor-summary-row">
                 <span className="vsrow-vendor">{vendor}</span>
+                <span className="vsrow-kits">
+                  {deliveredKits > 0
+                    ? <>{deliveredKits.toLocaleString()}<span className="vsrow-kits-total">/{totalKits.toLocaleString()}</span></>
+                    : totalKits.toLocaleString()}
+                </span>
                 <span className="vsrow-total">${fmt2(total)}</span>
                 <span className="vsrow-paid">${fmt2(paid)}</span>
                 <span className={`vsrow-unpaid${deliveredUnpaid > 0 ? ' has-unpaid' : ''}`}>
@@ -2436,18 +2771,26 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 </span>
               </div>
             ))}
-            {vendorSummaryStats.length > 1 && (
-              <div className="vendor-summary-row vendor-summary-total-row">
-                <span className="vsrow-vendor">All</span>
-                <span className="vsrow-total">${fmt2(pendingTotal)}</span>
-                <span className="vsrow-paid">${fmt2(vendorSummaryStats.reduce((s, v) => s + v.paid, 0))}</span>
-                <span className={`vsrow-unpaid${vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0) > 0 ? ' has-unpaid' : ''}`}>
-                  {vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0) > 0
-                    ? `$${fmt2(vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0))}`
-                    : '—'}
-                </span>
-              </div>
-            )}
+            {vendorSummaryStats.length > 1 && (() => {
+              const allTotalKits = vendorSummaryStats.reduce((s, v) => s + v.totalKits, 0);
+              const allDeliveredKits = vendorSummaryStats.reduce((s, v) => s + v.deliveredKits, 0);
+              const allUnpaid = vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0);
+              return (
+                <div className="vendor-summary-row vendor-summary-total-row">
+                  <span className="vsrow-vendor">All</span>
+                  <span className="vsrow-kits">
+                    {allDeliveredKits > 0
+                      ? <>{allDeliveredKits.toLocaleString()}<span className="vsrow-kits-total">/{allTotalKits.toLocaleString()}</span></>
+                      : allTotalKits.toLocaleString()}
+                  </span>
+                  <span className="vsrow-total">${fmt2(pendingTotal)}</span>
+                  <span className="vsrow-paid">${fmt2(vendorSummaryStats.reduce((s, v) => s + v.paid, 0))}</span>
+                  <span className={`vsrow-unpaid${allUnpaid > 0 ? ' has-unpaid' : ''}`}>
+                    {allUnpaid > 0 ? `$${fmt2(allUnpaid)}` : '—'}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
           {pendingVendors.length > 1 && (
             <div className="vendor-tab-bar">
