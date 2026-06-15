@@ -523,7 +523,7 @@ const PaymentTracker = ({ onError, onSuccess }) => {
           <button
             key={v}
             className={`payment-vendor-tab ${activeVendor === v ? 'active' : ''}`}
-            onClick={() => setActiveVendor(v)}
+            onClick={() => { setActiveVendor(v); setForm((prev) => ({ ...prev, vendor: v })); }}
           >
             {v}
           </button>
