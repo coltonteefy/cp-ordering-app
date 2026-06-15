@@ -128,19 +128,24 @@ const DEFAULT_LABEL_DESIGN = {
   logoWidth: 170,
   logoHeight: 64,
   // Center stack (product + strength) — rotated -90°, right side
+  // Legacy fields kept for Full Editor compatibility
   centerLeftPercent: 60,
   centerTopPercent: 50,
   centerWidth: 235,
   centerGap: 2,
   stackRotate: -90,
+  // Name element — independently positioned
+  nameLeft: 88,
+  nameTop: 210,
   nameFontSize: 37,
   nameLineHeight: 0.79,
   nameColor: "#23160d",
   nameFontWeight: 900,
   nameLetterSpacing: 0,
   nameUppercase: true,
-  nameOffsetX: 0,
-  nameOffsetY: 0,
+  // Strength element — independently positioned
+  strengthLeft: 124,
+  strengthTop: 210,
   strengthFontSize: 22,
   massTextColor: "#ffffff",
   strengthPadY: 8,
@@ -148,8 +153,6 @@ const DEFAULT_LABEL_DESIGN = {
   strengthRadius: FIXED_MASS_RADIUS,
   strengthFontWeight: 900,
   strengthLetterSpacing: 0,
-  strengthOffsetX: 0,
-  strengthOffsetY: 0,
   // Footer — rotated -90°, bottom-right area
   footerLeft: 156,
   footerTop: 310,
@@ -174,6 +177,9 @@ const DEFAULT_LABEL_DESIGN = {
   lotOffsetY: 0,
   lotUppercase: true,
   backgroundOpacity: 100, // 0–100, scales gradient alpha
+  showGradient: true,
+  strengthBgColor: "", // "" = use cap color; "none" = transparent
+  customTexts: [],
   nameTextAlign: "center",
   lotTextAlign: "center",
   tintColorOverride: "", // empty = use cap color
@@ -220,6 +226,8 @@ const DEFAULT_KIT_LABEL_DESIGN = {
   footerGap: 20,
   bottomFadeHeight: 250,
   massTextColor: "#ffffff",
+  strengthBgColor: "",
+  customTexts: [],
   lotTextAlign: "center",
   productTextAlign: "left",
   tintColorOverride: "",
@@ -426,12 +434,12 @@ const scaleLabelDesignForPrint = (design) => {
     // logoTopPercent stays as-is (percentage)
     centerWidth: merged.centerWidth * scaleX,
     centerGap: merged.centerGap * scaleY,
+    nameLeft: merged.nameLeft * scaleX,
+    nameTop: merged.nameTop * scaleY,
     nameFontSize: merged.nameFontSize * scale,
-    nameOffsetX: (merged.nameOffsetX ?? 0) * scaleX,
-    nameOffsetY: (merged.nameOffsetY ?? 0) * scaleY,
+    strengthLeft: merged.strengthLeft * scaleX,
+    strengthTop: merged.strengthTop * scaleY,
     strengthFontSize: merged.strengthFontSize * scale,
-    strengthOffsetX: (merged.strengthOffsetX ?? 0) * scaleX,
-    strengthOffsetY: (merged.strengthOffsetY ?? 0) * scaleY,
     strengthPadY: (merged.strengthPadY ?? FIXED_MASS_PAD_Y) * scaleY,
     strengthPadX: merged.strengthPadX * scaleX,
     strengthRadius: FIXED_MASS_RADIUS * scale,
@@ -449,6 +457,7 @@ const scaleLabelDesignForPrint = (design) => {
     lotFontSize: merged.lotFontSize * scale,
     lotOffsetX: (merged.lotOffsetX ?? 0) * scaleX,
     lotOffsetY: (merged.lotOffsetY ?? 0) * scaleY,
+    customTexts: (merged.customTexts || []).map((ct) => ({ ...ct, left: ct.left * scaleX, top: ct.top * scaleY, fontSize: (ct.fontSize || 12) * scale })),
   };
 };
 const scaleKitLabelDesignForPrint = (design) => {
@@ -481,6 +490,7 @@ const scaleKitLabelDesignForPrint = (design) => {
     footerFontSize: merged.footerFontSize * scaleY,
     footerGap: merged.footerGap * scaleY,
     bottomFadeHeight: merged.bottomFadeHeight * scaleY,
+    customTexts: (merged.customTexts || []).map((ct) => ({ ...ct, left: ct.left * scaleX, top: ct.top * scaleY, fontSize: (ct.fontSize || 12) * scaleX })),
   };
 };
 const scaleTestLabelDesignForPrint = (design) => {
@@ -589,35 +599,29 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         text-align: ${labelDesign.lotTextAlign || "center"};
         white-space: nowrap;
       }
-      .center-stack {
+      .name-el {
         position: absolute;
-        left: ${labelDesign.centerLeftPercent}%;
-        top: ${labelDesign.centerTopPercent}%;
+        left: ${labelDesign.nameLeft}px;
+        top: ${labelDesign.nameTop}px;
         transform: translate(-50%, -50%) rotate(${labelDesign.stackRotate ?? -90}deg);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: ${labelDesign.centerGap}px;
-        width: ${labelDesign.centerWidth}px;
-        text-align: ${labelDesign.nameTextAlign || "center"};
-      }
-      .name {
-        text-align: ${labelDesign.nameTextAlign || "center"};
-        transform: translate(${labelDesign.nameOffsetX ?? 0}px, ${labelDesign.nameOffsetY ?? 0}px);
         font-size: ${labelDesign.nameFontSize}px;
         line-height: ${labelDesign.nameLineHeight};
         font-weight: ${labelDesign.nameFontWeight ?? 900};
         color: ${escapeHtml(labelDesign.nameColor || "#23160d")};
         letter-spacing: ${labelDesign.nameLetterSpacing ?? 0}em;
         text-transform: ${labelDesign.nameUppercase === false ? "none" : "uppercase"};
+        text-align: ${labelDesign.nameTextAlign || "center"};
         white-space: nowrap;
       }
-      .strength {
+      .strength-el {
+        position: absolute;
+        left: ${labelDesign.strengthLeft}px;
+        top: ${labelDesign.strengthTop}px;
+        transform: translate(-50%, -50%) rotate(${labelDesign.stackRotate ?? -90}deg);
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: ${escapeHtml(capColorValue)};
+        background: ${escapeHtml(labelDesign.strengthBgColor === "none" ? "transparent" : (labelDesign.strengthBgColor || capColorValue))};
         color: ${escapeHtml(labelDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};
         border-radius: ${labelDesign.strengthRadius}px;
         padding: ${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;
@@ -625,7 +629,6 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
         line-height: 1;
         font-weight: ${labelDesign.strengthFontWeight ?? 900};
         letter-spacing: ${labelDesign.strengthLetterSpacing ?? 0}em;
-        transform: translate(${labelDesign.strengthOffsetX ?? 0}px, ${labelDesign.strengthOffsetY ?? 0}px);
         white-space: nowrap;
       }
     </style>
@@ -633,12 +636,11 @@ const buildLabelPrintMarkup = ({ productId, productName, strength, lot, capColor
   <body>
     <div class="label">
       <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
-      <div class="bg-tint"></div>
+      ${labelDesign.showGradient !== false ? '<div class="bg-tint"></div>' : ''}
       <div class="lot">${escapeHtml(lot || "")}</div>
-      <div class="center-stack">
-        <div class="name">${buildLabelProductHtml(productName || "")}</div>
-        <div class="strength">${escapeHtml(strength || "")}</div>
-      </div>
+      <div class="name-el">${buildLabelProductHtml(productName || "")}</div>
+      <div class="strength-el">${escapeHtml(strength || "")}</div>
+      ${(labelDesign.customTexts || []).map((ct) => `<div style="position:absolute;left:${ct.left}px;top:${ct.top}px;font-size:${ct.fontSize || 12}px;font-weight:${ct.fontWeight || 400};color:${escapeHtml(ct.color || '#ffffff')};transform:rotate(${ct.rotate || 0}deg);letter-spacing:${ct.letterSpacing || 0}em;white-space:pre-wrap;transform-origin:left top;">${escapeHtml(ct.text || '')}</div>`).join('')}
     </div>
     <script>
       window.onload = function () {
@@ -690,11 +692,9 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
           <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
           <div class="bg-tint"></div>
           <div class="lot">${escapeHtml(lot || "")}</div>
-          <div class="center-stack">
-            <div class="name">${buildLabelProductHtml(productName || "")}</div>
-            <div class="strength">${escapeHtml(strength || "")}</div>
-            <div class="variant">${escapeHtml(variant)}</div>
-          </div>
+          <div class="name-el">${buildLabelProductHtml(productName || "")}</div>
+          <div class="strength-el">${escapeHtml(strength || "")}</div>
+          <div class="variant-el">${escapeHtml(variant)}</div>
         </div>
       </section>`
   ).join("");
@@ -763,31 +763,25 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         text-align: ${d.lotTextAlign || "center"};
         white-space: nowrap;
       }
-      .center-stack {
+      .name-el {
         position: absolute;
-        left: ${d.centerLeftPercent}%;
-        top: ${d.centerTopPercent}%;
+        left: ${d.nameLeft}px;
+        top: ${d.nameTop}px;
         transform: translate(-50%, -50%) rotate(${d.stackRotate ?? -90}deg);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: ${d.centerGap}px;
-        width: ${d.centerWidth}px;
-        text-align: ${d.nameTextAlign || "center"};
-      }
-      .name {
-        text-align: ${d.nameTextAlign || "center"};
-        transform: translate(${d.nameOffsetX ?? 0}px, ${d.nameOffsetY ?? 0}px);
         font-size: ${d.nameFontSize}px;
         line-height: ${d.nameLineHeight};
         font-weight: ${d.nameFontWeight ?? 900};
         color: ${escapeHtml(d.nameColor || "#23160d")};
         letter-spacing: ${d.nameLetterSpacing ?? 0}em;
         text-transform: ${d.nameUppercase === false ? "none" : "uppercase"};
+        text-align: ${d.nameTextAlign || "center"};
         white-space: nowrap;
       }
-      .strength {
+      .strength-el {
+        position: absolute;
+        left: ${d.strengthLeft}px;
+        top: ${d.strengthTop}px;
+        transform: translate(-50%, -50%) rotate(${d.stackRotate ?? -90}deg);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -799,17 +793,18 @@ const buildTestLabelsPrintMarkup = ({ productName, strength, lot, capColor, desi
         line-height: 1;
         font-weight: ${d.strengthFontWeight ?? 900};
         letter-spacing: ${d.strengthLetterSpacing ?? 0}em;
-        transform: translate(${d.strengthOffsetX ?? 0}px, ${d.strengthOffsetY ?? 0}px);
         white-space: nowrap;
       }
-      .variant {
+      .variant-el {
+        position: absolute;
+        left: ${d.strengthLeft}px;
+        top: ${d.strengthTop + d.strengthFontSize * 2}px;
+        transform: translate(-50%, -50%) rotate(${d.stackRotate ?? -90}deg);
         font-size: ${d.variantFontSize}px;
         font-weight: 800;
         color: #23160d;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        margin-top: ${d.variantMarginTop}px;
-        transform: translateX(${d.variantOffsetX ?? 0}px) translateY(${d.variantOffsetY ?? 0}px);
         white-space: nowrap;
       }
     </style>
@@ -859,10 +854,8 @@ const buildAllVialLabelsPrintMarkup = (labelEntries) => {
           <img class="bg-image" src="${escapeHtml(LABEL_BACKGROUND_IMAGE)}" alt="" />
           <div class="bg-tint" style="background:${escapeHtml(labelBackground)};"></div>
           <div class="lot" style="left:${labelDesign.lotLeft}px;top:${labelDesign.lotTop}px;font-size:${labelDesign.lotFontSize}px;color:${escapeHtml(labelDesign.lotColor || "#2b1a0f")};font-weight:${labelDesign.lotFontWeight ?? 800};letter-spacing:${labelDesign.lotLetterSpacing ?? 0.03}em;text-transform:${labelDesign.lotUppercase === false ? "none" : "uppercase"};text-align:${labelDesign.lotTextAlign || "center"};transform:translateX(-50%) translate(${labelDesign.lotOffsetX ?? 0}px, ${labelDesign.lotOffsetY ?? 0}px) rotate(${labelDesign.lotRotate ?? 0}deg);">${escapeHtml(lot || "")}</div>
-          <div class="center-stack" style="left:${labelDesign.centerLeftPercent}%;top:${labelDesign.centerTopPercent}%;width:${labelDesign.centerWidth}px;gap:${labelDesign.centerGap}px;transform:translate(-50%, -50%) rotate(${labelDesign.stackRotate ?? -90}deg);text-align:${labelDesign.nameTextAlign || "center"};">
-            <div class="name" style="font-size:${labelDesign.nameFontSize}px;line-height:${labelDesign.nameLineHeight};color:${escapeHtml(labelDesign.nameColor || "#23160d")};font-weight:${labelDesign.nameFontWeight ?? 900};letter-spacing:${labelDesign.nameLetterSpacing ?? 0}em;text-transform:${labelDesign.nameUppercase === false ? "none" : "uppercase"};text-align:${labelDesign.nameTextAlign || "center"};transform:translate(${labelDesign.nameOffsetX ?? 0}px, ${labelDesign.nameOffsetY ?? 0}px);">${buildLabelProductHtml(productName || "")}</div>
-            <div class="strength" style="background:${escapeHtml(capColorValue)};color:${escapeHtml(labelDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};border-radius:${labelDesign.strengthRadius}px;padding:${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;font-size:${labelDesign.strengthFontSize}px;font-weight:${labelDesign.strengthFontWeight ?? 900};letter-spacing:${labelDesign.strengthLetterSpacing ?? 0}em;transform:translate(${labelDesign.strengthOffsetX ?? 0}px, ${labelDesign.strengthOffsetY ?? 0}px);">${escapeHtml(strength || "")}</div>
-          </div>
+          <div style="position:absolute;left:${labelDesign.nameLeft}px;top:${labelDesign.nameTop}px;transform:translate(-50%,-50%) rotate(${labelDesign.stackRotate ?? -90}deg);font-size:${labelDesign.nameFontSize}px;line-height:${labelDesign.nameLineHeight};color:${escapeHtml(labelDesign.nameColor || "#23160d")};font-weight:${labelDesign.nameFontWeight ?? 900};letter-spacing:${labelDesign.nameLetterSpacing ?? 0}em;text-transform:${labelDesign.nameUppercase === false ? "none" : "uppercase"};text-align:${labelDesign.nameTextAlign || "center"};white-space:nowrap;">${buildLabelProductHtml(productName || "")}</div>
+          <div style="position:absolute;left:${labelDesign.strengthLeft}px;top:${labelDesign.strengthTop}px;transform:translate(-50%,-50%) rotate(${labelDesign.stackRotate ?? -90}deg);display:inline-flex;align-items:center;justify-content:center;background:${escapeHtml(labelDesign.strengthBgColor === "none" ? "transparent" : (labelDesign.strengthBgColor || capColorValue))};color:${escapeHtml(labelDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};border-radius:${labelDesign.strengthRadius}px;padding:${labelDesign.strengthPadY}px ${labelDesign.strengthPadX}px;font-size:${labelDesign.strengthFontSize}px;line-height:1;font-weight:${labelDesign.strengthFontWeight ?? 900};letter-spacing:${labelDesign.strengthLetterSpacing ?? 0}em;white-space:nowrap;">${escapeHtml(strength || "")}</div>
         </div>
       </section>`;
   }).join("\n");
@@ -918,25 +911,6 @@ const buildAllVialLabelsPrintMarkup = (labelEntries) => {
       }
       .lot {
         position: absolute;
-        line-height: 1;
-        white-space: nowrap;
-      }
-      .center-stack {
-        position: absolute;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-      }
-      .name {
-        text-align: center;
-        white-space: nowrap;
-      }
-      .strength {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
         line-height: 1;
         white-space: nowrap;
       }
@@ -1045,7 +1019,7 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: ${escapeHtml(accentColor)};
+        background: ${escapeHtml(kitDesign.strengthBgColor === "none" ? "transparent" : (kitDesign.strengthBgColor || accentColor))};
         color: ${escapeHtml(kitDesign.massTextColor || FIXED_MASS_TEXT_COLOR)};
         padding: ${kitDesign.strengthPadY}px ${kitDesign.strengthPadX}px;
         border-radius: ${kitDesign.strengthRadius}px;
@@ -1075,6 +1049,7 @@ const buildKitLabelPrintMarkup = ({ productId, productName, strength, lot, capCo
         <div class="strength">${escapeHtml(strength || "")}</div>
         <div class="count">10 Vials</div>
       </div>
+      ${(kitDesign.customTexts || []).map((ct) => `<div style="position:absolute;left:${ct.left}px;top:${ct.top}px;font-size:${ct.fontSize || 12}px;font-weight:${ct.fontWeight || 400};color:${escapeHtml(ct.color || '#ffffff')};transform:rotate(${ct.rotate || 0}deg);letter-spacing:${ct.letterSpacing || 0}em;white-space:pre-wrap;transform-origin:left top;">${escapeHtml(ct.text || '')}</div>`).join('')}
     </div>
     <script>
       window.onload = function () {
@@ -1127,10 +1102,8 @@ const createLabelDomForCapture = ({ productName, strength, lot, capColor, design
       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;" />
     <div style="position:absolute;inset:0;background:${escapeHtml(labelBg)};pointer-events:none;"></div>
     <div style="position:absolute;${styleObjToCss(ds.lot)};line-height:1;white-space:nowrap;">${escapeHtml(lot || '')}</div>
-    <div style="position:absolute;left:${ds.center.left};top:${ds.center.top};width:${ds.center.width};gap:${ds.center.gap};transform:${ds.center.transform};display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
-      <div style="${styleObjToCss(ds.name)};white-space:nowrap;">${buildLabelProductHtml(productName || '')}</div>
-      <div style="${styleObjToCss(ds.strength)};display:inline-flex;align-items:center;justify-content:center;background:${escapeHtml(capColorValue)};line-height:1;white-space:nowrap;">${escapeHtml(strength || '')}</div>
-    </div>
+    <div style="position:absolute;left:${mergedDesign.nameLeft ?? 88}px;top:${mergedDesign.nameTop ?? 210}px;transform:translate(-50%,-50%) rotate(${mergedDesign.stackRotate ?? -90}deg);${styleObjToCss({ fontSize: ds.name.fontSize, lineHeight: ds.name.lineHeight, color: ds.name.color, fontWeight: ds.name.fontWeight, letterSpacing: ds.name.letterSpacing, textTransform: ds.name.textTransform, textAlign: ds.name.textAlign })};white-space:nowrap;">${buildLabelProductHtml(productName || '')}</div>
+    <div style="position:absolute;left:${mergedDesign.strengthLeft ?? 124}px;top:${mergedDesign.strengthTop ?? 210}px;transform:translate(-50%,-50%) rotate(${mergedDesign.stackRotate ?? -90}deg);display:inline-flex;align-items:center;justify-content:center;background:${escapeHtml(mergedDesign.strengthBgColor === 'none' ? 'transparent' : (mergedDesign.strengthBgColor || capColorValue))};${styleObjToCss({ fontSize: ds.strength.fontSize, padding: ds.strength.padding, borderRadius: ds.strength.borderRadius, color: ds.strength.color, fontWeight: ds.strength.fontWeight, letterSpacing: ds.strength.letterSpacing })};line-height:1;white-space:nowrap;">${escapeHtml(strength || '')}</div>
   `;
   return el;
 };
@@ -1170,14 +1143,28 @@ const classifySidebarGroup = (p) => {
   return "Other";
 };
 
+// Merge a per-lot labelOverride into a product-level design for rendering/printing
+const mergeLotOverride = (productDesign, override) => {
+  if (!override) return productDesign;
+  const out = { ...productDesign };
+  if (override.nameColor)        out.nameColor        = override.nameColor;
+  if (override.productColor)     out.productColor     = override.productColor;
+  if (override.strengthBgColor)  out.strengthBgColor  = override.strengthBgColor;
+  if (override.massTextColor)    out.massTextColor    = override.massTextColor;
+  if (override.lotColor)         out.lotColor         = override.lotColor;
+  out.customTexts = [...(productDesign.customTexts || []), ...(override.customTexts || [])];
+  return out;
+};
+
 // ---------------------------------------------------------------------------
 // DraggableLabelCanvas – interactive drag-to-position preview for the editor
 // ---------------------------------------------------------------------------
 const DRAG_CANVAS_SCALE = 2; // render at 2× the preview dimensions
 
 const VIAL_DRAG_ELEMENTS = [
-  { id: "center",  label: "Stack",   color: "#d82d63", xField: "centerLeftPercent", yField: "centerTopPercent",  yMode: "percent", xMode: "percent" },
-  { id: "lot",    label: "Lot ID",  color: "#6b2da0", xField: "lotLeft",            yField: "lotTop" },
+  { id: "name",     label: "Name",   color: "#d82d63", xField: "nameLeft",     yField: "nameTop" },
+  { id: "strength", label: "Mass",   color: "#e08a00", xField: "strengthLeft", yField: "strengthTop" },
+  { id: "lot",      label: "Lot ID", color: "#6b2da0", xField: "lotLeft",      yField: "lotTop" },
 ];
 
 const KIT_DRAG_ELEMENTS = [
@@ -1186,7 +1173,7 @@ const KIT_DRAG_ELEMENTS = [
   { id: "strength", label: "Mass",    color: "#e08a00", xField: "strengthLeft",  yField: "strengthBottom",yMode: "bottom" },
 ];
 
-const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selectedEl, onSelect, canvasScale = DRAG_CANVAS_SCALE }) => {
+const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selectedEl, onSelect, canvasScale = DRAG_CANVAS_SCALE, showHandles = true, showEditPanel = true }) => {
   const maxScale = canvasScale;
   const isKit = mode === "kit";
   const previewW = isKit ? KIT_PREVIEW_WIDTH : LABEL_PREVIEW_WIDTH;
@@ -1278,8 +1265,10 @@ const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selec
       onChange(cel.yField, Math.round(newY * 10) / 10);
     };
 
+    setIsDragging(true);
     const onUp = () => {
       dragState.current = null;
+      setIsDragging(false);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
@@ -1344,46 +1333,190 @@ const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selec
     }
   };
 
+  const [activeEl, setActiveEl] = React.useState(null);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const closeTimer = React.useRef(null);
+
+  const showPanel = (id) => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+    setActiveEl(id);
+  };
+  const scheduleHide = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => { setActiveEl(null); closeTimer.current = null; }, 150);
+  };
+
   const capColorValue = normalizeLabelAccentColor(
     lotEntry ? getCapRenderColor(lotEntry.capColor, lotEntry.capShade) : ""
   );
   const lotText = lotEntry?.lot || "LOT-ID";
-  const vds = buildLabelDesignStyles(mergeLabelDesign(design));
+  const vd = mergeLabelDesign(design);
+  const vds = buildLabelDesignStyles(vd);
   const kds = buildKitLabelDesignStyles(mergeKitLabelDesign(design));
+
+  const hlStyle = (id) => ({
+    cursor: "grab",
+    borderRadius: 3,
+    boxShadow: showEditPanel && activeEl === id ? "0 0 0 2px #fff, 0 0 0 4px #4a96ff" : "none",
+    transition: "box-shadow 0.1s",
+  });
+  const hlEvents = (id) => showEditPanel ? ({
+    onMouseEnter: (e) => { e.stopPropagation(); showPanel(id); },
+    onMouseLeave: (e) => { e.stopPropagation(); scheduleHide(); },
+  }) : {};
 
   const labelContent = isKit ? (
     <div style={{ width: previewW, height: previewH, position: "relative", overflow: "hidden", background: "linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%)", fontFamily: "Arial,Helvetica,sans-serif", boxSizing: "border-box" }}>
-      <img src={LABEL_BACKGROUND_IMAGE} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: kds.fade.height, background: buildKitLabelFade(capColorValue) }} />
-      <div style={{ position: "absolute", ...kds.lot, whiteSpace: "nowrap" }}>{lotText}</div>
-      <div style={{ position: "absolute", left: kds.product.left, bottom: kds.product.bottom, fontSize: kds.product.fontSize, lineHeight: kds.product.lineHeight, transformOrigin: "left bottom", transform: "rotate(-90deg)", fontWeight: kds.product.fontWeight, color: kds.product.color, letterSpacing: kds.product.letterSpacing, textTransform: kds.product.textTransform, whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
-      <div style={{ position: "absolute", display: "inline-flex", alignItems: "center", gap: 10, left: kds.strength.left, bottom: kds.strength.bottom, transformOrigin: "left bottom", transform: "rotate(-90deg)" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", fontSize: kds.strength.fontSize, padding: kds.strength.padding, borderRadius: kds.strength.borderRadius, color: kds.strength.color, fontWeight: kds.strength.fontWeight, letterSpacing: kds.strength.letterSpacing, whiteSpace: "nowrap" }}>{product?.strength}</div>
+      <img src={LABEL_BACKGROUND_IMAGE} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: kds.fade.height, background: buildKitLabelFade(capColorValue), pointerEvents: "none" }} />
+      <div style={{ position: "absolute", ...kds.lot, whiteSpace: "nowrap", ...hlStyle("lot") }} {...hlEvents("lot")}>{lotText}</div>
+      <div style={{ position: "absolute", left: kds.product.left, bottom: kds.product.bottom, fontSize: kds.product.fontSize, lineHeight: kds.product.lineHeight, transformOrigin: "left bottom", transform: "rotate(-90deg)", fontWeight: kds.product.fontWeight, color: kds.product.color, letterSpacing: kds.product.letterSpacing, textTransform: kds.product.textTransform, whiteSpace: "nowrap", ...hlStyle("product") }} {...hlEvents("product")}>{renderLabelProductName(product?.product)}</div>
+      <div style={{ position: "absolute", display: "inline-flex", alignItems: "center", gap: 10, left: kds.strength.left, bottom: kds.strength.bottom, transformOrigin: "left bottom", transform: "rotate(-90deg)", ...hlStyle("strength") }} {...hlEvents("strength")}>
+        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: design.strengthBgColor === "none" ? "transparent" : (design.strengthBgColor || capColorValue || "#8f3a17"), fontSize: kds.strength.fontSize, padding: kds.strength.padding, borderRadius: kds.strength.borderRadius, color: kds.strength.color, fontWeight: kds.strength.fontWeight, letterSpacing: kds.strength.letterSpacing, whiteSpace: "nowrap" }}>{product?.strength}</div>
         <div style={{ fontSize: kds.strength.fontSize, fontWeight: 700, color: "#111", whiteSpace: "nowrap" }}>10 Vials</div>
       </div>
+      {(design.customTexts || []).map((ct) => (
+        <div key={ct.id} style={{ position: "absolute", left: ct.left, top: ct.top, fontSize: ct.fontSize || 12, fontWeight: ct.fontWeight || 400, color: ct.color || "#ffffff", transform: `rotate(${ct.rotate || 0}deg)`, letterSpacing: `${ct.letterSpacing || 0}em`, whiteSpace: "pre-wrap", transformOrigin: "left top", lineHeight: 1.2, ...hlStyle(`ct_${ct.id}`) }} {...hlEvents(`ct_${ct.id}`)}>{ct.text}</div>
+      ))}
     </div>
   ) : (
     <div style={{ width: previewW, height: previewH, position: "relative", overflow: "hidden", background: "linear-gradient(180deg,#f3f4f6 0%,#e9ebef 100%)", fontFamily: "Arial,Helvetica,sans-serif", boxSizing: "border-box" }}>
-      <img src={LABEL_BACKGROUND_IMAGE} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-      {(capColorValue || design.tintColorOverride) && <div style={{ position: "absolute", inset: 0, background: buildLabelBackground(design.tintColorOverride || capColorValue, design.backgroundOpacity) }} />}
-      <div style={{ position: "absolute", ...vds.lot, lineHeight: 1, whiteSpace: "nowrap" }}>{lotText}</div>
-      <div style={{ position: "absolute", left: vds.center.left, top: vds.center.top, width: vds.center.width, gap: vds.center.gap, transform: vds.center.transform, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: vds.name.textAlign || "center" }}>
-        <div style={{ ...vds.name, whiteSpace: "nowrap" }}>{renderLabelProductName(product?.product)}</div>
-        <div style={{ ...vds.strength, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: capColorValue || "#8f3a17", lineHeight: 1, whiteSpace: "nowrap" }}>{product?.strength}</div>
+      <img src={LABEL_BACKGROUND_IMAGE} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} />
+      {design.showGradient !== false && (capColorValue || design.tintColorOverride) && <div style={{ position: "absolute", inset: 0, background: buildLabelBackground(design.tintColorOverride || capColorValue, design.backgroundOpacity), pointerEvents: "none" }} />}
+      <div style={{ position: "absolute", ...vds.lot, lineHeight: 1, whiteSpace: "nowrap", cursor: "grab", ...hlStyle("lot") }} {...hlEvents("lot")} onMouseDown={(e) => { if (e.button === 0) { e.preventDefault(); e.stopPropagation(); onMouseDown(e, { xField: "lotLeft", yField: "lotTop" }); }}}>{lotText}</div>
+      <div
+        style={{ position: "absolute", left: vd.nameLeft ?? 88, top: vd.nameTop ?? 210, transform: `translate(-50%, -50%) rotate(${vd.stackRotate ?? -90}deg)`, fontSize: vds.name.fontSize, lineHeight: vds.name.lineHeight, color: vds.name.color, fontWeight: vds.name.fontWeight, letterSpacing: vds.name.letterSpacing, textTransform: vds.name.textTransform, textAlign: vds.name.textAlign, whiteSpace: "nowrap", cursor: "grab", ...hlStyle("name") }}
+        {...hlEvents("name")}
+        onMouseDown={(e) => { if (e.button === 0) { e.preventDefault(); e.stopPropagation(); onMouseDown(e, { xField: "nameLeft", yField: "nameTop" }); }}}
+      >
+        {renderLabelProductName(product?.product)}
       </div>
+      <div
+        style={{ position: "absolute", left: vd.strengthLeft ?? 124, top: vd.strengthTop ?? 210, transform: `translate(-50%, -50%) rotate(${vd.stackRotate ?? -90}deg)`, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: design.strengthBgColor === "none" ? "transparent" : (design.strengthBgColor || capColorValue || "#8f3a17"), fontSize: vds.strength.fontSize, padding: vds.strength.padding, borderRadius: vds.strength.borderRadius, color: vds.strength.color, fontWeight: vds.strength.fontWeight, letterSpacing: vds.strength.letterSpacing, lineHeight: 1, whiteSpace: "nowrap", cursor: "grab", ...hlStyle("strength") }}
+        {...hlEvents("strength")}
+        onMouseDown={(e) => { if (e.button === 0) { e.preventDefault(); e.stopPropagation(); onMouseDown(e, { xField: "strengthLeft", yField: "strengthTop" }); }}}
+      >
+        {product?.strength}
+      </div>
+      {(design.customTexts || []).map((ct) => (
+        <div key={ct.id} style={{ position: "absolute", left: ct.left, top: ct.top, fontSize: ct.fontSize || 12, fontWeight: ct.fontWeight || 400, color: ct.color || "#ffffff", transform: `rotate(${ct.rotate || 0}deg)`, letterSpacing: `${ct.letterSpacing || 0}em`, whiteSpace: "pre-wrap", transformOrigin: "left top", lineHeight: 1.2, ...hlStyle(`ct_${ct.id}`) }} {...hlEvents(`ct_${ct.id}`)}>{ct.text}</div>
+      ))}
     </div>
   );
 
+  const panelProps = {
+    onMouseEnter: () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } },
+    onMouseLeave: scheduleHide,
+  };
+
+  const renderEditPanel = () => {
+    if (!showEditPanel || !activeEl) return null;
+
+    if (activeEl === "lot") return (
+      <div className="lot-canvas-edit-panel" {...panelProps}>
+        <div className="lot-canvas-edit-panel-hd"><span>Lot ID</span></div>
+        <div className="lot-canvas-edit-panel-body">
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Color</span>
+            <input type="color" className="lot-modal-color-picker" style={{ height: 26, width: 32 }} value={colorValueToHex(design.lotColor, "#2b1a0f")} onChange={(e) => onChange("lotColor", e.target.value)} />
+            <input type="text" className="lot-props-number" style={{ width: 70 }} value={design.lotColor || ""} placeholder="#2b1a0f" onChange={(e) => onChange("lotColor", e.target.value)} />
+          </div>
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Size</span>
+            <input type="number" className="lot-props-number" style={{ width: 56 }} value={design.lotFontSize ?? 12} min={6} max={40} onChange={(e) => onChange("lotFontSize", Number(e.target.value))} />
+          </div>
+        </div>
+      </div>
+    );
+
+    if (activeEl === "name") return (
+      <div className="lot-canvas-edit-panel" {...panelProps}>
+        <div className="lot-canvas-edit-panel-hd"><span>Product Name</span></div>
+        <div className="lot-canvas-edit-panel-body">
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Color</span>
+            <input type="color" className="lot-modal-color-picker" style={{ height: 26, width: 32 }} value={colorValueToHex(design.nameColor, "#23160d")} onChange={(e) => onChange("nameColor", e.target.value)} />
+            <input type="text" className="lot-props-number" style={{ width: 70 }} value={design.nameColor || ""} placeholder="#23160d" onChange={(e) => onChange("nameColor", e.target.value)} />
+          </div>
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Size</span>
+            <input type="number" className="lot-props-number" style={{ width: 56 }} value={design.nameFontSize ?? 37} min={6} max={80} onChange={(e) => onChange("nameFontSize", Number(e.target.value))} />
+          </div>
+        </div>
+      </div>
+    );
+
+    if (activeEl === "product") return (
+      <div className="lot-canvas-edit-panel" {...panelProps}>
+        <div className="lot-canvas-edit-panel-hd"><span>Product Name (Kit)</span></div>
+        <div className="lot-canvas-edit-panel-body">
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Color</span>
+            <input type="color" className="lot-modal-color-picker" style={{ height: 26, width: 32 }} value={colorValueToHex(design.productColor, "#111111")} onChange={(e) => onChange("productColor", e.target.value)} />
+            <input type="text" className="lot-props-number" style={{ width: 70 }} value={design.productColor || ""} placeholder="#111111" onChange={(e) => onChange("productColor", e.target.value)} />
+          </div>
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Size</span>
+            <input type="number" className="lot-props-number" style={{ width: 56 }} value={design.productFontSize ?? 46} min={6} max={100} onChange={(e) => onChange("productFontSize", Number(e.target.value))} />
+          </div>
+        </div>
+      </div>
+    );
+
+    if (activeEl === "strength") return (
+      <div className="lot-canvas-edit-panel" {...panelProps}>
+        <div className="lot-canvas-edit-panel-hd"><span>Mass Badge</span></div>
+        <div className="lot-canvas-edit-panel-body">
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Badge BG</span>
+            <input type="color" className="lot-modal-color-picker" style={{ height: 26, width: 32 }} value={colorValueToHex(design.strengthBgColor, capColorValue || "#8f3a17")} onChange={(e) => onChange("strengthBgColor", e.target.value)} />
+            <input type="text" className="lot-props-number" style={{ width: 70 }} value={design.strengthBgColor || ""} placeholder="(cap color)" onChange={(e) => onChange("strengthBgColor", e.target.value)} />
+            <button className="lot-props-clear-btn" style={{ fontSize: "0.7rem", padding: "0.15rem 0.4rem" }} onClick={() => onChange("strengthBgColor", "none")}>None</button>
+            {design.strengthBgColor && design.strengthBgColor !== "none" && <button className="lot-props-clear-btn" onClick={() => onChange("strengthBgColor", "")}>✕</button>}
+          </div>
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Text</span>
+            <input type="color" className="lot-modal-color-picker" style={{ height: 26, width: 32 }} value={colorValueToHex(design.massTextColor, "#ffffff")} onChange={(e) => onChange("massTextColor", e.target.value)} />
+            <input type="text" className="lot-props-number" style={{ width: 70 }} value={design.massTextColor || ""} placeholder="#ffffff" onChange={(e) => onChange("massTextColor", e.target.value)} />
+          </div>
+          <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Size</span>
+            <input type="number" className="lot-props-number" style={{ width: 56 }} value={isKit ? (design.strengthFontSize ?? 35) : (design.strengthFontSize ?? 22)} min={6} max={80} onChange={(e) => onChange("strengthFontSize", Number(e.target.value))} />
+          </div>
+        </div>
+      </div>
+    );
+
+    if (activeEl.startsWith("ct_")) {
+      const ctId = activeEl.slice(3);
+      const ct = (design.customTexts || []).find((t) => t.id === ctId);
+      if (!ct) return null;
+      const updCt = (updates) => onChange("customTexts", design.customTexts.map((t) => t.id === ctId ? { ...t, ...updates } : t));
+      return (
+        <div className="lot-canvas-edit-panel" {...panelProps}>
+          <div className="lot-canvas-edit-panel-hd"><span>Custom Text</span></div>
+          <div className="lot-canvas-edit-panel-body">
+            <textarea className="lot-props-text-input" rows={2} value={ct.text} onChange={(e) => updCt({ text: e.target.value })} />
+            <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Color</span>
+              <input type="color" className="lot-modal-color-picker" style={{ height: 26, width: 32 }} value={colorValueToHex(ct.color, "#ffffff")} onChange={(e) => updCt({ color: e.target.value })} />
+              <input type="text" className="lot-props-number" style={{ width: 70 }} value={ct.color || ""} placeholder="#ffffff" onChange={(e) => updCt({ color: e.target.value })} />
+            </div>
+            <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Size</span>
+              <input type="number" className="lot-props-number" style={{ width: 56 }} value={ct.fontSize || 12} min={6} max={80} onChange={(e) => updCt({ fontSize: Number(e.target.value) })} />
+              <label className="lot-canvas-edit-check"><input type="checkbox" checked={(ct.fontWeight || 400) >= 700} onChange={(e) => updCt({ fontWeight: e.target.checked ? 700 : 400 })} /> Bold</label>
+            </div>
+            <div className="lot-canvas-edit-row"><span className="lot-canvas-edit-lbl">Rotate</span>
+              <input type="number" className="lot-props-number" style={{ width: 56 }} value={ct.rotate || 0} min={-180} max={180} onChange={(e) => updCt({ rotate: Number(e.target.value) })} />
+              <button className="lot-props-clear-btn" style={{ color: "#c0392b", marginLeft: "auto" }} onClick={() => { onChange("customTexts", design.customTexts.filter((t) => t.id !== ctId)); setActiveEl(null); }}>✕ Remove</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="lot-drag-canvas-wrap" ref={wrapRef}>
-      <div className="lot-drag-canvas-label">Drag elements to reposition</div>
+      <div className="lot-drag-canvas-label">{showEditPanel ? "Hover to edit · drag to reposition" : "Drag to reposition · Full Editor for more"}</div>
       <div
         ref={containerRef}
         className="lot-drag-canvas"
-        style={{ width: canvasW, height: canvasH, position: "relative", userSelect: "none" }}
+        style={{ width: canvasW, height: canvasH, position: "relative", userSelect: "none", cursor: isDragging ? "grabbing" : undefined }}
       >
-        {/* Scaled label preview (non-interactive) */}
-        <div style={{ position: "absolute", top: 0, left: 0, width: previewW, height: previewH, transform: `scale(${S})`, transformOrigin: "top left", pointerEvents: "none" }}>
+        {/* Scaled label preview — interactive elements enabled */}
+        <div style={{ position: "absolute", top: 0, left: 0, width: previewW, height: previewH, transform: `scale(${S})`, transformOrigin: "top left" }}>
           {labelContent}
         </div>
         {/* Grid lines */}
@@ -1396,20 +1529,53 @@ const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selec
           ))}
         </svg>
 
+        {/* Custom text drag handles */}
+        {showHandles && (design.customTexts || []).map((ct) => {
+          const px = ct.left * S;
+          const py = ct.top * S;
+          const isSelected = selectedEl === `ct_${ct.id}`;
+          return (
+            <div
+              key={`ct_${ct.id}`}
+              className={`lot-drag-handle lot-drag-handle-text${isSelected ? " selected" : ""}`}
+              style={{ position: "absolute", left: px, top: py, transform: "translate(-50%, -50%)", background: "#1a7a48", cursor: "grab", zIndex: isSelected ? 30 : 20, outline: isSelected ? "3px solid #fff" : "none", boxShadow: isSelected ? "0 0 0 5px #1a7a48, 0 4px 16px rgba(0,0,0,0.36)" : undefined }}
+              onMouseDown={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                onSelect(`ct_${ct.id}`);
+                const rect = containerRef.current.getBoundingClientRect();
+                const startMouseX = e.clientX, startMouseY = e.clientY;
+                const startLeft = ct.left, startTop = ct.top;
+                const onMove = (me) => {
+                  const dx = (me.clientX - startMouseX) / S;
+                  const dy = (me.clientY - startMouseY) / S;
+                  const updatedTexts = design.customTexts.map((t) => t.id === ct.id ? { ...t, left: Math.round(startLeft + dx), top: Math.round(startTop + dy) } : t);
+                  onChange("customTexts", updatedTexts);
+                };
+                const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              }}
+              onClick={(e) => { e.stopPropagation(); onSelect(`ct_${ct.id}`); showPanel(`ct_${ct.id}`); }}
+              title={`Drag to move: "${ct.text}"`}
+            >
+              <span className="lot-drag-handle-icon">T</span>
+              <span className="lot-drag-handle-label">{ct.text.slice(0, 8) || "Text"}</span>
+            </div>
+          );
+        })}
+
         {/* Drag handles */}
-        {elements.map((el) => {
+        {showHandles && elements.map((el) => {
           const { px: rawPx, py: rawPy } = getHandlePos(el);
           // Offset handle to visual center of each element
           let dx = 0, dy = 0;
           if (isKit) {
-            const kd = mergeKitLabelDesign(design);
             if (el.id === 'lot')      { dx = 25 * S; dy = 8 * S; }
             else if (el.id === 'product') { dx = -15 * S; dy = -55 * S; }
             else if (el.id === 'strength') { dx = -15 * S; dy = -28 * S; }
           } else {
-            const vd = mergeLabelDesign(design);
             if (el.id === 'lot') { dx = 25 * S; dy = 6 * S; }
-            // center and footer already use translate(-50%,-50%) so no offset needed
+            // name/strength already use translate(-50%,-50%) so no offset needed
           }
           const px = rawPx + dx;
           const py = rawPy + dy;
@@ -1440,6 +1606,7 @@ const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selec
           );
         })}
       </div>
+      {renderEditPanel()}
     </div>
   );
 };
@@ -1458,6 +1625,17 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [labelDesignDraft, setLabelDesignDraft] = useState(DEFAULT_LABEL_DESIGN);
   const [labelEditorMode, setLabelEditorMode] = useState("vial");
   const [labelEditorProductKey, setLabelEditorProductKey] = useState(null);
+  // Per-product live drafts for the always-interactive preview canvas
+  // { [productKey_vial|productKey_kit]: design }
+  const [labelDrafts, setLabelDrafts] = useState({});
+  // Which drafts have unsaved changes
+  const [labelDraftDirty, setLabelDraftDirty] = useState({});
+  // Which previews show drag handles (reposition mode)
+  // Per-lot label override editor
+  const [lotLabelEditorOpen, setLotLabelEditorOpen] = useState(false);
+  const [lotLabelEditorProductKey, setLotLabelEditorProductKey] = useState(null);
+  const [lotLabelEditorLotIndex, setLotLabelEditorLotIndex] = useState(null);
+  const [lotLabelDraft, setLotLabelDraft] = useState({ customTexts: [] });
   const [previewLotSelection, setPreviewLotSelection] = useState({});
   const [editLotModal, setEditLotModal] = useState({ productKey: null, index: null, lot: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
   const [editProductModal, setEditProductModal] = useState({ open: false, docId: null, id: "", product: "" });
@@ -1687,6 +1865,15 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
             return acc;
           }, {});
           setProductData(mapped);
+          // Seed drafts for any products not yet in labelDrafts
+          setLabelDrafts((prev) => {
+            const next = { ...prev };
+            Object.entries(mapped).forEach(([key, d]) => {
+              if (!next[`${key}_vial`]) next[`${key}_vial`] = d.verticalLabelDesign;
+              if (!next[`${key}_kit`])  next[`${key}_kit`]  = d.kitLabelDesign;
+            });
+            return next;
+          });
       },
       (error) => {
         console.error("Error loading products for LotIDTracker:", error);
@@ -1947,13 +2134,14 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     if (!lotEntry?.lot) return;
     const printWindow = window.open("", "_blank", "width=420,height=240");
     if (!printWindow) return;
+    const baseDesign = productData[product.docId]?.verticalLabelDesign || DEFAULT_LABEL_DESIGN;
     const markup = buildLabelPrintMarkup({
       productId: productData[product.docId]?.productID || product.id || "",
       productName: product.product || "",
       strength: product.strength || "",
       lot: lotEntry.lot,
       capColor: getCapRenderColor(lotEntry.capColor, lotEntry.capShade),
-      design: productData[product.docId]?.verticalLabelDesign || DEFAULT_LABEL_DESIGN,
+      design: mergeLotOverride(baseDesign, lotEntry.labelOverride),
     });
     printWindow.document.open();
     printWindow.document.write(markup);
@@ -1963,13 +2151,14 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     if (!lotEntry?.lot) return;
     const printWindow = window.open("", "_blank", "width=420,height=720");
     if (!printWindow) return;
+    const baseKitDesign = productData[product.docId]?.kitLabelDesign || DEFAULT_KIT_LABEL_DESIGN;
     const markup = buildKitLabelPrintMarkup({
       productId: productData[product.docId]?.productID || product.id || "",
       productName: product.product || "",
       strength: product.strength || "",
       lot: lotEntry.lot,
       capColor: getCapRenderColor(lotEntry.capColor, lotEntry.capShade),
-      design: productData[product.docId]?.kitLabelDesign || DEFAULT_KIT_LABEL_DESIGN,
+      design: mergeLotOverride(baseKitDesign, lotEntry.labelOverride),
     });
     printWindow.document.open();
     printWindow.document.write(markup);
@@ -2536,6 +2725,56 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     setSelectedEditorElement(null);
   };
 
+  const getDraft = (productKey, mode) => {
+    const draftKey = `${productKey}_${mode}`;
+    if (labelDrafts[draftKey]) return labelDrafts[draftKey];
+    return mode === "kit"
+      ? mergeKitLabelDesign(productData[productKey]?.kitLabelDesign)
+      : mergeLabelDesign(productData[productKey]?.verticalLabelDesign);
+  };
+
+  const updateDraft = (productKey, mode, field, value) => {
+    const draftKey = `${productKey}_${mode}`;
+    setLabelDrafts((prev) => ({ ...prev, [draftKey]: { ...getDraft(productKey, mode), [field]: value } }));
+    setLabelDraftDirty((prev) => ({ ...prev, [draftKey]: true }));
+  };
+
+  const saveDraft = async (productKey, mode) => {
+    const draftKey = `${productKey}_${mode}`;
+    const fieldName = mode === "kit" ? "kitLabelDesign" : "verticalLabelDesign";
+    const draft = getDraft(productKey, mode);
+    const nextDesign = mode === "kit" ? mergeKitLabelDesign(draft) : mergeLabelDesign(draft);
+    setProductData((prev) => ({ ...prev, [productKey]: { ...prev[productKey], [fieldName]: nextDesign } }));
+    setLabelDraftDirty((prev) => ({ ...prev, [draftKey]: false }));
+    await updateDoc(doc(db, "c&pProductList", productKey), { [fieldName]: nextDesign });
+  };
+
+  const cancelDraft = (productKey, mode) => {
+    const draftKey = `${productKey}_${mode}`;
+    const saved = mode === "kit"
+      ? mergeKitLabelDesign(productData[productKey]?.kitLabelDesign)
+      : mergeLabelDesign(productData[productKey]?.verticalLabelDesign);
+    setLabelDrafts((prev) => ({ ...prev, [draftKey]: saved }));
+    setLabelDraftDirty((prev) => ({ ...prev, [draftKey]: false }));
+  };
+
+  const openLotLabelEditor = (productKey, lotRealIndex, coa) => {
+    setLotLabelEditorProductKey(productKey);
+    setLotLabelEditorLotIndex(lotRealIndex);
+    setLotLabelDraft(JSON.parse(JSON.stringify(coa.labelOverride || { customTexts: [] })));
+    setLotLabelEditorOpen(true);
+  };
+
+  const saveLotLabelOverride = async () => {
+    const key = lotLabelEditorProductKey;
+    const idx = lotLabelEditorLotIndex;
+    const updatedList = [...(productData[key]?.coaList || [])];
+    updatedList[idx] = { ...updatedList[idx], labelOverride: lotLabelDraft };
+    setProductData((prev) => ({ ...prev, [key]: { ...prev[key], coaList: updatedList } }));
+    await handleSaveCoaList(key, updatedList);
+    setLotLabelEditorOpen(false);
+  };
+
   const saveLabelDesign = async () => {
     if (!labelEditorProductKey) {
       console.warn("saveLabelDesign: no labelEditorProductKey set");
@@ -2577,89 +2816,50 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     setLabelEditorOpen(false);
   };
 
-  const renderLabelPreview = (product, lotEntry, designStyles) => (
-    <div
-      className="lot-id-print-label"
-      style={{ background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)" }}
-    >
-      <img src={LABEL_BACKGROUND_IMAGE} alt="" className="lot-id-print-label-bg" />
+  const renderLabelPreview = (product, lotEntry, designStyles, rawDesign) => {
+    const effectiveDesign = mergeLotOverride(rawDesign || {}, lotEntry?.labelOverride);
+    const effectiveStyles = buildLabelDesignStyles(mergeLabelDesign(effectiveDesign));
+    const capColor = normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade));
+    const strengthBg = effectiveDesign?.strengthBgColor === "none" ? "transparent" : (effectiveDesign?.strengthBgColor || capColor);
+    return (
       <div
-        className="lot-id-print-label-tint"
-        style={{ background: buildLabelBackground(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)) }}
-      />
-      <div className="lot-id-print-label-lot" style={designStyles.lot}>
-        {lotEntry.lot}
-      </div>
-      <div className="lot-id-print-label-center" style={designStyles.center}>
-        <div className="lot-id-print-label-name" style={designStyles.name}>
-          {renderLabelProductName(product.product)}
-        </div>
-        <div
-          className="lot-id-print-label-strength"
-          style={{
-            ...designStyles.strength,
-            backgroundColor: normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)),
-          }}
-        >
-          {product.strength}
-        </div>
-      </div>
-    </div>
-  );
-  const renderKitLabelPreview = (product, lotEntry, designStyles) => (
-    <div className="lot-id-print-label-kit">
-      <img
-        src={LABEL_BACKGROUND_IMAGE}
-        alt=""
-        className="lot-id-print-label-bg"
-      />
-      <div
-        className="lot-id-print-label-kit-fade"
-        style={{
-          ...designStyles.fade,
-          background: buildKitLabelFade(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)),
-        }}
-      />
-      <div className="lot-id-print-label-kit-lot" style={designStyles.lot}>
-        {lotEntry.lot}
-      </div>
-      <div className="lot-id-print-label-kit-product" style={designStyles.product}>
-        {renderLabelProductName(product.product)}
-      </div>
-      <div
-        className="lot-id-print-label-kit-strength-group"
-        style={{
-          left: designStyles.strength.left,
-          bottom: designStyles.strength.bottom,
-        }}
+        className="lot-id-print-label"
+        style={{ background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)" }}
       >
-        <div
-          className="lot-id-print-label-kit-strength"
-          style={{
-            fontSize: designStyles.strength.fontSize,
-            padding: designStyles.strength.padding,
-            borderRadius: designStyles.strength.borderRadius,
-            backgroundColor: normalizeLabelAccentColor(
-              getCapRenderColor(lotEntry.capColor, lotEntry.capShade)
-            ),
-            color: designStyles.strength.color,
-            fontWeight: designStyles.strength.fontWeight,
-            letterSpacing: designStyles.strength.letterSpacing,
-          }}
-        >
-          {product.strength}
-        </div>
-        <div
-          className="lot-id-print-label-kit-count"
-          style={{
-            fontSize: designStyles.strength.fontSize,
-          }}
-        >
-          10 Vials
-        </div>
+        <img src={LABEL_BACKGROUND_IMAGE} alt="" className="lot-id-print-label-bg" />
+        {effectiveDesign?.showGradient !== false && (
+          <div className="lot-id-print-label-tint" style={{ background: buildLabelBackground(capColor) }} />
+        )}
+        <div className="lot-id-print-label-lot" style={effectiveStyles.lot}>{lotEntry.lot}</div>
+        <div className="lot-id-print-label-name" style={{ position: "absolute", left: effectiveDesign.nameLeft ?? 88, top: effectiveDesign.nameTop ?? 210, transform: `translate(-50%, -50%) rotate(${effectiveDesign.stackRotate ?? -90}deg)`, fontSize: effectiveStyles.name.fontSize, lineHeight: effectiveStyles.name.lineHeight, color: effectiveStyles.name.color, fontWeight: effectiveStyles.name.fontWeight, letterSpacing: effectiveStyles.name.letterSpacing, textTransform: effectiveStyles.name.textTransform, textAlign: effectiveStyles.name.textAlign, whiteSpace: "nowrap" }}>{renderLabelProductName(product.product)}</div>
+        <div className="lot-id-print-label-strength" style={{ position: "absolute", left: effectiveDesign.strengthLeft ?? 124, top: effectiveDesign.strengthTop ?? 210, transform: `translate(-50%, -50%) rotate(${effectiveDesign.stackRotate ?? -90}deg)`, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: strengthBg, fontSize: effectiveStyles.strength.fontSize, padding: effectiveStyles.strength.padding, borderRadius: effectiveStyles.strength.borderRadius, color: effectiveStyles.strength.color, fontWeight: effectiveStyles.strength.fontWeight, letterSpacing: effectiveStyles.strength.letterSpacing, lineHeight: 1, whiteSpace: "nowrap" }}>{product.strength}</div>
+        {(effectiveDesign?.customTexts || []).map((ct) => (
+          <div key={ct.id} style={{ position: "absolute", left: ct.left, top: ct.top, fontSize: ct.fontSize || 12, fontWeight: ct.fontWeight || 400, color: ct.color || "#ffffff", transform: `rotate(${ct.rotate || 0}deg)`, letterSpacing: `${ct.letterSpacing || 0}em`, whiteSpace: "pre-wrap", transformOrigin: "left top", lineHeight: 1.2 }}>{ct.text}</div>
+        ))}
       </div>
-    </div>
-  );
+    );
+  };
+  const renderKitLabelPreview = (product, lotEntry, designStyles, rawDesign) => {
+    const effectiveDesign = mergeLotOverride(rawDesign || {}, lotEntry?.labelOverride);
+    const effectiveKitStyles = buildKitLabelDesignStyles(mergeKitLabelDesign(effectiveDesign));
+    const capColor = normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade));
+    const strengthBg = effectiveDesign?.strengthBgColor === "none" ? "transparent" : (effectiveDesign?.strengthBgColor || capColor);
+    return (
+      <div className="lot-id-print-label-kit">
+        <img src={LABEL_BACKGROUND_IMAGE} alt="" className="lot-id-print-label-bg" />
+        <div className="lot-id-print-label-kit-fade" style={{ ...effectiveKitStyles.fade, background: buildKitLabelFade(capColor) }} />
+        <div className="lot-id-print-label-kit-lot" style={effectiveKitStyles.lot}>{lotEntry.lot}</div>
+        <div className="lot-id-print-label-kit-product" style={effectiveKitStyles.product}>{renderLabelProductName(product.product)}</div>
+        <div className="lot-id-print-label-kit-strength-group" style={{ left: effectiveKitStyles.strength.left, bottom: effectiveKitStyles.strength.bottom }}>
+          <div className="lot-id-print-label-kit-strength" style={{ fontSize: effectiveKitStyles.strength.fontSize, padding: effectiveKitStyles.strength.padding, borderRadius: effectiveKitStyles.strength.borderRadius, backgroundColor: strengthBg, color: effectiveKitStyles.strength.color, fontWeight: effectiveKitStyles.strength.fontWeight, letterSpacing: effectiveKitStyles.strength.letterSpacing }}>{product.strength}</div>
+          <div className="lot-id-print-label-kit-count" style={{ fontSize: effectiveKitStyles.strength.fontSize }}>10 Vials</div>
+        </div>
+        {(effectiveDesign?.customTexts || []).map((ct) => (
+          <div key={ct.id} style={{ position: "absolute", left: ct.left, top: ct.top, fontSize: ct.fontSize || 12, fontWeight: ct.fontWeight || 400, color: ct.color || "#ffffff", transform: `rotate(${ct.rotate || 0}deg)`, letterSpacing: `${ct.letterSpacing || 0}em`, whiteSpace: "pre-wrap", transformOrigin: "left top", lineHeight: 1.2 }}>{ct.text}</div>
+        ))}
+      </div>
+    );
+  };
   const renderTestLabelPreview = (product, lotEntry, designStyles, variantText, design) => (
     <div
       className="lot-id-print-label lot-id-print-label-test"
@@ -2673,34 +2873,17 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       <div className="lot-id-print-label-lot" style={designStyles.lot}>
         {lotEntry.lot}
       </div>
-      <div className="lot-id-print-label-center" style={designStyles.center}>
-        <div className="lot-id-print-label-name" style={designStyles.name}>
-          {renderLabelProductName(product.product)}
-        </div>
-        <div
-          className="lot-id-print-label-strength"
-          style={{
-            ...designStyles.strength,
-            backgroundColor: normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)),
-          }}
-        >
-          {product.strength}
-        </div>
-        {variantText && (
-          <div style={{
-            fontSize: `${design?.variantFontSize ?? 22}px`,
-            fontWeight: 800,
-            color: '#2b1a0f',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            marginTop: `${design?.variantMarginTop ?? 2}px`,
-            transform: `translateX(${design?.variantOffsetX ?? 0}px) translateY(${design?.variantOffsetY ?? 0}px)`,
-            whiteSpace: 'nowrap',
-          }}>
-            {variantText}
-          </div>
-        )}
+      <div className="lot-id-print-label-name" style={{ position: "absolute", left: design?.nameLeft ?? 88, top: design?.nameTop ?? 210, transform: `translate(-50%, -50%) rotate(${design?.stackRotate ?? -90}deg)`, fontSize: designStyles.name.fontSize, lineHeight: designStyles.name.lineHeight, color: designStyles.name.color, fontWeight: designStyles.name.fontWeight, letterSpacing: designStyles.name.letterSpacing, textTransform: designStyles.name.textTransform, textAlign: designStyles.name.textAlign, whiteSpace: "nowrap" }}>
+        {renderLabelProductName(product.product)}
       </div>
+      <div className="lot-id-print-label-strength" style={{ position: "absolute", left: design?.strengthLeft ?? 124, top: design?.strengthTop ?? 210, transform: `translate(-50%, -50%) rotate(${design?.stackRotate ?? -90}deg)`, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: normalizeLabelAccentColor(getCapRenderColor(lotEntry.capColor, lotEntry.capShade)), fontSize: designStyles.strength.fontSize, padding: designStyles.strength.padding, borderRadius: designStyles.strength.borderRadius, color: designStyles.strength.color, fontWeight: designStyles.strength.fontWeight, letterSpacing: designStyles.strength.letterSpacing, lineHeight: 1, whiteSpace: "nowrap" }}>
+        {product.strength}
+      </div>
+      {variantText && (
+        <div style={{ position: "absolute", left: design?.strengthLeft ?? 124, top: (design?.strengthTop ?? 210) + (design?.strengthFontSize ?? 22) * 2.5, transform: `translate(-50%, -50%) rotate(${design?.stackRotate ?? -90}deg)`, fontSize: `${design?.variantFontSize ?? 22}px`, fontWeight: 800, color: '#2b1a0f', letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+          {variantText}
+        </div>
+      )}
     </div>
   );
 
@@ -2908,20 +3091,18 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
               null
             );
           })();
-          const designStyles = buildLabelDesignStyles(
-            labelEditorOpen && labelEditorProductKey === key
-              ? labelEditorMode === "vial"
-                ? labelDesignDraft
-                : mergeLabelDesign(data.verticalLabelDesign)
-              : mergeLabelDesign(data.verticalLabelDesign)
-          );
-          const kitDesignStyles = buildKitLabelDesignStyles(
-            labelEditorOpen && labelEditorProductKey === key
-              ? labelEditorMode === "kit"
-                ? labelDesignDraft
-                : mergeKitLabelDesign(data.kitLabelDesign)
-              : mergeKitLabelDesign(data.kitLabelDesign)
-          );
+          const vialDraftKey = `${key}_vial`;
+          const kitDraftKey  = `${key}_kit`;
+          const vialDirty = !!labelDraftDirty[vialDraftKey];
+          const kitDirty  = !!labelDraftDirty[kitDraftKey];
+          const rawVialDesign = (labelEditorOpen && labelEditorProductKey === key && labelEditorMode === "vial")
+            ? labelDesignDraft
+            : getDraft(key, "vial");
+          const rawKitDesign = (labelEditorOpen && labelEditorProductKey === key && labelEditorMode === "kit")
+            ? labelDesignDraft
+            : getDraft(key, "kit");
+          const designStyles = buildLabelDesignStyles(rawVialDesign);
+          const kitDesignStyles = buildKitLabelDesignStyles(rawKitDesign);
           const testDesignStyles = buildLabelDesignStyles(
             labelEditorOpen && labelEditorProductKey === key && labelEditorMode === "test"
               ? mergeLabelDesign(labelDesignDraft)
@@ -2967,29 +3148,34 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
+                        {!isGuest && vialDirty && (
+                          <>
+                            <button type="button" className="lot-id-inline-save-btn" onClick={() => saveDraft(key, "vial")}>Save</button>
+                            <button type="button" className="lot-id-inline-cancel-btn" onClick={() => cancelDraft(key, "vial")}>Cancel</button>
+                          </>
+                        )}
                         {!isGuest && (
-                          <button
-                            type="button"
-                            className="lot-id-layout-btn"
-                            onClick={() => openLabelEditor(key, "vial")}
-                          >
-                            Edit Layout
-                          </button>
+                          <button type="button" className="lot-id-layout-btn" onClick={() => openLabelEditor(key, "vial")}>Full Editor</button>
                         )}
                         {activePreviewLot?.lot && (
-                          <button
-                            type="button"
-                            className="lot-id-print-btn"
-                            onClick={() => handlePrintLotLabel(p, activePreviewLot)}
-                          >
-                            Print Label
-                          </button>
+                          <button type="button" className="lot-id-print-btn" onClick={() => handlePrintLotLabel(p, activePreviewLot)}>Print Label</button>
                         )}
                       </div>
                     </div>
                     {activePreviewLot?.lot ? (
-                      <div className="lot-id-label-preview-shell">
-                        {renderLabelPreview(p, activePreviewLot, designStyles)}
+                      <div className="lot-id-label-preview-shell lot-id-label-preview-shell--editing">
+                        <DraggableLabelCanvas
+                          design={rawVialDesign}
+                          onChange={(field, value) => updateDraft(key, "vial", field, value)}
+                          mode="vial"
+                          product={p}
+                          lotEntry={activePreviewLot}
+                          selectedEl={null}
+                          onSelect={() => {}}
+                          canvasScale={1}
+                          showHandles={false}
+                          showEditPanel={false}
+                        />
                       </div>
                     ) : (
                       <div className="lot-id-label-preview-empty">
@@ -3012,29 +3198,34 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                         </div>
                       </div>
                       <div className="lot-id-label-preview-actions">
+                        {!isGuest && kitDirty && (
+                          <>
+                            <button type="button" className="lot-id-inline-save-btn" onClick={() => saveDraft(key, "kit")}>Save</button>
+                            <button type="button" className="lot-id-inline-cancel-btn" onClick={() => cancelDraft(key, "kit")}>Cancel</button>
+                          </>
+                        )}
                         {!isGuest && (
-                          <button
-                            type="button"
-                            className="lot-id-layout-btn"
-                            onClick={() => openLabelEditor(key, "kit")}
-                          >
-                            Edit Kit Layout
-                          </button>
+                          <button type="button" className="lot-id-layout-btn" onClick={() => openLabelEditor(key, "kit")}>Full Editor</button>
                         )}
                         {activePreviewLot?.lot && (
-                          <button
-                            type="button"
-                            className="lot-id-print-btn"
-                            onClick={() => handlePrintKitLabel(p, activePreviewLot)}
-                          >
-                            Print Kit
-                          </button>
+                          <button type="button" className="lot-id-print-btn" onClick={() => handlePrintKitLabel(p, activePreviewLot)}>Print Kit</button>
                         )}
                       </div>
                     </div>
                     {activePreviewLot?.lot ? (
-                      <div className="lot-id-label-preview-shell">
-                        {renderKitLabelPreview(p, activePreviewLot, kitDesignStyles)}
+                      <div className="lot-id-label-preview-shell lot-id-label-preview-shell--editing">
+                        <DraggableLabelCanvas
+                          design={rawKitDesign}
+                          onChange={(field, value) => updateDraft(key, "kit", field, value)}
+                          mode="kit"
+                          product={p}
+                          lotEntry={activePreviewLot}
+                          selectedEl={null}
+                          onSelect={() => {}}
+                          canvasScale={1}
+                          showHandles={false}
+                          showEditPanel={false}
+                        />
                       </div>
                     ) : (
                       <div className="lot-id-label-preview-empty">
@@ -3148,6 +3339,15 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                                 onClick={() => openEditLotModal(key, realIndex, coa)}
                               >
                                 Edit
+                              </button>
+                            )}
+                            {!isGuest && (
+                              <button
+                                type="button"
+                                className="lot-id-edit-toggle lot-id-card-label-btn"
+                                onClick={(e) => { e.stopPropagation(); openLotLabelEditor(key, realIndex, coa); }}
+                              >
+                                Edit Label
                               </button>
                             )}
                             {!isGuest && (
@@ -3451,6 +3651,141 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           document.body
         )}
 
+      {lotLabelEditorOpen && lotLabelEditorProductKey && (() => {
+        const edKey = lotLabelEditorProductKey;
+        const edData = productData[edKey] || {};
+        const edProducts = products.find((pp) => pp.docId === edKey) || {};
+        const edLot = edData.coaList?.[lotLabelEditorLotIndex] || {};
+        const baseVialDesign = mergeLabelDesign(edData.verticalLabelDesign);
+        const previewDesign = mergeLotOverride(baseVialDesign, lotLabelDraft);
+        const previewStyles = buildLabelDesignStyles(previewDesign);
+        const previewCapColor = normalizeLabelAccentColor(getCapRenderColor(edLot.capColor, edLot.capShade));
+        const previewStrengthBg = previewDesign?.strengthBgColor === "none" ? "transparent" : (previewDesign?.strengthBgColor || previewCapColor);
+        return createPortal(
+          <div className="lot-modal-backdrop" onClick={() => setLotLabelEditorOpen(false)}>
+            <div className="lot-label-override-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="lot-label-override-header">
+                <div>
+                  <div className="lot-label-override-title">Edit Label — {edLot.lot}</div>
+                  <div className="lot-label-override-sub">Overrides apply to this lot only</div>
+                </div>
+                <button className="lot-layout-editor-close-btn" onClick={() => setLotLabelEditorOpen(false)}>✕</button>
+              </div>
+              <div className="lot-label-override-body">
+                {/* Preview */}
+                <div className="lot-label-override-preview-col">
+                  <div className="lot-id-label-preview-shell">
+                    <div className="lot-id-print-label" style={{ background: "linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%)" }}>
+                      <img src={LABEL_BACKGROUND_IMAGE} alt="" className="lot-id-print-label-bg" />
+                      {previewDesign?.showGradient !== false && (
+                        <div className="lot-id-print-label-tint" style={{ background: buildLabelBackground(previewCapColor) }} />
+                      )}
+                      <div className="lot-id-print-label-lot" style={previewStyles.lot}>{edLot.lot}</div>
+                      <div className="lot-id-print-label-name" style={{ position: "absolute", left: previewDesign.nameLeft ?? 88, top: previewDesign.nameTop ?? 210, transform: `translate(-50%, -50%) rotate(${previewDesign.stackRotate ?? -90}deg)`, fontSize: previewStyles.name.fontSize, lineHeight: previewStyles.name.lineHeight, color: previewStyles.name.color, fontWeight: previewStyles.name.fontWeight, letterSpacing: previewStyles.name.letterSpacing, textTransform: previewStyles.name.textTransform, textAlign: previewStyles.name.textAlign, whiteSpace: "nowrap" }}>{renderLabelProductName(edProducts.product)}</div>
+                      <div className="lot-id-print-label-strength" style={{ position: "absolute", left: previewDesign.strengthLeft ?? 124, top: previewDesign.strengthTop ?? 210, transform: `translate(-50%, -50%) rotate(${previewDesign.stackRotate ?? -90}deg)`, display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: previewStrengthBg, fontSize: previewStyles.strength.fontSize, padding: previewStyles.strength.padding, borderRadius: previewStyles.strength.borderRadius, color: previewStyles.strength.color, fontWeight: previewStyles.strength.fontWeight, letterSpacing: previewStyles.strength.letterSpacing, lineHeight: 1, whiteSpace: "nowrap" }}>{edProducts.strength}</div>
+                      {(previewDesign?.customTexts || []).map((ct) => (
+                        <div key={ct.id} style={{ position: "absolute", left: ct.left, top: ct.top, fontSize: ct.fontSize || 12, fontWeight: ct.fontWeight || 400, color: ct.color || "#ffffff", transform: `rotate(${ct.rotate || 0}deg)`, letterSpacing: `${ct.letterSpacing || 0}em`, whiteSpace: "pre-wrap", transformOrigin: "left top", lineHeight: 1.2 }}>{ct.text}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="lot-label-override-preview-note">Preview with lot overrides applied</div>
+                </div>
+
+                {/* Editor panel */}
+                <div className="lot-label-override-props-col">
+                  {/* Color overrides */}
+                  <div className="lot-props-section">
+                    <div className="lot-props-section-title">Color Overrides</div>
+                    <div className="lot-label-override-color-note">Leave empty to use the product default</div>
+                    {[
+                      { label: "Product Name", field: "nameColor", defaultColor: "#ffffff" },
+                      { label: "Brand Text", field: "productColor", defaultColor: "#ffffff" },
+                      { label: "Badge BG", field: "strengthBgColor", defaultColor: "#888888" },
+                      { label: "Badge Text", field: "massTextColor", defaultColor: "#ffffff" },
+                      { label: "Lot ID", field: "lotColor", defaultColor: "#ffffff" },
+                    ].map(({ label, field, defaultColor }) => (
+                      <div key={field} className="lot-props-row">
+                        <span className="lot-props-row-label">{label}</span>
+                        <input
+                          type="color"
+                          className="lot-modal-color-picker"
+                          style={{ height: 28, width: 36, flex: "none" }}
+                          value={colorValueToHex(lotLabelDraft[field], defaultColor)}
+                          onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, [field]: e.target.value }))}
+                        />
+                        <input
+                          type="text"
+                          className="lot-props-number"
+                          style={{ width: 72, flex: 1 }}
+                          value={lotLabelDraft[field] || ""}
+                          placeholder="(product default)"
+                          onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, [field]: e.target.value }))}
+                        />
+                        {lotLabelDraft[field] && (
+                          <button className="lot-props-clear-btn" onClick={() => setLotLabelDraft((prev) => ({ ...prev, [field]: "" }))}>✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Custom texts */}
+                  <div className="lot-props-section lot-props-section--text">
+                    <div className="lot-props-section-title lot-props-section-title--text">Custom Text (this lot)</div>
+                    <button
+                      className="lot-props-add-text-btn"
+                      onClick={() => {
+                        const id = `ct_lot_${Date.now()}`;
+                        setLotLabelDraft((prev) => ({ ...prev, customTexts: [...(prev.customTexts || []), { id, text: "Label Text", left: 20, top: 20, fontSize: 12, fontWeight: 700, color: "#ffffff", rotate: 0, letterSpacing: 0 }] }));
+                      }}
+                    >+ Add Text</button>
+                    {(lotLabelDraft.customTexts || []).map((ct) => (
+                      <div key={ct.id} className="lot-props-custom-text-block">
+                        <div className="lot-props-custom-text-header">
+                          <span>Text Element</span>
+                          <button onClick={() => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.filter((t) => t.id !== ct.id) }))}>✕</button>
+                        </div>
+                        <textarea
+                          className="lot-props-text-input"
+                          rows={2}
+                          value={ct.text}
+                          onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, text: e.target.value } : t) }))}
+                        />
+                        <div className="lot-props-row">
+                          <span className="lot-props-row-label">X</span>
+                          <input type="number" className="lot-props-number" value={ct.left} style={{ width: 56 }} onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, left: Number(e.target.value) } : t) }))} />
+                          <span className="lot-props-row-label" style={{ marginLeft: "0.5rem" }}>Y</span>
+                          <input type="number" className="lot-props-number" value={ct.top} style={{ width: 56 }} onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, top: Number(e.target.value) } : t) }))} />
+                        </div>
+                        <div className="lot-props-row">
+                          <span className="lot-props-row-label">Size</span>
+                          <input type="number" className="lot-props-number" value={ct.fontSize || 12} min={6} max={80} style={{ width: 56 }} onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, fontSize: Number(e.target.value) } : t) }))} />
+                          <span className="lot-props-row-label" style={{ marginLeft: "0.5rem" }}>Rotate</span>
+                          <input type="number" className="lot-props-number" value={ct.rotate || 0} min={-180} max={180} style={{ width: 56 }} onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, rotate: Number(e.target.value) } : t) }))} />
+                        </div>
+                        <div className="lot-props-row">
+                          <span className="lot-props-row-label">Color</span>
+                          <input type="color" value={colorValueToHex(ct.color, "#ffffff")} onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, color: e.target.value } : t) }))} className="lot-modal-color-picker" style={{ height: 28, flex: 1 }} />
+                          <label style={{ fontSize: "0.78rem", color: "#4a3825", marginLeft: "0.4rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                            Bold
+                            <input type="checkbox" checked={(ct.fontWeight || 400) >= 700} onChange={(e) => setLotLabelDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, fontWeight: e.target.checked ? 700 : 400 } : t) }))} />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="lot-modal-actions" style={{ marginTop: "auto", paddingTop: "1rem" }}>
+                    <button type="button" className="lot-modal-btn secondary" onClick={() => setLotLabelEditorOpen(false)}>Cancel</button>
+                    <button type="button" className="lot-modal-btn primary" onClick={saveLotLabelOverride}>Save Overrides</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        );
+      })()}
+
       {testingFormOpen &&
         createPortal(
           <div className="lot-modal-backdrop" onClick={() => setTestingFormOpen(false)}>
@@ -3643,19 +3978,12 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                     { key: "logoWidth", label: "Width", min: 20, max: 400 },
                     { key: "logoHeight", label: "Height", min: 10, max: 200 },
                   ],
-              center: [
-                { key: "centerWidth", label: "Width", min: 50, max: 500 },
-                { key: "centerGap", label: "Gap", min: 0, max: 40 },
+              name: [
                 { key: "stackRotate", label: "Rotation", min: -180, max: 180 },
-                { key: "nameFontSize", label: "Name Font", min: 8, max: 80 },
+                { key: "nameFontSize", label: "Font Size", min: 8, max: 80 },
                 { key: "nameLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 },
-                { key: "nameFontWeight", label: "Name Weight", min: 300, max: 900, step: 100 },
-                { key: "nameLetterSpacing", label: "Name Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
-                { key: "strengthFontSize", label: "Mass Font", min: 8, max: 60 },
-                { key: "strengthPadX", label: "Mass Pad X", min: 0, max: 40 },
-                { key: "strengthPadY", label: "Mass Pad Y", min: 0, max: 40 },
-                { key: "strengthFontWeight", label: "Mass Weight", min: 300, max: 900, step: 100 },
-                { key: "strengthLetterSpacing", label: "Mass Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
+                { key: "nameFontWeight", label: "Weight", min: 300, max: 900, step: 100 },
+                { key: "nameLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 },
               ],
               qr: labelEditorMode === "kit"
                 ? [{ key: "qrSize", label: "Size", min: 20, max: 200 }]
@@ -3790,7 +4118,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                   <div className="lot-layout-editor-new-body">
                     {/* Left: canvas */}
                     <div className="lot-layout-editor-new-canvas-col" ref={editorCanvasColRef}>
-                      <p className="lot-layout-editor-new-hint">Drag elements on the canvas to reposition. Adjust all style controls in the panel on the right.</p>
+                      <p className="lot-layout-editor-new-hint">Hover elements to edit colors/size. Drag handles to reposition. Full style controls on the right.</p>
                       <DraggableLabelCanvas
                         design={labelDesignDraft}
                         onChange={updateLabelDesign}
@@ -3831,6 +4159,12 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                             onClick={() => setLabelDesignDraft((prev) => ({ ...prev, tintColorOverride: "" }))}
                           >✕</button>
                         </div>
+                        {labelEditorMode !== "kit" && (
+                          <label className="lot-props-row" style={{ alignItems: "center", gap: 8 }}>
+                            <span className="lot-props-row-label">Show Gradient</span>
+                            <input type="checkbox" checked={labelDesignDraft.showGradient !== false} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, showGradient: e.target.checked }))} />
+                          </label>
+                        )}
                         {labelEditorMode !== "kit" && SliderRow({ fieldKey: "backgroundOpacity", label: "Intensity", min: 0, max: 100, step: 1 })}
                         {labelEditorMode === "kit" && SliderRow({ fieldKey: "bottomFadeHeight", label: "Fade Height", min: 0, max: 400, step: 1 })}
                       </div>
@@ -3838,19 +4172,25 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                       {/* ── STACK (vial / test only) ────────────────── */}
                       {labelEditorMode !== "kit" && (
                         <div className="lot-props-section lot-props-section--stack">
-                          <div className="lot-props-section-title lot-props-section-title--stack">Stack</div>
+                          <div className="lot-props-section-title lot-props-section-title--stack">Name &amp; Mass Badge</div>
 
-                          <div className="lot-props-subsection-label">Position</div>
-                          {SliderRow({ fieldKey: "centerLeftPercent", label: "X %", min: 0, max: 100 })}
-                          {SliderRow({ fieldKey: "centerTopPercent", label: "Y %", min: 0, max: 100 })}
+                          <div className="lot-props-subsection-label">Name Position</div>
+                          {SliderRow({ fieldKey: "nameLeft", label: "X", min: 0, max: LABEL_PREVIEW_WIDTH })}
+                          {SliderRow({ fieldKey: "nameTop", label: "Y", min: 0, max: LABEL_PREVIEW_HEIGHT })}
                           <div className="lot-props-center-btns">
-                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("centerLeftPercent", 50)}>↔ Center H</button>
-                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("centerTopPercent", 50)}>↕ Center V</button>
+                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("nameLeft", Math.round(LABEL_PREVIEW_WIDTH / 2))}>↔ Center H</button>
+                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("nameTop", Math.round(LABEL_PREVIEW_HEIGHT / 2))}>↕ Center V</button>
                           </div>
 
-                          <div className="lot-props-subsection-label">Layout</div>
-                          {SliderRow({ fieldKey: "centerWidth", label: "Width", min: 50, max: 500 })}
-                          {SliderRow({ fieldKey: "centerGap", label: "Gap", min: 0, max: 40 })}
+                          <div className="lot-props-subsection-label">Mass Badge Position</div>
+                          {SliderRow({ fieldKey: "strengthLeft", label: "X", min: 0, max: LABEL_PREVIEW_WIDTH })}
+                          {SliderRow({ fieldKey: "strengthTop", label: "Y", min: 0, max: LABEL_PREVIEW_HEIGHT })}
+                          <div className="lot-props-center-btns">
+                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("strengthLeft", Math.round(LABEL_PREVIEW_WIDTH / 2))}>↔ Center H</button>
+                            <button className="lot-props-center-btn" onClick={() => updateLabelDesign("strengthTop", Math.round(LABEL_PREVIEW_HEIGHT / 2))}>↕ Center V</button>
+                          </div>
+
+                          <div className="lot-props-subsection-label">Rotation</div>
                           {SliderRow({ fieldKey: "stackRotate", label: "Rotation", min: -180, max: 180 })}
 
                           <div className="lot-props-subsection-label">Name Text</div>
@@ -3858,8 +4198,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                           {SliderRow({ fieldKey: "nameLineHeight", label: "Line Height", min: 0.5, max: 2, step: 0.01 })}
                           {SliderRow({ fieldKey: "nameFontWeight", label: "Weight", min: 300, max: 900, step: 100 })}
                           {SliderRow({ fieldKey: "nameLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 })}
-                          {SliderRow({ fieldKey: "nameOffsetX", label: "Offset X", min: -120, max: 120 })}
-                          {SliderRow({ fieldKey: "nameOffsetY", label: "Offset Y", min: -120, max: 120 })}
                           <div className="lot-props-row">
                             <span className="lot-props-row-label">Color</span>
                             <input type="color" value={colorValueToHex(labelDesignDraft.nameColor, "#23160d")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, nameColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
@@ -3886,8 +4224,13 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                           {SliderRow({ fieldKey: "strengthLetterSpacing", label: "Letter Spacing", min: -0.2, max: 0.4, step: 0.01 })}
                           {SliderRow({ fieldKey: "strengthPadX", label: "Pad X", min: 0, max: 40 })}
                           {SliderRow({ fieldKey: "strengthPadY", label: "Pad Y", min: 0, max: 40 })}
-                          {SliderRow({ fieldKey: "strengthOffsetX", label: "Offset X", min: -120, max: 120 })}
-                          {SliderRow({ fieldKey: "strengthOffsetY", label: "Offset Y", min: -120, max: 120 })}
+                          <div className="lot-props-row">
+                            <span className="lot-props-row-label">Badge BG</span>
+                            <input type="color" value={colorValueToHex(labelDesignDraft.strengthBgColor, "#888888")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
+                            <input type="text" value={labelDesignDraft.strengthBgColor ?? ""} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: e.target.value }))} placeholder="(cap color)" className="lot-props-number" style={{ width: 72 }} />
+                            <button className="lot-props-clear-btn" title="Use cap color" onClick={() => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: "" }))}>✕</button>
+                            <button className="lot-props-clear-btn" title="No background" onClick={() => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: "none" }))} style={{ fontSize: "0.7rem" }}>None</button>
+                          </div>
                           <div className="lot-props-row">
                             <span className="lot-props-row-label">Text Color</span>
                             <input type="color" value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
@@ -3939,6 +4282,13 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                           {SliderRow({ fieldKey: "strengthPadX", label: "Pad X", min: 0, max: 40 })}
                           {SliderRow({ fieldKey: "strengthPadY", label: "Pad Y", min: 0, max: 40 })}
                           <div className="lot-props-row">
+                            <span className="lot-props-row-label">Badge BG</span>
+                            <input type="color" value={colorValueToHex(labelDesignDraft.strengthBgColor, "#888888")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
+                            <input type="text" value={labelDesignDraft.strengthBgColor ?? ""} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: e.target.value }))} placeholder="(cap color)" className="lot-props-number" style={{ width: 72 }} />
+                            <button className="lot-props-clear-btn" title="Use cap color" onClick={() => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: "" }))}>✕</button>
+                            <button className="lot-props-clear-btn" title="No background" onClick={() => setLabelDesignDraft((prev) => ({ ...prev, strengthBgColor: "none" }))} style={{ fontSize: "0.7rem" }}>None</button>
+                          </div>
+                          <div className="lot-props-row">
                             <span className="lot-props-row-label">Text Color</span>
                             <input type="color" value={colorValueToHex(labelDesignDraft.massTextColor, "#ffffff")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))} className="lot-modal-color-picker" style={{ height: 32, flex: 1 }} />
                             <input type="text" value={labelDesignDraft.massTextColor ?? "#ffffff"} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, massTextColor: e.target.value }))} className="lot-props-number" style={{ width: 72 }} />
@@ -3980,6 +4330,56 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                           <span className="lot-props-row-label">Uppercase</span>
                           <input type="checkbox" checked={labelDesignDraft.lotUppercase !== false} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, lotUppercase: e.target.checked }))} />
                         </label>
+                      </div>
+
+                      {/* ── CUSTOM TEXT ─────────────────────────────── */}
+                      <div className="lot-props-section lot-props-section--text">
+                        <div className="lot-props-section-title lot-props-section-title--text">Custom Text</div>
+                        <button
+                          type="button"
+                          className="lot-props-add-text-btn"
+                          onClick={() => {
+                            const id = `ct_${Date.now()}`;
+                            setLabelDesignDraft((prev) => ({
+                              ...prev,
+                              customTexts: [...(prev.customTexts || []), { id, text: "Label Text", left: 20, top: 20, fontSize: 12, fontWeight: 700, color: "#ffffff", rotate: 0, letterSpacing: 0 }],
+                            }));
+                          }}
+                        >
+                          + Add Text
+                        </button>
+                        {(labelDesignDraft.customTexts || []).map((ct, ctIdx) => (
+                          <div key={ct.id} className="lot-props-custom-text-block">
+                            <div className="lot-props-custom-text-header">
+                              <span className="lot-props-row-label">Text {ctIdx + 1}</span>
+                              <button className="lot-props-clear-btn" style={{ color: "#c0392b" }} onClick={() => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.filter((t) => t.id !== ct.id) }))}>✕ Remove</button>
+                            </div>
+                            <textarea
+                              className="lot-props-text-input"
+                              value={ct.text}
+                              rows={2}
+                              onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, text: e.target.value } : t) }))}
+                            />
+                            <div className="lot-props-row">
+                              <span className="lot-props-row-label">X</span>
+                              <input type="number" className="lot-props-number" value={ct.left} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, left: Number(e.target.value) } : t) }))} style={{ width: 56 }} />
+                              <span className="lot-props-row-label" style={{ marginLeft: 8 }}>Y</span>
+                              <input type="number" className="lot-props-number" value={ct.top} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, top: Number(e.target.value) } : t) }))} style={{ width: 56 }} />
+                            </div>
+                            <div className="lot-props-row">
+                              <span className="lot-props-row-label">Size</span>
+                              <input type="number" className="lot-props-number" value={ct.fontSize || 12} min={6} max={80} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, fontSize: Number(e.target.value) } : t) }))} style={{ width: 56 }} />
+                              <span className="lot-props-row-label" style={{ marginLeft: 8 }}>Rotate</span>
+                              <input type="number" className="lot-props-number" value={ct.rotate || 0} min={-180} max={180} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, rotate: Number(e.target.value) } : t) }))} style={{ width: 56 }} />
+                            </div>
+                            <div className="lot-props-row">
+                              <span className="lot-props-row-label">Color</span>
+                              <input type="color" value={colorValueToHex(ct.color, "#ffffff")} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, color: e.target.value } : t) }))} className="lot-modal-color-picker" style={{ height: 28, flex: 1 }} />
+                              <span className="lot-props-row-label" style={{ marginLeft: 8 }}>Bold</span>
+                              <input type="checkbox" checked={(ct.fontWeight || 400) >= 700} onChange={(e) => setLabelDesignDraft((prev) => ({ ...prev, customTexts: prev.customTexts.map((t) => t.id === ct.id ? { ...t, fontWeight: e.target.checked ? 700 : 400 } : t) }))} />
+                            </div>
+                          </div>
+                        ))}
                       </div>
 
                     </div>

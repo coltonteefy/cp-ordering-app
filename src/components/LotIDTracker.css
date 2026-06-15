@@ -2568,10 +2568,14 @@
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 16px rgba(0,0,0,0.18);
-  cursor: default;
   touch-action: none;
   border: 2px solid #ead9c4;
   background: linear-gradient(180deg, #f3f4f6 0%, #e9ebef 100%);
+}
+
+.lot-drag-canvas[style*="grabbing"],
+.lot-drag-canvas[style*="grabbing"] * {
+  cursor: grabbing !important;
 }
 
 .lot-drag-handle {
@@ -3137,4 +3141,328 @@
   .lot-testing-ack-wrap {
     grid-template-columns: 1fr;
   }
+}
+
+/* Custom Text editor section */
+.lot-props-section--text {
+  border-top: 1.5px solid #e8ddd0;
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.lot-props-section-title--text {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #4a7c4e;
+  margin-bottom: 0.5rem;
+}
+
+.lot-props-add-text-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.65rem;
+  border: 1.5px solid #4a7c4e;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #4a7c4e;
+  background: #f0f7f1;
+  cursor: pointer;
+  margin-bottom: 0.55rem;
+  transition: background 0.12s, color 0.12s;
+}
+
+.lot-props-add-text-btn:hover {
+  background: #4a7c4e;
+  color: #fff;
+}
+
+.lot-props-custom-text-block {
+  background: #f7f4f0;
+  border: 1px solid #e0d5c6;
+  border-radius: 8px;
+  padding: 0.55rem 0.6rem 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.lot-props-custom-text-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.lot-props-custom-text-header span {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #7a6650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.lot-props-custom-text-header button {
+  all: unset;
+  font-size: 0.9rem;
+  color: #b44;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  line-height: 1;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.lot-props-custom-text-header button:hover {
+  background: #fce8e8;
+}
+
+.lot-props-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #d5c9b8;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #23160d;
+  background: #fff;
+  resize: vertical;
+  font-family: inherit;
+  margin-bottom: 0.35rem;
+}
+
+/* Inline edit buttons (Edit Positions / Save / Cancel on preview card) */
+.lot-id-inline-edit-btn {
+  all: unset;
+  padding: 0.26rem 0.6rem;
+  border: 1.5px solid #4a7c4e;
+  border-radius: 7px;
+  font-size: 0.77rem;
+  font-weight: 700;
+  color: #4a7c4e;
+  background: #f0f7f1;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.lot-id-inline-edit-btn:hover,
+.lot-id-inline-edit-btn.active {
+  background: #4a7c4e;
+  color: #fff;
+}
+
+.lot-id-inline-save-btn {
+  all: unset;
+  padding: 0.26rem 0.7rem;
+  border-radius: 7px;
+  font-size: 0.77rem;
+  font-weight: 700;
+  color: #fff;
+  background: #4a7c4e;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lot-id-inline-save-btn:hover { background: #3a6340; }
+
+.lot-id-inline-cancel-btn {
+  all: unset;
+  padding: 0.26rem 0.6rem;
+  border: 1.5px solid #b8a898;
+  border-radius: 7px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: #7a6650;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lot-id-inline-cancel-btn:hover { background: #f5ede8; border-color: #8f3a17; color: #8f3a17; }
+
+/* Preview shell in editing mode — give it more room */
+.lot-id-label-preview-shell--editing {
+  min-height: 260px;
+  background: #1a1008;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Per-lot "Edit Label" button */
+.lot-id-card-label-btn {
+  color: #4a7c4e;
+}
+
+/* Lot label override modal */
+.lot-label-override-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: min(900px, 95vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+
+.lot-label-override-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1.5px solid #e8ddd0;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.lot-label-override-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #23160d;
+}
+
+.lot-label-override-sub {
+  font-size: 0.78rem;
+  color: #8a735b;
+  margin-top: 0.15rem;
+}
+
+.lot-label-override-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.lot-label-override-preview-col {
+  width: 280px;
+  flex-shrink: 0;
+  background: #f5f0ea;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  gap: 0.75rem;
+  border-right: 1.5px solid #e8ddd0;
+}
+
+.lot-label-override-preview-note {
+  font-size: 0.72rem;
+  color: #8a735b;
+  text-align: center;
+}
+
+.lot-label-override-props-col {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
+.lot-label-override-color-note {
+  font-size: 0.73rem;
+  color: #8a735b;
+  margin-bottom: 0.55rem;
+}
+
+/* Inline element edit panel (below the drag canvas) */
+.lot-canvas-edit-panel {
+  background: #1c1008;
+  border: 1.5px solid #3a2510;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 0.6rem 0.75rem 0.7rem;
+  animation: lot-panel-in 0.12s ease;
+}
+
+@keyframes lot-panel-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.lot-canvas-edit-panel-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.lot-canvas-edit-panel-hd > span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #c8a87a;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.lot-canvas-pop-close {
+  all: unset;
+  font-size: 0.85rem;
+  color: #7a6040;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+.lot-canvas-pop-close:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+}
+
+.lot-canvas-edit-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.lot-canvas-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.lot-canvas-edit-lbl {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8a735b;
+  width: 58px;
+  flex-shrink: 0;
+}
+
+.lot-canvas-edit-check {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #8a735b;
+  cursor: pointer;
+  margin-left: 0.25rem;
+}
+
+/* Dark theme overrides for inputs inside the edit panel */
+.lot-canvas-edit-panel .lot-props-number {
+  background: #2a1a0a;
+  border-color: #4a3020;
+  color: #e8d5b8;
+}
+.lot-canvas-edit-panel .lot-props-text-input {
+  background: #2a1a0a;
+  border-color: #4a3020;
+  color: #e8d5b8;
+}
+.lot-canvas-edit-panel .lot-props-clear-btn {
+  background: #2a1a0a;
+  border-color: #4a3020;
+  color: #8a735b;
+}
+.lot-canvas-edit-panel .lot-props-clear-btn:hover {
+  background: #3a1008;
+  border-color: #c0392b;
+  color: #c0392b;
 }
