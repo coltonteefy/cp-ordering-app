@@ -3,6 +3,12 @@ import Busboy from 'busboy';
 import { extractText } from 'unpdf';
 
 const COA_BASE_URL = 'https://coas.freedomdiagnosticstesting.com';
+const SEVENTEEN_TRACK_API_KEY = process.env.SEVENTEEN_TRACK_API_KEY || '';
+
+const CARRIER_CODES = { FedEx: 100003, UPS: 100002, USPS: 21051, DHL: 100016 };
+const CARRIER_CODE_NAMES = { 100003: 'FedEx', 100002: 'UPS', 21051: 'USPS', 100016: 'DHL' };
+const KNOWN_STATUSES = new Set(['Delivered','InTransit','OutForDelivery','InfoReceived','FailedAttempt','Exception','Expired','NotFound']);
+const isAscii = (s) => /^[\x00-\x7F]*$/.test(s);
 const WOO_BASE_URL = String(process.env.WOO_BASE_URL || '').replace(/\/$/, '');
 const WOO_CONSUMER_KEY = process.env.WOO_CONSUMER_KEY || '';
 const WOO_CONSUMER_SECRET = process.env.WOO_CONSUMER_SECRET || '';
@@ -435,6 +441,75 @@ export const handler = async (event) => {
       );
 
       return jsonResponse(200, { results });
+    }
+
+    if (pathname.endsWith('/17track/sync') && event.httpMethod === 'POST') {
+      if (!SEVENTEEN_TRACK_API_KEY) {
+        return jsonResponse(500, { error: '17track API key not configured.' });
+      }
+      const body = JSON.parse(event.body || '{}');
+      const { trackingItems } = body;
+      if (!Array.isArray(trackingItems) || trackingItems.length === 0) {
+        return jsonResponse(400, { error: 'No tracking numbers provided.' });
+      }
+
+      const registerPayload = trackingItems.map(({ number, carrier }) => {
+        const entry = { number };
+        const code = CARRIER_CODES[carrier];
+        if (code) entry.carrier = code;
+        return entry;
+      });
+
+      const regRes = await fetch('https://api.17track.net/track/v2.2/register', {
+        method: 'POST',
+        headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(registerPayload),
+        signal: AbortSignal.timeout(15000),
+      });
+      await regRes.json();
+
+      await new Promise((r) => setTimeout(r, 3000));
+
+      const infoRes = await fetch('https://api.17track.net/track/v2.2/gettrackinfo', {
+        method: 'POST',
+        headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(registerPayload),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!infoRes.ok) {
+        return jsonResponse(infoRes.status, { error: `17track API error: ${await infoRes.text()}` });
+      }
+
+      const data = await infoRes.json();
+      const accepted = data?.data?.accepted || [];
+      const rejected = (data?.data?.rejected || []).map((r) => ({
+        number: r.number,
+        reason: r.error?.message || 'No data available',
+      }));
+
+      const results = accepted.map((item) => {
+        const latestStatus = item.track_info?.latest_status?.status || '';
+        const subStatus = item.track_info?.latest_status?.sub_status || '';
+        const isDelivered = latestStatus === 'Delivered';
+        const latestEvent = item.track_info?.latest_event;
+        const rawDesc = latestEvent?.description || '';
+        const latestDesc = KNOWN_STATUSES.has(latestStatus) ? latestStatus : (rawDesc && isAscii(rawDesc) ? rawDesc : latestStatus);
+        const detectedCarrier = CARRIER_CODE_NAMES[item.carrier] || null;
+        const addr = item.track_info?.shipping_info?.recipient_address;
+        const destination = addr ? [addr.city, addr.state, addr.country].filter(Boolean).join(', ') : null;
+        const rawLocation = latestEvent?.location || '';
+        const currentLocation = rawLocation && isAscii(rawLocation) ? rawLocation : null;
+        const lastUpdated = latestEvent?.time_iso || null;
+        const deliveryDate = isDelivered ? (lastUpdated || null) : null;
+        const timeMetrics = item.track_info?.time_metrics;
+        const estFrom = timeMetrics?.estimated_delivery_date?.from || null;
+        const estTo = timeMetrics?.estimated_delivery_date?.to || null;
+        const estimatedDelivery = !isDelivered ? (estTo || estFrom || null) : null;
+        return { number: item.number, isDelivered, status: latestStatus, subStatus, latestDesc, detectedCarrier, destination, currentLocation, lastUpdated, deliveryDate, estimatedDelivery };
+      });
+
+      return jsonResponse(200, { results, rejected });
     }
 
     return jsonResponse(404, { error: 'Not found.' });
