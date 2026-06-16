@@ -72,6 +72,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [vendorColorMap, setVendorColorMap] = useState({});
   const [selectedVendorFilter, setSelectedVendorFilter] = useState('all');
   const [selectedDeliveredVendorFilter, setSelectedDeliveredVendorFilter] = useState('all');
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedDeliveredOrderId, setSelectedDeliveredOrderId] = useState(null);
   const [showUndeliveredModal, setShowUndeliveredModal] = useState(false);
   const [expandedPaymentPanels, setExpandedPaymentPanels] = useState(new Set());
   const [downPaymentForms, setDownPaymentForms] = useState({});
@@ -280,32 +282,25 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     }
   }, [orders]);
 
-  // Auto-mark items as delivered when tracking confirms full qty delivered
+  // Auto-select latest order; if selected order is removed, fall back to latest
   useEffect(() => {
-    orders.forEach((order) => {
-      const toMark = (order.items || []).filter((item) => {
-        if ((item.status || 'pending') === 'delivered') return false;
-        const itemQty = Number(item.quantity) || 0;
-        if (itemQty === 0) return false;
-        const deliveredQty = (order.trackingEntries || []).reduce((s, e) => {
-          if (!(e.itemIds || []).includes(item.itemId)) return s;
-          const pnd = e.perNumberData || {};
-          return s + (e.deliveredNumbers || []).reduce((ds, n) => ds + (Number(pnd[n]?.qty) || 0), 0);
-        }, 0);
-        return deliveredQty >= itemQty;
-      });
-      if (toMark.length === 0) return;
-      const markIds = new Set(toMark.map((i) => i.itemId));
-      setOrders((prev) =>
-        prev.map((o) => {
-          if (o.id !== order.id) return o;
-          return { ...o, items: o.items.map((item) => markIds.has(item.itemId) ? { ...item, status: 'delivered' } : item) };
-        })
-      );
-      const updatedItems = order.items.map((item) => markIds.has(item.itemId) ? { ...item, status: 'delivered' } : item);
-      updateDoc(doc(db, 'c&pProductOrders', order.id), { items: updatedItems }).catch(console.error);
-    });
-  }, [orders]);
+    if (!deliveredOnly && orders.length > 0) {
+      const ids = new Set(orders.map(o => o.id));
+      if (!selectedOrderId || !ids.has(selectedOrderId)) {
+        setSelectedOrderId(orders[0].id);
+      }
+    }
+  }, [orders, deliveredOnly]);
+
+  // Auto-select latest delivered order
+  useEffect(() => {
+    if (deliveredOnly && deliveredOrders.length > 0) {
+      const ids = new Set(deliveredOrders.map(o => o.id));
+      if (!selectedDeliveredOrderId || !ids.has(selectedDeliveredOrderId)) {
+        setSelectedDeliveredOrderId(deliveredOrders[0].id);
+      }
+    }
+  }, [deliveredOrders, deliveredOnly]);
 
   const deleteOrder = async (order) => {
     try {
@@ -998,11 +993,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       setDeliveredOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
     } else {
       setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, trackingEntries: updatedEntries } : o));
-      const allDone = updatedEntries.every((e) => {
-        const nums = getTrackingNumbers(e.number);
-        return nums.length > 0 && nums.every((n) => (e.deliveredNumbers || []).includes(n));
-      });
-      if (allDone) await markOrderDelivered(orderId);
     }
   };
 
@@ -1142,26 +1132,12 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     const allDelivered = allNums.length > 0 && allNums.every((n) => updated.includes(n));
     entries[entryIdx] = { ...entry, deliveredNumbers: updated, status: allDelivered ? 'delivered' : 'pending' };
 
-    // Check if every entry is now fully delivered — if so, auto-mark the order as delivered
-    const allEntriesDelivered = entries.length > 0 && entries.every((e) => {
-      const nums = getTrackingNumbers(e.number);
-      const pnd = e.perNumberData || {};
-      const cardQty = Number(e.cardQty) || 0;
-      const trackingKits = nums.reduce((s, n) => s + (Number(pnd[n]?.qty) || 0), 0);
-      const hasUnassigned = cardQty > 0 && trackingKits < cardQty;
-      const delivNums = e === entries[entryIdx] ? updated : (e.deliveredNumbers || []);
-      return nums.length > 0 && nums.every((n) => delivNums.includes(n)) && !hasUnassigned;
-    });
-
     if (isAlreadyDelivered) {
       setDeliveredOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
     } else {
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
     }
     await saveTrackingEntries(orderId, entries);
-    if (!isAlreadyDelivered && allEntriesDelivered) {
-      await markOrderDelivered(orderId);
-    }
   };
 
   const removeTrackingEntry = async (orderId, entryIdx) => {
@@ -2869,77 +2845,118 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     <div className="submitted-orders-section">
       {!deliveredOnly && (
         <div className="orders-group">
-          <h2 className="text-glow-fuchsia">Pending Orders</h2>
-          <div className="vendor-summary-grid">
-            <div className="vendor-summary-header">
-              <span>Vendor</span>
-              <span>Kits</span>
-              <span>Total</span>
-              <span>Paid</span>
-              <span>Delivered (Unpaid)</span>
+          <div className="pending-top-bar">
+            <div className="pending-top-left">
+              <h2 className="text-glow-fuchsia">Pending Orders</h2>
+              {pendingVendors.length > 0 && (
+                <div className="vendor-tab-bar">
+                  <button
+                    className={`vendor-tab-btn${effectiveVendorFilter === 'all' ? ' active' : ''}`}
+                    onClick={() => setSelectedVendorFilter('all')}
+                  >All</button>
+                  {pendingVendors.map(vendor => (
+                    <button
+                      key={vendor}
+                      className={`vendor-tab-btn${effectiveVendorFilter === vendor ? ' active' : ''}`}
+                      onClick={() => setSelectedVendorFilter(vendor)}
+                    >{vendor}</button>
+                  ))}
+                </div>
+              )}
             </div>
-            {vendorSummaryStats.map(({ vendor, total, paid, deliveredUnpaid, totalKits, deliveredKits }) => (
-              <div key={vendor} className="vendor-summary-row">
-                <span className="vsrow-vendor">{vendor}</span>
-                <span className="vsrow-kits">
-                  {deliveredKits > 0
-                    ? <>{deliveredKits.toLocaleString()}<span className="vsrow-kits-total">/{totalKits.toLocaleString()}</span></>
-                    : totalKits.toLocaleString()}
-                </span>
-                <span className="vsrow-total">${fmt2(total)}</span>
-                <span className="vsrow-paid">${fmt2(paid)}</span>
-                <span className={`vsrow-unpaid${deliveredUnpaid > 0 ? ' has-unpaid' : ''}`}>
-                  {deliveredUnpaid > 0 ? `$${fmt2(deliveredUnpaid)}` : '—'}
-                </span>
-              </div>
-            ))}
-            {vendorSummaryStats.length > 1 && (() => {
-              const allTotalKits = vendorSummaryStats.reduce((s, v) => s + v.totalKits, 0);
-              const allDeliveredKits = vendorSummaryStats.reduce((s, v) => s + v.deliveredKits, 0);
-              const allUnpaid = vendorSummaryStats.reduce((s, v) => s + v.deliveredUnpaid, 0);
+            {effectiveVendorFilter !== 'all' && (() => {
+              const vs = vendorSummaryStats.find(v => v.vendor === effectiveVendorFilter);
+              if (!vs) return null;
               return (
-                <div className="vendor-summary-row vendor-summary-total-row">
-                  <span className="vsrow-vendor">All</span>
-                  <span className="vsrow-kits">
-                    {allDeliveredKits > 0
-                      ? <>{allDeliveredKits.toLocaleString()}<span className="vsrow-kits-total">/{allTotalKits.toLocaleString()}</span></>
-                      : allTotalKits.toLocaleString()}
-                  </span>
-                  <span className="vsrow-total">${fmt2(pendingTotal)}</span>
-                  <span className="vsrow-paid">${fmt2(vendorSummaryStats.reduce((s, v) => s + v.paid, 0))}</span>
-                  <span className={`vsrow-unpaid${allUnpaid > 0 ? ' has-unpaid' : ''}`}>
-                    {allUnpaid > 0 ? `$${fmt2(allUnpaid)}` : '—'}
-                  </span>
+                <div className="vendor-spotlight">
+                  <div className="vsp-name">{vs.vendor}</div>
+                  <div className="vsp-stats">
+                    <div className="vsp-stat">
+                      <span className="vsp-label">Total</span>
+                      <span className="vsp-value">${fmt2(vs.total)}</span>
+                    </div>
+                    <div className="vsp-stat">
+                      <span className="vsp-label">Kits</span>
+                      <span className="vsp-value">
+                        {vs.deliveredKits > 0
+                          ? <>{vs.deliveredKits.toLocaleString()}<span className="vsp-kits-of">/{vs.totalKits.toLocaleString()}</span></>
+                          : vs.totalKits.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="vsp-stat">
+                      <span className="vsp-label">Paid</span>
+                      <span className="vsp-value vsp-paid">${fmt2(vs.paid)}</span>
+                    </div>
+                    {vs.deliveredUnpaid > 0 && (
+                      <div className="vsp-stat">
+                        <span className="vsp-label">Owed</span>
+                        <span className="vsp-value vsp-owed">${fmt2(vs.deliveredUnpaid)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })()}
           </div>
-          {pendingVendors.length > 1 && (
-            <div className="vendor-tab-bar">
-              <button
-                className={`vendor-tab-btn${effectiveVendorFilter === 'all' ? ' active' : ''}`}
-                onClick={() => setSelectedVendorFilter('all')}
-              >
-                All
-              </button>
-              {pendingVendors.map(vendor => (
-                <button
-                  key={vendor}
-                  className={`vendor-tab-btn${effectiveVendorFilter === vendor ? ' active' : ''}`}
-                  onClick={() => setSelectedVendorFilter(vendor)}
-                >
-                  {vendor}
-                </button>
-              ))}
-            </div>
-          )}
           {filteredPendingOrders.length === 0 ? (
             <div className="empty-orders">No pending orders.</div>
           ) : (
-            renderAllDatesView(
-              groupOrdersByDate(filteredPendingOrders),
-              Object.keys(groupOrdersByDate(filteredPendingOrders)).sort((a, b) => new Date(b) - new Date(a))
-            )
+            <>
+              <div className="order-picker-list">
+                {filteredPendingOrders.map((o) => {
+                  const totalKits = (o.items || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+                  const deliveredKits = (o.trackingEntries || []).reduce((s, e) => {
+                    const pnd = e.perNumberData || {};
+                    return s + (e.deliveredNumbers || []).reduce((ds, n) => ds + (Number(pnd[n]?.qty) || 0), 0);
+                  }, 0);
+                  const totalPaid = (o.downPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+                  const fin = getOrderFinancials(o);
+                  const balance = Math.max(0, fin.finalTotal - totalPaid);
+                  const color = vendorColor(o.vendor || 'TSC', vendorColorMap);
+                  const date = new Date(o.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  const isSelected = selectedOrderId === o.id;
+                  const fmt0 = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                  return (
+                    <button
+                      key={o.id}
+                      className={`opc-card${isSelected ? ' opc-card--selected' : ''}`}
+                      onClick={() => setSelectedOrderId(o.id)}
+                    >
+                      <div className="opc-accent" style={{ background: color }} />
+                      <div className="opc-content">
+                        <div className="opc-top">
+                          <span className="opc-vendor">{o.vendor || 'TSC'}</span>
+                          <span className="opc-date">{date}</span>
+                        </div>
+                        <div className="opc-kits-line">
+                          {deliveredKits > 0
+                            ? <><strong>{deliveredKits.toLocaleString()}</strong><span className="opc-kits-of">/{totalKits.toLocaleString()} kits</span></>
+                            : <><strong>{totalKits.toLocaleString()}</strong><span className="opc-kits-of"> kits</span></>}
+                        </div>
+                        {totalKits > 0 && deliveredKits > 0 && (
+                          <div className="opc-bar-track">
+                            <div className="opc-bar-fill" style={{ width: `${Math.min(100, (deliveredKits / totalKits) * 100)}%` }} />
+                          </div>
+                        )}
+                        <div className="opc-money">
+                          <span className="opc-total">${fmt0(fin.finalTotal)}</span>
+                        </div>
+                        {(totalPaid > 0 || balance > 0) && (
+                          <div className="opc-money-sub">
+                            {totalPaid > 0 && <span className="opc-paid">${fmt0(totalPaid)} paid</span>}
+                            {balance > 0 && totalPaid > 0 && <span className="opc-balance">${fmt0(balance)} owed</span>}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {(() => {
+                const order = filteredPendingOrders.find(o => o.id === selectedOrderId) || filteredPendingOrders[0];
+                return order ? renderOrder(order) : null;
+              })()}
+            </>
           )}
         </div>
       )}
@@ -2972,10 +2989,51 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           {filteredDeliveredOrders.length === 0 ? (
             <div className="empty-orders">No delivered orders.</div>
           ) : (
-            renderAllDatesView(
-              groupOrdersByDate(filteredDeliveredOrders),
-              Object.keys(groupOrdersByDate(filteredDeliveredOrders)).sort((a, b) => new Date(b) - new Date(a))
-            )
+            <>
+              <div className="order-picker-list">
+                {filteredDeliveredOrders.map((o) => {
+                  const totalKits = (o.items || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+                  const totalPaid = (o.downPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+                  const fin = getOrderFinancials(o);
+                  const balance = Math.max(0, fin.finalTotal - totalPaid);
+                  const color = vendorColor(o.vendor || 'TSC', vendorColorMap);
+                  const date = new Date(o.deliveredAt || o.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  const isSelected = selectedDeliveredOrderId === o.id;
+                  const fmt0 = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                  return (
+                    <button
+                      key={o.id}
+                      className={`opc-card${isSelected ? ' opc-card--selected' : ''}`}
+                      onClick={() => setSelectedDeliveredOrderId(o.id)}
+                    >
+                      <div className="opc-accent" style={{ background: color }} />
+                      <div className="opc-content">
+                        <div className="opc-top">
+                          <span className="opc-vendor">{o.vendor || 'TSC'}</span>
+                          <span className="opc-date">{date}</span>
+                        </div>
+                        <div className="opc-kits-line">
+                          <strong>{totalKits.toLocaleString()}</strong><span className="opc-kits-of"> kits</span>
+                        </div>
+                        <div className="opc-money">
+                          <span className="opc-total">${fmt0(fin.finalTotal)}</span>
+                        </div>
+                        {(totalPaid > 0 || balance > 0) && (
+                          <div className="opc-money-sub">
+                            {totalPaid > 0 && <span className="opc-paid">${fmt0(totalPaid)} paid</span>}
+                            {balance > 0 && totalPaid > 0 && <span className="opc-balance">${fmt0(balance)} owed</span>}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {(() => {
+                const order = filteredDeliveredOrders.find(o => o.id === selectedDeliveredOrderId) || filteredDeliveredOrders[0];
+                return order ? renderOrder(order) : null;
+              })()}
+            </>
           )}
         </div>
       )}
