@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from './firebaseConfig';
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, reauthenticateWithCredential, updatePassword, EmailAuthProvider } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db, secondaryAuth } from './firebaseConfig';
 import Modal from './components/Modal';
 import LoginForm from './components/LoginForm';
 import OrdersTabs from './components/OrdersTabs';
@@ -127,32 +128,47 @@ function App() {
   const [showNextOrderModal, setShowNextOrderModal] = useState(false);
   const [isClosingNewOrderModal, setIsClosingNewOrderModal] = useState(false);
 
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileCurrentPassword, setProfileCurrentPassword] = useState('');
+  const [profileNewPassword, setProfileNewPassword] = useState('');
+  const [profileNewPassword2, setProfileNewPassword2] = useState('');
+  const [profileLoading, setProfileLoading] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [addUserEmail, setAddUserEmail] = useState('');
   const [addUserPassword, setAddUserPassword] = useState('');
+  const [addUserRole, setAddUserRole] = useState('admin');
+  const [addUserVendorName, setAddUserVendorName] = useState('');
+  const [addUserPerms, setAddUserPerms] = useState({ viewDelivered: false, viewItems: true, viewPayments: false, editTracking: true });
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [vendorGuest, setVendorGuest] = useState(null);
   const vendorGuestRef = useRef(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   const isGuest = Boolean(user?.isAnonymous);
+  const isVendor = userProfile?.role === 'vendor';
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser?.isAnonymous && vendorGuestRef.current) {
         setVendorGuest(vendorGuestRef.current);
         vendorGuestRef.current = null;
       }
       setUser(currentUser);
-      setLoading(false);
-      if (currentUser) {
+      if (currentUser && !currentUser.isAnonymous) {
         setStatus('Authenticated');
-        if (currentUser.isAnonymous) {
-          setActivePage('lotid');
+        const profileSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const profile = profileSnap.exists() ? profileSnap.data() : { role: 'admin' };
+        setUserProfile(profile);
+        if (profile.role === 'vendor') {
+          setActivePage('orders');
         }
       } else {
-        setStatus('Not authenticated');
-        setVendorGuest(null);
+        setUserProfile(null);
+        setStatus(currentUser ? 'Authenticated' : 'Not authenticated');
+        if (!currentUser) setVendorGuest(null);
+        if (currentUser?.isAnonymous) setActivePage('lotid');
       }
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -201,11 +217,19 @@ function App() {
     e.preventDefault();
     setAddUserLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, addUserEmail, addUserPassword);
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addUserEmail.trim(), addUserPassword);
+      const profile = addUserRole === 'vendor'
+        ? { role: 'vendor', vendorName: addUserVendorName.trim().toUpperCase(), permissions: addUserPerms }
+        : { role: 'admin' };
+      await setDoc(doc(db, 'users', cred.user.uid), profile);
+      await secondaryAuth.signOut();
       setAddUserEmail('');
       setAddUserPassword('');
+      setAddUserRole('admin');
+      setAddUserVendorName('');
+      setAddUserPerms({ viewDelivered: false, viewItems: true, viewPayments: false, editTracking: true });
       setShowAddUserModal(false);
-      showToast('New admin user created successfully.');
+      showToast(`New ${profile.role} user created successfully.`);
     } catch (error) {
       showModal('Failed to create user: ' + error.message, 'Error');
     } finally {
@@ -219,6 +243,29 @@ function App() {
       setVendorGuest(null);
     } catch (error) {
       showModal('Sign out failed: ' + error.message, 'Error');
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (profileNewPassword !== profileNewPassword2) {
+      showModal('New passwords do not match.', 'Error');
+      return;
+    }
+    setProfileLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, profileCurrentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, profileNewPassword);
+      setProfileCurrentPassword('');
+      setProfileNewPassword('');
+      setProfileNewPassword2('');
+      setShowProfileModal(false);
+      showToast('Password updated successfully.');
+    } catch (error) {
+      showModal('Failed to update password: ' + error.message, 'Error');
+    } finally {
+      setProfileLoading(false);
     }
   };
 
@@ -267,13 +314,9 @@ function App() {
           {/* Login Section */}
           <section className="hero">
             <div className="hero-content">
-              <LoginForm 
+              <LoginForm
                 onSuccess={showToast}
                 onError={showModal}
-                onVendorSuccess={(vendorName) => {
-                  vendorGuestRef.current = vendorName;
-                  setVendorGuest(vendorName);
-                }}
               />
             </div>
           </section>
@@ -291,6 +334,11 @@ function App() {
               {isGuest ? (
                 <div className="sidebar-menu">
                   <button onClick={() => goToPage('lotid')} className={`nav-link ${activePage === 'lotid' ? 'active' : ''}`}>Lot ID Tracker</button>
+                </div>
+              ) : isVendor ? (
+                <div className="sidebar-menu">
+                  <button onClick={() => goToPage('orders')} className={`nav-link ${activePage === 'orders' ? 'active' : ''}`}>Orders</button>
+                  <div className="sidebar-vendor-tag">{userProfile.vendorName}</div>
                 </div>
               ) : (
                 <>
@@ -323,9 +371,14 @@ function App() {
               )}
 
               <div className="sidebar-footer">
-                {!isGuest && (
+                {!isGuest && !isVendor && (
                   <button onClick={() => setShowAddUserModal(true)} className="btn-secondary sidebar-action-btn">
                     Add User
+                  </button>
+                )}
+                {isVendor && (
+                  <button onClick={() => setShowProfileModal(true)} className="btn-secondary sidebar-action-btn">
+                    My Profile
                   </button>
                 )}
                 <button onClick={handleSignOut} className="btn-secondary sidebar-action-btn">
@@ -371,17 +424,17 @@ function App() {
               <LotIDTracker isGuest={isGuest} vendorGuest={vendorGuest} />
             ) : (
               <>
-                <div className="orders-page-actions">
-                  <button
-                    className="orders-next-order-btn"
-                    onClick={openNewOrderModal}
-                  >
-                    + New Order
-                  </button>
-                </div>
-                <OrdersTabs 
+                {!isVendor && (
+                  <div className="orders-page-actions">
+                    <button className="orders-next-order-btn" onClick={openNewOrderModal}>
+                      + New Order
+                    </button>
+                  </div>
+                )}
+                <OrdersTabs
                   onSuccess={showToast}
                   onError={showModal}
+                  vendorProfile={isVendor ? userProfile : null}
                 />
             </>
             )}
@@ -427,16 +480,41 @@ function App() {
         >
           <div className="next-order-modal" onClick={(e) => e.stopPropagation()}>
             <div className="next-order-modal-header">
-              <h3>Add New Admin User</h3>
-              <button
-                className="next-order-modal-close"
-                onClick={() => setShowAddUserModal(false)}
-              >
+              <h3>Add New User</h3>
+              <button className="next-order-modal-close" onClick={() => setShowAddUserModal(false)}>
                 Cancel
               </button>
             </div>
             <div className="next-order-modal-body">
               <form onSubmit={handleAddUser} className="auth-form">
+                <div className="form-group">
+                  <label>Role</label>
+                  <div className="add-user-role-row">
+                    <label className="add-user-role-opt">
+                      <input type="radio" name="role" value="admin" checked={addUserRole === 'admin'} onChange={() => setAddUserRole('admin')} />
+                      Admin
+                    </label>
+                    <label className="add-user-role-opt">
+                      <input type="radio" name="role" value="vendor" checked={addUserRole === 'vendor'} onChange={() => setAddUserRole('vendor')} />
+                      Vendor
+                    </label>
+                  </div>
+                </div>
+                {addUserRole === 'vendor' && (
+                  <div className="form-group">
+                    <label htmlFor="add-user-vendor">Vendor Name</label>
+                    <input
+                      type="text"
+                      id="add-user-vendor"
+                      value={addUserVendorName}
+                      onChange={(e) => setAddUserVendorName(e.target.value)}
+                      placeholder="e.g. JOSH"
+                      required
+                      disabled={addUserLoading}
+                    />
+                    <span className="form-hint">Must match the vendor name on their orders exactly.</span>
+                  </div>
+                )}
                 <div className="form-group">
                   <label htmlFor="add-user-email">Email</label>
                   <input
@@ -444,27 +522,86 @@ function App() {
                     id="add-user-email"
                     value={addUserEmail}
                     onChange={(e) => setAddUserEmail(e.target.value)}
-                    placeholder="admin@domain.net"
+                    placeholder="vendor@email.com"
                     required
                     disabled={addUserLoading}
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="add-user-password">Password</label>
+                  <label htmlFor="add-user-password">Temporary Password</label>
                   <input
-                    type="password"
+                    type="text"
                     id="add-user-password"
                     value={addUserPassword}
                     onChange={(e) => setAddUserPassword(e.target.value)}
-                    placeholder="• • • • • •"
+                    placeholder="They can reset this after logging in"
                     required
                     minLength={6}
                     disabled={addUserLoading}
                   />
                 </div>
+                {addUserRole === 'vendor' && (
+                  <div className="form-group">
+                    <label>Permissions</label>
+                    <div className="add-user-perms">
+                      {[
+                        { key: 'viewItems', label: 'View Items & Costs' },
+                        { key: 'editTracking', label: 'Edit Tracking' },
+                        { key: 'viewDelivered', label: 'View Delivered Orders' },
+                        { key: 'viewPayments', label: 'View Payments' },
+                      ].map(({ key, label }) => (
+                        <label key={key} className="add-user-perm-row">
+                          <input
+                            type="checkbox"
+                            checked={addUserPerms[key]}
+                            onChange={(e) => setAddUserPerms(p => ({ ...p, [key]: e.target.checked }))}
+                            disabled={addUserLoading}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="form-actions">
                   <button type="submit" className="btn-neon-cyan" disabled={addUserLoading}>
                     {addUserLoading ? 'Creating...' : 'Create User'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProfileModal && (
+        <div className="next-order-modal-overlay open" onClick={() => setShowProfileModal(false)}>
+          <div className="next-order-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="next-order-modal-header">
+              <h3>My Profile</h3>
+              <button className="next-order-modal-close" onClick={() => setShowProfileModal(false)}>Cancel</button>
+            </div>
+            <div className="next-order-modal-body">
+              <div className="profile-info">
+                <div className="profile-info-row"><span className="profile-info-label">Email</span><span className="profile-info-value">{user?.email || '—'}</span></div>
+                <div className="profile-info-row"><span className="profile-info-label">Vendor</span><span className="profile-info-value">{userProfile?.vendorName || '—'}</span></div>
+              </div>
+              <form onSubmit={handleChangePassword} className="auth-form" style={{ marginTop: '1.25rem' }}>
+                <div className="form-group">
+                  <label htmlFor="profile-current">Current Password</label>
+                  <input type="password" id="profile-current" value={profileCurrentPassword} onChange={(e) => setProfileCurrentPassword(e.target.value)} placeholder="• • • • • •" required disabled={profileLoading} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="profile-new">New Password</label>
+                  <input type="password" id="profile-new" value={profileNewPassword} onChange={(e) => setProfileNewPassword(e.target.value)} placeholder="• • • • • •" required minLength={6} disabled={profileLoading} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="profile-new2">Confirm New Password</label>
+                  <input type="password" id="profile-new2" value={profileNewPassword2} onChange={(e) => setProfileNewPassword2(e.target.value)} placeholder="• • • • • •" required minLength={6} disabled={profileLoading} />
+                </div>
+                <div className="form-actions">
+                  <button type="submit" className="btn-neon-cyan" disabled={profileLoading}>
+                    {profileLoading ? 'Updating...' : 'Change Password'}
                   </button>
                 </div>
               </form>

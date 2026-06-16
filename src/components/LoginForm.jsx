@@ -1,16 +1,15 @@
 import { useState } from 'react';
-import { signInWithEmailAndPassword, signInAnonymously, signOut } from 'firebase/auth';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { auth, db } from '../firebaseConfig';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../firebaseConfig';
 import './LoginForm.css';
 
-const LoginForm = ({ onSuccess, onError, onVendorSuccess }) => {
+const LoginForm = ({ onError }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [vendorPasscode, setVendorPasscode] = useState('');
+  const [resetSent, setResetSent] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -22,25 +21,17 @@ const LoginForm = ({ onSuccess, onError, onVendorSuccess }) => {
     }
   };
 
-  const handleVendorPasscode = async (e) => {
-    e.preventDefault();
-    if (!vendorPasscode.trim()) return;
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      onError('Enter your email address first, then click Forgot Password.');
+      return;
+    }
     setLoading(true);
     try {
-      await signInAnonymously(auth);
-      const vendorsRef = collection(db, 'c&pVendors');
-      const q = query(vendorsRef, where('passcode', '==', vendorPasscode.trim()));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        await auth.currentUser?.delete().catch(() => signOut(auth));
-        onError('Invalid passcode. Please try again.');
-        setLoading(false);
-        return;
-      }
-      const vendorName = snap.docs[0].data().name;
-      if (onVendorSuccess) onVendorSuccess(vendorName);
+      await sendPasswordResetEmail(auth, email.trim());
+      setResetSent(true);
     } catch (error) {
-      onError('Vendor access failed: ' + error.message);
+      onError('Could not send reset email: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -48,22 +39,22 @@ const LoginForm = ({ onSuccess, onError, onVendorSuccess }) => {
 
   return (
     <div className="login-form-container-inline">
-      <h2 className="text-glow-fuchsia">ADMIN ACCESS</h2>
-      <form onSubmit={handleSubmit} className="auth-form">
+      <form onSubmit={handleLogin} className="auth-form">
         <div className="form-group">
-          <label htmlFor="email">Admin ID</label>
+          <label htmlFor="email">Email</label>
           <input
             type="email"
             id="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@domain.net"
+            placeholder="you@email.com"
             required
             disabled={loading}
+            autoComplete="email"
           />
         </div>
         <div className="form-group">
-          <label htmlFor="password">Admin Password</label>
+          <label htmlFor="password">Password</label>
           <input
             type="password"
             id="password"
@@ -72,37 +63,23 @@ const LoginForm = ({ onSuccess, onError, onVendorSuccess }) => {
             placeholder="• • • • • •"
             required
             disabled={loading}
+            autoComplete="current-password"
           />
         </div>
         <div className="form-actions">
           <button type="submit" className="btn-neon-cyan" disabled={loading}>
-            {loading ? 'Accessing...' : 'Access System'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </div>
       </form>
-      <div className="auth-guest-divider">
-        <span>or</span>
-      </div>
-      <div className="auth-vendor">
-        <form onSubmit={handleVendorPasscode} className="auth-vendor-form">
-          <div className="form-group">
-            <label htmlFor="vendor-passcode">Vendor Passcode</label>
-            <input
-              type="password"
-              id="vendor-passcode"
-              value={vendorPasscode}
-              onChange={(e) => setVendorPasscode(e.target.value)}
-              placeholder="Enter your passcode"
-              required
-              disabled={loading}
-            />
-          </div>
-          <div className="form-actions">
-            <button type="submit" className="btn-neon-cyan" disabled={loading || !vendorPasscode.trim()}>
-              {loading ? 'Verifying...' : 'Vendor Access'}
-            </button>
-          </div>
-        </form>
+      <div className="login-forgot-row">
+        {resetSent ? (
+          <span className="login-reset-sent">Password reset email sent!</span>
+        ) : (
+          <button type="button" className="login-forgot-btn" onClick={handleForgotPassword} disabled={loading}>
+            Forgot password?
+          </button>
+        )}
       </div>
     </div>
   );

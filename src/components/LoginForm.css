@@ -173,3 +173,58 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.login-mode-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.login-mode-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.login-mode-btn.active {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+.login-mode-btn:not(.active):hover {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.75);
+}
+
+.login-forgot-row {
+  margin-top: 0.75rem;
+  text-align: center;
+}
+
+.login-forgot-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.login-forgot-btn:hover {
+  color: rgba(255,255,255,0.75);
+}
+
+.login-reset-sent {
+  font-size: 0.78rem;
+  color: #6bcb8b;
+}

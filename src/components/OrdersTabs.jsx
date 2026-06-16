@@ -3,21 +3,30 @@ import SubmittedOrders from "./SubmittedOrders";
 const DeliveredOrders = (props) => <SubmittedOrders deliveredOnly {...props} />;
 import "./OrdersTabs.css";
 
-const TAB_CONFIG = [
+const ADMIN_TABS = [
   { key: "orders", label: "Pending", component: SubmittedOrders },
   { key: "delivered", label: "Delivered", component: DeliveredOrders },
 ];
 
-const OrdersTabs = ({ onSuccess, onError }) => {
+const VENDOR_TABS = [
+  { key: "orders", label: "Pending", component: SubmittedOrders },
+];
+
+const OrdersTabs = ({ onSuccess, onError, vendorProfile = null }) => {
   const [activeTab, setActiveTab] = useState("orders");
   const [isSticky, setIsSticky] = useState(false);
+
+  const perms = vendorProfile?.permissions || {};
+  const tabs = vendorProfile
+    ? (perms.viewDelivered ? ADMIN_TABS : VENDOR_TABS)
+    : ADMIN_TABS;
 
   useEffect(() => {
     const handler = () => {
       const wrap = document.querySelector(".orders-tabs-bar-wrap");
       if (!wrap) return;
       const { top } = wrap.getBoundingClientRect();
-      const stuck = top <= 80 + 0.5; // close to sticky threshold
+      const stuck = top <= 80 + 0.5;
       setIsSticky(stuck);
       wrap.classList.toggle("is-sticky", stuck);
     };
@@ -28,24 +37,26 @@ const OrdersTabs = ({ onSuccess, onError }) => {
 
   return (
     <div className="orders-tabs-page">
-      <div className="orders-tabs-bar-wrap">
-        <div className="orders-tabs-bar">
-          {TAB_CONFIG.map((tab) => (
-            <button
-              key={tab.key}
-              className={`orders-tab-btn ${activeTab === tab.key ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {!vendorProfile && (
+        <div className="orders-tabs-bar-wrap">
+          <div className="orders-tabs-bar">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                className={`orders-tab-btn ${activeTab === tab.key ? "active" : ""}`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div className="orders-tab-panel">
-        {TAB_CONFIG.map(({ key, component: Component }) =>
+        {tabs.map(({ key, component: Component }) =>
           key === activeTab ? (
             <div key={key} className="page-transition tab-transition">
-              <Component onSuccess={onSuccess} onError={onError} />
+              <Component onSuccess={onSuccess} onError={onError} vendorProfile={vendorProfile} />
             </div>
           ) : null
         )}

@@ -50,7 +50,7 @@ function copyToClipboard(text) {
   }
 }
 
-const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
+const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProfile = null }) => {
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [copiedOrderType, setCopiedOrderType] = useState(null); // 'price' or 'no-price'
   const [copiedTrackingNum, setCopiedTrackingNum] = useState(null);
@@ -74,7 +74,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [selectedDeliveredVendorFilter, setSelectedDeliveredVendorFilter] = useState('all');
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedDeliveredOrderId, setSelectedDeliveredOrderId] = useState(null);
-  const [orderDetailTab, setOrderDetailTab] = useState('items');
+  const [orderDetailTab, setOrderDetailTab] = useState(vendorProfile ? 'tracking' : 'items');
   const [showUndeliveredModal, setShowUndeliveredModal] = useState(false);
   const [expandedPaymentPanels, setExpandedPaymentPanels] = useState(new Set());
   const [downPaymentForms, setDownPaymentForms] = useState({});
@@ -293,8 +293,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     }
   }, [orders, deliveredOnly]);
 
-  // Reset to Items tab when switching pending order
-  useEffect(() => { setOrderDetailTab('items'); }, [selectedOrderId]);
+  // Reset tab when switching pending order
+  useEffect(() => { setOrderDetailTab(vendorProfile ? 'tracking' : 'items'); }, [selectedOrderId]);
 
   const deleteOrder = async (order) => {
     try {
@@ -1844,12 +1844,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 {assignedItems.map((item) => (
                   <span key={item.itemId} className="tvc-item-chip">{formatTrackingItemLabel(item)}</span>
                 ))}
-                <button
-                  className="tracking-card-edit-link tvc-edit-btn"
-                  onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
-                >
-                  Edit
-                </button>
+                {canEditTracking && (
+                  <button
+                    className="tracking-card-edit-link tvc-edit-btn"
+                    onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
 
               {/* Status chip row */}
@@ -2062,6 +2064,12 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       );
     };
 
+    const perms = vendorProfile?.permissions || {};
+    const isVendor = Boolean(vendorProfile);
+    const canViewItems = !isVendor || perms.viewItems;
+    const canViewPayments = !isVendor || perms.viewPayments;
+    const canEditTracking = !isVendor || perms.editTracking;
+
     const activeTab = orderDetailTab;
     const trackingCount = trackingEntries.length;
     const paymentCount = (order.downPayments || []).length;
@@ -2104,59 +2112,65 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
               </>
             )}
           </div>
-          <div className="ohb-right">
-            <label className="status-toggle">
-              <input
-                type="checkbox"
-                checked={(order.status || 'pending') === 'delivered'}
-                onChange={(e) => {
-                  const nextStatus = e.target.checked ? 'delivered' : 'pending';
-                  if (order.deliveredAt) {
-                    setDeliveredOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
-                    if (nextStatus === 'pending') restoreDeliveredOrder(order.id);
-                  } else {
-                    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
-                    if (nextStatus === 'delivered') markOrderDelivered(order.id);
-                    else updateOrderStatus(order.id, nextStatus);
-                  }
-                }}
-              />
-              <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
-            </label>
-            <div className="ohb-divider" />
-            <button className="order-edit-link" onClick={() => toggleEdit(order.id)}>
-              {isEditing ? 'Done' : 'Edit'}
-            </button>
-            <button className="order-delete-link" onClick={() => { if (window.confirm('Are you sure you want to permanently delete this order?')) deleteOrder(order); }}>
-              Delete
-            </button>
-          </div>
+          {!vendorProfile && (
+            <div className="ohb-right">
+              <label className="status-toggle">
+                <input
+                  type="checkbox"
+                  checked={(order.status || 'pending') === 'delivered'}
+                  onChange={(e) => {
+                    const nextStatus = e.target.checked ? 'delivered' : 'pending';
+                    if (order.deliveredAt) {
+                      setDeliveredOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
+                      if (nextStatus === 'pending') restoreDeliveredOrder(order.id);
+                    } else {
+                      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
+                      if (nextStatus === 'delivered') markOrderDelivered(order.id);
+                      else updateOrderStatus(order.id, nextStatus);
+                    }
+                  }}
+                />
+                <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
+              </label>
+              <div className="ohb-divider" />
+              <button className="order-edit-link" onClick={() => toggleEdit(order.id)}>
+                {isEditing ? 'Done' : 'Edit'}
+              </button>
+              <button className="order-delete-link" onClick={() => { if (window.confirm('Are you sure you want to permanently delete this order?')) deleteOrder(order); }}>
+                Delete
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Tab bar ── */}
         <div className="order-detail-tabs">
-          <button className={`odt-tab${activeTab === 'items' ? ' active' : ''}`} onClick={() => setOrderDetailTab('items')}>
-            Items
-          </button>
+          {canViewItems && (
+            <button className={`odt-tab${activeTab === 'items' ? ' active' : ''}`} onClick={() => setOrderDetailTab('items')}>
+              Items
+            </button>
+          )}
           <button className={`odt-tab${activeTab === 'tracking' ? ' active' : ''}`} onClick={() => setOrderDetailTab('tracking')}>
             Tracking{trackingCount > 0 && <span className="odt-badge">{trackingCount}</span>}
           </button>
-          <button className={`odt-tab${activeTab === 'payments' ? ' active' : ''}`} onClick={() => setOrderDetailTab('payments')}>
-            Payments{paymentCount > 0 && <span className="odt-badge odt-badge-paid">{paymentCount}</span>}
-          </button>
+          {canViewPayments && (
+            <button className={`odt-tab${activeTab === 'payments' ? ' active' : ''}`} onClick={() => setOrderDetailTab('payments')}>
+              Payments{paymentCount > 0 && <span className="odt-badge odt-badge-paid">{paymentCount}</span>}
+            </button>
+          )}
         </div>
 
         {/* ── Items tab ── */}
-        {activeTab === 'items' && (
+        {activeTab === 'items' && canViewItems && (
           <div className="odt-panel">
-            <div className="order-copy-row">
+            {!isVendor && <div className="order-copy-row">
               <button className={`btn-copy-order${copiedWithPrice ? ' copied' : ''}`} onClick={handleCopyOrderItems}>
                 {copiedWithPrice ? 'Copied!' : 'Copy w/ Price'}
               </button>
               <button className={`btn-copy-order${copiedNoPrice ? ' copied' : ''}`} onClick={handleCopyOrderItemsNoPrice}>
                 {copiedNoPrice ? 'Copied!' : 'Copy Items'}
               </button>
-            </div>
+            </div>}
 
             <div className="order-items-grid">
               <div className="order-items-header">
@@ -2287,8 +2301,10 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         {activeTab === 'tracking' && (
           <div className="odt-panel">
             <div className="tracking-list-footer">
-              <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>+ Add Tracking</button>
-              <button className="tracking-add tracking-auto-create" onClick={() => autoCreateTrackingEntries(order.id)}>+ Auto-Create from Products</button>
+              {canEditTracking && <>
+                <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>+ Add Tracking</button>
+                <button className="tracking-add tracking-auto-create" onClick={() => autoCreateTrackingEntries(order.id)}>+ Auto-Create from Products</button>
+              </>}
               <button className="tracking-add tracking-sync" onClick={() => syncTrackingStatus(order.id)} disabled={syncingOrderId === order.id}>
                 {syncingOrderId === order.id ? 'Syncing…' : '↻ Sync Status'}
               </button>
@@ -2332,7 +2348,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
         )}
 
         {/* ── Payments tab ── */}
-        {activeTab === 'payments' && (() => {
+        {activeTab === 'payments' && canViewPayments && (() => {
           const downPayments = order.downPayments || [];
           const totalPaid = totalDownPaid;
           const form = downPaymentForms[order.id] || {};
@@ -2443,9 +2459,11 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     if (b === 'TSC') return 1;
     return a.localeCompare(b);
   });
-  const effectiveVendorFilter = selectedVendorFilter === 'all' || pendingVendors.includes(selectedVendorFilter)
-    ? selectedVendorFilter
-    : 'all';
+  const effectiveVendorFilter = vendorProfile
+    ? vendorProfile.vendorName
+    : (selectedVendorFilter === 'all' || pendingVendors.includes(selectedVendorFilter)
+      ? selectedVendorFilter
+      : 'all');
   const filteredPendingOrders = effectiveVendorFilter === 'all'
     ? orders
     : orders.filter(o => (o.vendor || 'TSC') === effectiveVendorFilter);
@@ -2570,7 +2588,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           <div className="pending-top-bar">
             <div className="pending-top-left">
               <h2 className="text-glow-fuchsia">Pending Orders</h2>
-              {pendingVendors.length > 0 && (
+              {!vendorProfile && pendingVendors.length > 0 && (
                 <div className="vendor-tab-bar">
                   <button
                     className={`vendor-tab-btn${effectiveVendorFilter === 'all' ? ' active' : ''}`}
