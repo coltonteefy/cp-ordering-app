@@ -74,6 +74,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
   const [selectedDeliveredVendorFilter, setSelectedDeliveredVendorFilter] = useState('all');
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedDeliveredOrderId, setSelectedDeliveredOrderId] = useState(null);
+  const [orderDetailTab, setOrderDetailTab] = useState('items');
   const [showUndeliveredModal, setShowUndeliveredModal] = useState(false);
   const [expandedPaymentPanels, setExpandedPaymentPanels] = useState(new Set());
   const [downPaymentForms, setDownPaymentForms] = useState({});
@@ -292,15 +293,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
     }
   }, [orders, deliveredOnly]);
 
-  // Auto-select latest delivered order
-  useEffect(() => {
-    if (deliveredOnly && deliveredOrders.length > 0) {
-      const ids = new Set(deliveredOrders.map(o => o.id));
-      if (!selectedDeliveredOrderId || !ids.has(selectedDeliveredOrderId)) {
-        setSelectedDeliveredOrderId(deliveredOrders[0].id);
-      }
-    }
-  }, [deliveredOrders, deliveredOnly]);
+  // Reset to Items tab when switching pending order
+  useEffect(() => { setOrderDetailTab('items'); }, [selectedOrderId]);
 
   const deleteOrder = async (order) => {
     try {
@@ -1464,7 +1458,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
 
   const calculateFinalTotal = (order) => getOrderFinancials(order).finalTotal;
 
-  const renderOrder = (order) => {
+  const renderOrder = (orderRaw) => {
+    const order = {
+      ...orderRaw,
+      trackingEntries: Array.isArray(orderRaw.trackingEntries)
+        ? orderRaw.trackingEntries
+        : Object.values(orderRaw.trackingEntries || {}),
+      items: Array.isArray(orderRaw.items)
+        ? orderRaw.items
+        : Object.values(orderRaw.items || {}),
+      downPayments: Array.isArray(orderRaw.downPayments)
+        ? orderRaw.downPayments
+        : Object.values(orderRaw.downPayments || {}),
+    };
     const isEditing = editingOrders.has(order.id);
     const { itemsSubtotal, shippingCost, discountPercent, finalTotal } = getOrderFinancials(order);
     const discount = discountPercent;
@@ -2056,61 +2062,49 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
       );
     };
 
+    const activeTab = orderDetailTab;
+    const trackingCount = trackingEntries.length;
+    const paymentCount = (order.downPayments || []).length;
+
     return (
-      <div key={order.id} className="order-card" style={{ borderLeft: `4px solid ${vendorColor(order.vendor, vendorColorMap)}` }}>
-        <div
-          className={`warehouse-header warehouse-${(order.warehouse || 'US').toLowerCase()}`}
-          style={{ background: vendorColor(order.vendor, vendorColorMap) }}
-        >
-          <div className="warehouse-meta">
-            <div className="warehouse-order-id-wrap">
-              <button
-                type="button"
-                className="warehouse-order-id"
-                onClick={() => {
-                  copyToClipboard(order.id);
-                  setCopiedOrderMetaId(order.id);
-                  setTimeout(() => setCopiedOrderMetaId(null), 900);
-                }}
-                title="Click to copy Order ID"
-              >
-                {order.id}
-              </button>
-              {copiedOrderMetaId === order.id && (
-                <span className="warehouse-order-id-copied">Copied!</span>
-              )}
-            </div>
-            {order.vendor && (
-              <span className="order-vendor-badge">{order.vendor}</span>
+      <div key={order.id} className="order-card">
+        {/* ── Compact header ── */}
+        <div className="order-header-bar" style={{ borderBottom: `3px solid ${vendorColor(order.vendor, vendorColorMap)}` }}>
+          <div className="ohb-left">
+            <button
+              type="button"
+              className="ohb-id"
+              onClick={() => { copyToClipboard(order.id); setCopiedOrderMetaId(order.id); setTimeout(() => setCopiedOrderMetaId(null), 900); }}
+              title="Click to copy Order ID"
+            >
+              {order.id}
+            </button>
+            {copiedOrderMetaId === order.id && <span className="ohb-copied">Copied!</span>}
+            {order.vendor && <span className="order-vendor-badge">{order.vendor}</span>}
+            {isEditing ? (
+              <input
+                type="datetime-local"
+                value={new Date(order.submittedAt).toISOString().slice(0, 16)}
+                onChange={(e) => updateOrderDate(order.id, e.target.value)}
+                className="date-input date-input-inline"
+              />
+            ) : (
+              <span className="ohb-date">{submittedAtDisplay}</span>
             )}
-            <div className="warehouse-date">
-              {isEditing ? (
-                <input
-                  type="datetime-local"
-                  value={new Date(order.submittedAt).toISOString().slice(0, 16)}
-                  onChange={(e) => updateOrderDate(order.id, e.target.value)}
-                  className="date-input date-input-inline"
-                />
-              ) : (
-                <span className="order-date-inline">{submittedAtDisplay}</span>
-              )}
-            </div>
           </div>
-          <div className="order-status-top">
+          <div className="ohb-center">
             {totalUnitsOrdered > 0 && (
-              <div className="order-delivery-progress">
-                <span className={`order-delivery-count${deliveredUnits >= totalUnitsOrdered ? ' all-delivered' : deliveredUnits > 0 ? ' partial' : ''}`}>
+              <>
+                <span className={`ohb-kits${deliveredUnits >= totalUnitsOrdered ? ' all-delivered' : deliveredUnits > 0 ? ' partial' : ''}`}>
                   {deliveredUnits}/{totalUnitsOrdered} kits
                 </span>
-                <div className="order-delivery-bar">
-                  <div
-                    className="order-delivery-fill"
-                    style={{ width: `${Math.min(100, (deliveredUnits / totalUnitsOrdered) * 100)}%` }}
-                  />
+                <div className="ohb-bar">
+                  <div className="ohb-bar-fill" style={{ width: `${Math.min(100, (deliveredUnits / totalUnitsOrdered) * 100)}%` }} />
                 </div>
-              </div>
+              </>
             )}
-            <span className="status-label">Order Status:</span>
+          </div>
+          <div className="ohb-right">
             <label className="status-toggle">
               <input
                 type="checkbox"
@@ -2118,158 +2112,48 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 onChange={(e) => {
                   const nextStatus = e.target.checked ? 'delivered' : 'pending';
                   if (order.deliveredAt) {
-                    setDeliveredOrders((prev) =>
-                      prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o))
-                    );
-                    if (nextStatus === 'pending') {
-                      restoreDeliveredOrder(order.id);
-                    }
+                    setDeliveredOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
+                    if (nextStatus === 'pending') restoreDeliveredOrder(order.id);
                   } else {
                     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o)));
-                    if (nextStatus === 'delivered') {
-                      markOrderDelivered(order.id);
-                    } else {
-                      updateOrderStatus(order.id, nextStatus);
-                    }
+                    if (nextStatus === 'delivered') markOrderDelivered(order.id);
+                    else updateOrderStatus(order.id, nextStatus);
                   }
                 }}
               />
               <span>{(order.status || 'pending') === 'delivered' ? 'Delivered' : 'Pending'}</span>
             </label>
-          </div>
-          <div className="warehouse-actions">
-            <button
-              className="order-edit-link"
-              onClick={() => toggleEdit(order.id)}
-              title={isEditing ? 'Finish editing' : 'Edit order'}
-            >
-              {isEditing ? 'Done' : 'Edit Order'}
+            <div className="ohb-divider" />
+            <button className="order-edit-link" onClick={() => toggleEdit(order.id)}>
+              {isEditing ? 'Done' : 'Edit'}
             </button>
-            <button
-              className="order-delete-link"
-              onClick={() => {
-                if (window.confirm('Are you sure you want to permanently delete this order?')) {
-                  deleteOrder(order);
-                }
-              }}
-              title="Delete this order"
-            >
+            <button className="order-delete-link" onClick={() => { if (window.confirm('Are you sure you want to permanently delete this order?')) deleteOrder(order); }}>
               Delete
             </button>
           </div>
         </div>
 
-        <div className="order-body-split">
-          <div className="order-col-left">
-            <div className="tracking-list-wrap">
-              <div className="tracking-list-footer">
-                <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>
-                  + Add Tracking
-                </button>
-                <button className="tracking-add tracking-auto-create" onClick={() => autoCreateTrackingEntries(order.id)}>
-                  + Auto-Create from Products
-                </button>
-                <button
-                  className="tracking-add tracking-sync"
-                  onClick={() => syncTrackingStatus(order.id)}
-                  disabled={syncingOrderId === order.id}
-                >
-                  {syncingOrderId === order.id ? 'Syncing…' : '↻ Sync Status'}
-                </button>
-                <button
-                  className={`tracking-add tracking-copy-all${copiedOrderId === order.id && copiedOrderType === 'tracking' ? ' copied' : ''}`}
-                  onClick={() => {
-                    const entries = getEffectiveTrackingEntries(order);
-                    const blocks = entries.flatMap((e) => {
-                      const nums = getTrackingNumbers(e.number);
-                      if (!nums.length) return [];
-                      const pnd = e.perNumberData || {};
-                      const delivered = new Set(e.deliveredNumbers || []);
-                      const items = (Array.isArray(e.itemIds) ? e.itemIds : [])
-                        .map((id) => order.items.find((i) => i.itemId === id))
-                        .filter(Boolean);
-                      const label = items.length
-                        ? items.map(formatTrackingItemLabel).join(', ')
-                        : (e.note || '');
-                      const numLines = nums.map((num) => {
-                        const status = delivered.has(num) ? 'Delivered' : (pnd[num]?.trackStatus || 'Pending');
-                        return `  ${num}  ${status}`;
-                      });
-                      return label ? [`${label}`, ...numLines] : numLines;
-                    });
-                    if (!blocks.length) return;
-                    navigator.clipboard.writeText(blocks.join('\n'));
-                    setCopiedOrderId(order.id);
-                    setCopiedOrderType('tracking');
-                    setTimeout(() => { setCopiedOrderId(null); setCopiedOrderType(null); }, 2000);
-                  }}
-                >
-                  {copiedOrderId === order.id && copiedOrderType === 'tracking' ? '✓ Copied' : '⎘ Copy All Tracking'}
-                </button>
-              </div>
-              {pendingTrackingEntries.length > 0 && (
-                <div className="tracking-display-grid tracking-display-grid-pending">
-                  {pendingTrackingEntries.map(renderTrackingCard)}
-                </div>
-              )}
-              {deliveredTrackingEntries.length > 0 && (
-                <div className="tracking-delivered-section">
-                  <div className="tracking-display-grid tracking-display-grid-delivered">
-                    {deliveredTrackingEntries.map(renderTrackingCard)}
-                  </div>
-                </div>
-              )}
-            </div>
+        {/* ── Tab bar ── */}
+        <div className="order-detail-tabs">
+          <button className={`odt-tab${activeTab === 'items' ? ' active' : ''}`} onClick={() => setOrderDetailTab('items')}>
+            Items
+          </button>
+          <button className={`odt-tab${activeTab === 'tracking' ? ' active' : ''}`} onClick={() => setOrderDetailTab('tracking')}>
+            Tracking{trackingCount > 0 && <span className="odt-badge">{trackingCount}</span>}
+          </button>
+          <button className={`odt-tab${activeTab === 'payments' ? ' active' : ''}`} onClick={() => setOrderDetailTab('payments')}>
+            Payments{paymentCount > 0 && <span className="odt-badge odt-badge-paid">{paymentCount}</span>}
+          </button>
+        </div>
 
-            <div className="order-actions">
-              {isEditing && (
-                <button onClick={() => cancelEdit(order.id)} className="btn-cancel-edit">
-                  Cancel
-                </button>
-              )}
-            </div>
-
-          </div>
-
-          <div className="order-col-right">
-            <div className="order-copy-row order-copy-row-right">
-              <button
-                className={`btn-copy-order${copiedWithPrice ? ' copied' : ''}`}
-                style={{
-                  background: 'transparent',
-                  color: copiedWithPrice ? '#E6A94A' : '#8B6F47',
-                  border: '1px solid #E6A94A',
-                  borderRadius: '4px',
-                  padding: '4px 10px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  transition: 'background 0.3s, color 0.3s',
-                  boxShadow: 'none',
-                  opacity: copiedWithPrice ? 0.85 : 1,
-                  marginRight: '8px'
-                }}
-                title="Copy order items with pricing"
-                onClick={handleCopyOrderItems}
-              >
+        {/* ── Items tab ── */}
+        {activeTab === 'items' && (
+          <div className="odt-panel">
+            <div className="order-copy-row">
+              <button className={`btn-copy-order${copiedWithPrice ? ' copied' : ''}`} onClick={handleCopyOrderItems}>
                 {copiedWithPrice ? 'Copied!' : 'Copy w/ Price'}
               </button>
-              <button
-                className={`btn-copy-order${copiedNoPrice ? ' copied' : ''}`}
-                style={{
-                  background: 'transparent',
-                  color: copiedNoPrice ? '#E6A94A' : '#8B6F47',
-                  border: '1px solid #E6A94A',
-                  borderRadius: '4px',
-                  padding: '4px 10px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  transition: 'background 0.3s, color 0.3s',
-                  boxShadow: 'none',
-                  opacity: copiedNoPrice ? 0.85 : 1
-                }}
-                title="Copy order items without pricing"
-                onClick={handleCopyOrderItemsNoPrice}
-              >
+              <button className={`btn-copy-order${copiedNoPrice ? ' copied' : ''}`} onClick={handleCopyOrderItemsNoPrice}>
                 {copiedNoPrice ? 'Copied!' : 'Copy Items'}
               </button>
             </div>
@@ -2285,192 +2169,85 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 <div>Paid</div>
                 {isEditing && <div></div>}
               </div>
-              {[...(order.items || [])]
-                .slice()
-                .sort((a, b) => {
-                  const warehouseA = (a.warehouse || order.warehouse || 'US').toUpperCase();
-                  const warehouseB = (b.warehouse || order.warehouse || 'US').toUpperCase();
-                  if (warehouseA !== warehouseB) return warehouseA.localeCompare(warehouseB);
-                  const nameA = a.productName || '';
-                  const nameB = b.productName || '';
-                  if (nameA === nameB) {
-                    return (a.productStrength || '').localeCompare(b.productStrength || '');
-                  }
-                  return nameA.localeCompare(nameB);
-                })
-                .map((item, index, arr) => {
-                  const itemWarehouse = (item.warehouse || order.warehouse || 'US').toUpperCase();
-
-                  return [
-                    isEditing ? (
-                      <div key={`${item.itemId}-row`} className="order-item-grid-row editing">
-                        <div className="item-product-edit">{item.productName || item.product || ''}</div>
-                        <div className="item-strength-edit">{item.productStrength || item.strength || ''}</div>
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItemQuantity(order.id, item.itemId, e.target.value)}
-                          onFocus={(e) => e.target.select()}
-                          className="item-qty-input order-grid-input"
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.pricePerKit}
-                          onChange={(e) => updateItemPrice(order.id, item.itemId, e.target.value)}
-                          onFocus={(e) => e.target.select()}
-                          className="item-price-input order-grid-input"
-                        />
-                        <div className="item-total order-grid-total">
-                          ${(item.quantity * item.pricePerKit).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          })}
-                        </div>
-                        <div className="item-delivered-edit">
-                          <label className="item-status-toggle">
-                            <input
-                              type="checkbox"
-                              checked={(item.status || 'pending') === 'delivered'}
-                              onChange={(e) => {
-                                const newStatus = e.target.checked ? 'delivered' : 'pending';
-                                updateItemStatus(order.id, item.itemId, newStatus);
-                              }}
-                            />
-                            <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
-                          </label>
-                        </div>
-                        <div />
-                        <button
-                          onClick={() => removeItemFromOrder(order.id, item.itemId)}
-                          className="item-remove-btn order-grid-remove"
-                          title="Remove item"
-                        >
-                          ×
-                        </button>
+              {[...(order.items || [])].sort((a, b) => {
+                const wA = (a.warehouse || order.warehouse || 'US').toUpperCase();
+                const wB = (b.warehouse || order.warehouse || 'US').toUpperCase();
+                if (wA !== wB) return wA.localeCompare(wB);
+                const nA = a.productName || ''; const nB = b.productName || '';
+                if (nA === nB) return (a.productStrength || '').localeCompare(b.productStrength || '');
+                return nA.localeCompare(nB);
+              }).map((item) => {
+                if (isEditing) {
+                  return (
+                    <div key={`${item.itemId}-row`} className="order-item-grid-row editing">
+                      <div className="item-product-edit">{item.productName || item.product || ''}</div>
+                      <div className="item-strength-edit">{item.productStrength || item.strength || ''}</div>
+                      <input type="number" min="1" value={item.quantity} onChange={(e) => updateItemQuantity(order.id, item.itemId, e.target.value)} onFocus={(e) => e.target.select()} className="item-qty-input order-grid-input" />
+                      <input type="number" min="0" step="0.01" value={item.pricePerKit} onChange={(e) => updateItemPrice(order.id, item.itemId, e.target.value)} onFocus={(e) => e.target.select()} className="item-price-input order-grid-input" />
+                      <div className="item-total order-grid-total">${(item.quantity * item.pricePerKit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div className="item-delivered-edit">
+                        <label className="item-status-toggle">
+                          <input type="checkbox" checked={(item.status || 'pending') === 'delivered'} onChange={(e) => updateItemStatus(order.id, item.itemId, e.target.checked ? 'delivered' : 'pending')} />
+                          <span>{(item.status || 'pending') === 'delivered' ? '✓' : ''}</span>
+                        </label>
                       </div>
-                    ) : (() => {
-                      const itemTotal = (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0);
-                      const fmtAmt = (n) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-                      // Per-item delivered qty from confirmed tracking numbers
-                      const itemDeliveredQty = (order.trackingEntries || []).reduce((s, e) => {
-                        if (!(e.itemIds || []).includes(item.itemId)) return s;
-                        const pnd = e.perNumberData || {};
-                        return s + (e.deliveredNumbers || []).reduce((ds, n) => ds + (Number(pnd[n]?.qty) || 0), 0);
-                      }, 0);
-                      const itemQty = Number(item.quantity) || 0;
-                      const trackingFullyDelivered = itemQty > 0 && itemDeliveredQty >= itemQty;
-
-                      const isDelivered = trackingFullyDelivered || (item.status || 'pending') === 'delivered';
-
-                      // Down payment: proportional share of order total (legacy 'down' type OR new isDownPayment flag)
-                      const downPmtTotal = (order.downPayments || [])
-                        .filter((p) => p.paymentType === 'down' || p.isDownPayment)
-                        .reduce((s, p) => s + (Number(p.amount) || 0), 0);
-                      const downPaidForItem = finalTotal > 0 ? (itemTotal / finalTotal) * downPmtTotal : 0;
-
-                      // Delivered payment: full payment for delivered items (not flagged as down payment)
-                      const deliveredPmtTotal = (order.downPayments || [])
-                        .filter((p) => p.paymentType === 'delivered' && !p.isDownPayment)
-                        .reduce((s, p) => s + (Number(p.amount) || 0), 0);
-                      const totalDeliveredCost = (order.items || [])
-                        .filter((i) => (i.status || 'pending') === 'delivered')
-                        .reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.pricePerKit) || 0), 0);
-                      const deliveredPaidForItem = isDelivered && totalDeliveredCost > 0
-                        ? (itemTotal / totalDeliveredCost) * deliveredPmtTotal
-                        : 0;
-
-                      // Down payment spreads to all items; delivered payments only apply to delivered items
-                      const totalPaidForItem = downPaidForItem + deliveredPaidForItem;
-                      const isFullyPaid = isDelivered && totalPaidForItem >= itemTotal - 0.01;
-                      const hasPaid = totalPaidForItem > 0.005;
-
-                      return (
-                        <div key={`${item.itemId}-row`} className={`order-item-grid-row${isFullyPaid ? ' item-row-paid' : ''}`}>
-                          <div className="item-product-view">{item.productName || item.product || ''}</div>
-                          <div className="item-strength-view">{item.productStrength || item.strength || ''}</div>
-                          <div className="item-qty-view">{item.quantity}</div>
-                          <div className="item-unit-view">
-                            {fmtAmt(item.pricePerKit)}
-                          </div>
-                          <div className={`item-total-view${isFullyPaid ? ' item-total-paid' : ''}`}>
-                            {fmtAmt(itemTotal)}
-                          </div>
-                          <div className="item-delivered-view">
-                            {itemQty > 0 ? (
-                              <span className={`item-delivered-progress${isDelivered ? ' item-delivered-done' : itemDeliveredQty > 0 ? ' item-delivered-partial' : ''}`}>
-                                {itemDeliveredQty}/{itemQty}
-                              </span>
-                            ) : (
-                              <label className="item-status-toggle">
-                                <input
-                                  type="checkbox"
-                                  checked={isDelivered}
-                                  onChange={(e) => {
-                                    const newStatus = e.target.checked ? 'delivered' : 'pending';
-                                    updateItemStatus(order.id, item.itemId, newStatus);
-                                  }}
-                                />
-                                <span>{isDelivered ? '✓' : ''}</span>
-                              </label>
-                            )}
-                          </div>
-                          <div className="item-paid-view">
-                            {hasPaid ? (
-                              <span className={isFullyPaid ? 'item-paid-amount item-paid-full' : 'item-paid-amount item-paid-partial'}>
-                                {fmtAmt(Math.min(totalPaidForItem, itemTotal))}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ];
-                })}
-
+                      <div />
+                      <button onClick={() => removeItemFromOrder(order.id, item.itemId)} className="item-remove-btn order-grid-remove" title="Remove item">×</button>
+                    </div>
+                  );
+                }
+                const itemTotal = (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0);
+                const fmtAmt = (n) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                const itemDeliveredQty = (order.trackingEntries || []).reduce((s, e) => {
+                  if (!(e.itemIds || []).includes(item.itemId)) return s;
+                  const pnd = e.perNumberData || {};
+                  return s + (e.deliveredNumbers || []).reduce((ds, n) => ds + (Number(pnd[n]?.qty) || 0), 0);
+                }, 0);
+                const itemQty = Number(item.quantity) || 0;
+                const isDelivered = (itemQty > 0 && itemDeliveredQty >= itemQty) || (item.status || 'pending') === 'delivered';
+                const downPmtTotal = (order.downPayments || []).filter((p) => p.paymentType === 'down' || p.isDownPayment).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+                const downPaidForItem = finalTotal > 0 ? (itemTotal / finalTotal) * downPmtTotal : 0;
+                const deliveredPmtTotal = (order.downPayments || []).filter((p) => p.paymentType === 'delivered' && !p.isDownPayment).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+                const totalDeliveredCost = (order.items || []).filter((i) => (i.status || 'pending') === 'delivered').reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.pricePerKit) || 0), 0);
+                const deliveredPaidForItem = isDelivered && totalDeliveredCost > 0 ? (itemTotal / totalDeliveredCost) * deliveredPmtTotal : 0;
+                const totalPaidForItem = downPaidForItem + deliveredPaidForItem;
+                const isFullyPaid = isDelivered && totalPaidForItem >= itemTotal - 0.01;
+                const hasPaid = totalPaidForItem > 0.005;
+                return (
+                  <div key={`${item.itemId}-row`} className={`order-item-grid-row${isFullyPaid ? ' item-row-paid' : ''}`}>
+                    <div className="item-product-view">{item.productName || item.product || ''}</div>
+                    <div className="item-strength-view">{item.productStrength || item.strength || ''}</div>
+                    <div className="item-qty-view">{item.quantity}</div>
+                    <div className="item-unit-view">{fmtAmt(item.pricePerKit)}</div>
+                    <div className={`item-total-view${isFullyPaid ? ' item-total-paid' : ''}`}>{fmtAmt(itemTotal)}</div>
+                    <div className="item-delivered-view">
+                      {itemQty > 0 ? (
+                        <span className={`item-delivered-progress${isDelivered ? ' item-delivered-done' : itemDeliveredQty > 0 ? ' item-delivered-partial' : ''}`}>{itemDeliveredQty}/{itemQty}</span>
+                      ) : (
+                        <label className="item-status-toggle">
+                          <input type="checkbox" checked={isDelivered} onChange={(e) => updateItemStatus(order.id, item.itemId, e.target.checked ? 'delivered' : 'pending')} />
+                          <span>{isDelivered ? '✓' : ''}</span>
+                        </label>
+                      )}
+                    </div>
+                    <div className="item-paid-view">
+                      {hasPaid && <span className={isFullyPaid ? 'item-paid-amount item-paid-full' : 'item-paid-amount item-paid-partial'}>{fmtAmt(Math.min(totalPaidForItem, itemTotal))}</span>}
+                    </div>
+                  </div>
+                );
+              })}
               {isEditing && (
                 <div className="add-product-section">
                   {addingItemToOrder === order.id ? (
                     <div className="add-product-form">
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            const productId = e.target.value;
-                            const product = availableProducts.find((p) => p.id === productId);
-                            if (!product) return;
-                            const exists = order.items.some(
-                              (item) => item.productName === product.product && item.productStrength === product.strength
-                            );
-                            if (exists) {
-                              onError && onError('This product is already in the order.');
-                              setAddingItemToOrder(null);
-                              return;
-                            }
-                            addItemToOrder(order.id, productId);
-                          }
-                        }}
-                        className="product-select"
-                        defaultValue=""
-                      >
+                      <select onChange={(e) => { if (e.target.value) { const product = availableProducts.find((p) => p.id === e.target.value); if (!product) return; if (order.items.some((item) => item.productName === product.product && item.productStrength === product.strength)) { onError && onError('This product is already in the order.'); setAddingItemToOrder(null); return; } addItemToOrder(order.id, e.target.value); } }} className="product-select" defaultValue="">
                         <option value="">Select a product...</option>
-                        {getAddableProductsForOrder(order)
-                          .map((product) => (
-                            <option key={product.id} value={product.id}>
-                              {product.product} {product.strength} - ${getVendorProductPrice(order, product)}
-                            </option>
-                          ))}
+                        {getAddableProductsForOrder(order).map((product) => (<option key={product.id} value={product.id}>{product.product} {product.strength} - ${getVendorProductPrice(order, product)}</option>))}
                       </select>
-                      <button onClick={() => setAddingItemToOrder(null)} className="btn-cancel-add">
-                        Cancel
-                      </button>
+                      <button onClick={() => setAddingItemToOrder(null)} className="btn-cancel-add">Cancel</button>
                     </div>
                   ) : (
-                    <button onClick={() => setAddingItemToOrder(order.id)} className="btn-add-product">
-                      + Add Product
-                    </button>
+                    <button onClick={() => setAddingItemToOrder(order.id)} className="btn-add-product">+ Add Product</button>
                   )}
                 </div>
               )}
@@ -2479,47 +2256,22 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
             {isEditing && (
               <div className="discount-section">
                 <span>Discount %</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={discount}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => updateDiscount(order.id, parseFloat(e.target.value) || 0)}
-                  className="discount-input"
-                />
+                <input type="number" min="0" max="100" step="0.01" value={discount} onFocus={(e) => e.target.select()} onChange={(e) => updateDiscount(order.id, parseFloat(e.target.value) || 0)} className="discount-input" />
               </div>
             )}
 
             <div className="order-total">
               <div className="order-total-values">
-                <div className="order-total-line">
-                  <span>Items</span>
-                  <span>${itemsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="order-total-line shipping-line">
-                  <span>Shipping</span>
-                  <span>${shippingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="order-total-line total-line">
-                  <span>Total</span>
-                  <span>${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
+                <div className="order-total-line"><span>Items</span><span>${itemsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                <div className="order-total-line shipping-line"><span>Shipping</span><span>${shippingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                <div className="order-total-line total-line"><span>Total</span><span>${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                 {discount > 0 && <div className="discount-indicator">{discount}% discount applied</div>}
                 {totalUnitsOrdered > 0 && (
                   <div className="delivery-progress-wrap">
-                    <div className="delivery-progress-bar-track">
-                      <div
-                        className="delivery-progress-bar-fill"
-                        style={{ width: `${Math.min(100, (deliveredUnits / totalUnitsOrdered) * 100)}%` }}
-                      />
-                    </div>
+                    <div className="delivery-progress-bar-track"><div className="delivery-progress-bar-fill" style={{ width: `${Math.min(100, (deliveredUnits / totalUnitsOrdered) * 100)}%` }} /></div>
                     <div className="delivery-progress-labels">
                       <span className="dp-delivered">{deliveredUnits} delivered</span>
-                      {deliveredCost > 0 && (
-                        <span className="dp-cost">(${deliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
-                      )}
+                      {deliveredCost > 0 && <span className="dp-cost">(${deliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>}
                       <span className="dp-separator">·</span>
                       <span className="dp-remaining">{remainingUnits} remaining</span>
                       <span className="dp-total">of {totalUnitsOrdered}</span>
@@ -2528,140 +2280,110 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
                 )}
               </div>
             </div>
-
-            {/* Payment Tracker */}
-            {(() => {
-              const downPayments = order.downPayments || [];
-              const totalPaid = totalDownPaid;
-              const remaining = finalTotal - totalPaid;
-              const pendingValue = (order.items || [])
-                .filter((item) => (item.status || 'pending') !== 'delivered')
-                .reduce((s, item) => s + (Number(item.quantity) || 0) * (Number(item.pricePerKit) || 0), 0);
-              const form = downPaymentForms[order.id] || {};
-
-              return (
-                <div className="payment-panel-wrap">
-                    <div className="payment-panel">
-                      <div className="payment-panel-heading">Payment Tracker</div>
-                      {/* Summary row */}
-                      <div className="payment-summary-row">
-                        <div className="payment-summary-cell">
-                          <span className="psc-label">Order Total</span>
-                          <span className="psc-value">${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="payment-summary-cell">
-                          <span className="psc-label">Total Paid</span>
-                          <span className="psc-value psc-paid">${totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
-                        {unpaidDeliveredCost > 0 && (
-                          <div className="payment-summary-cell">
-                            <span className="psc-label">Delivered (Unpaid)</span>
-                            <span className="psc-value psc-owed">${unpaidDeliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          </div>
-                        )}
-                        {undeliveredCost > 0 && (
-                          <div className="payment-summary-cell">
-                            <span className="psc-label">Undelivered</span>
-                            <span className="psc-value psc-pending">${undeliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Reset paid status — visible whenever any item/tracking is marked paid */}
-                      {(order.items || []).some((i) => i.paid) && (
-                        <div className="pl-reset-row">
-                          <button
-                            className="pl-reset-paid"
-                            onClick={() => resetPaidStatus(order.id)}
-                          >
-                            Reset Paid Status
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Logged payments */}
-                      {downPayments.length > 0 && (
-                        <div className="payment-log">
-                          <div className="payment-log-header">Payment History</div>
-                          {downPayments.map((p) => (
-                            <div key={p.id} className="payment-log-row">
-                              <span className={`pl-type-badge ${p.isDownPayment ? 'pl-type-down' : 'pl-type-delivered'}`}>
-                                {p.isDownPayment ? 'Down' : 'Delivered'}
-                              </span>
-                              <span className="pl-date">{p.date}</span>
-                              <span className="pl-method">{p.method}</span>
-                              <span className="pl-amount">${Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              {p.note && <span className="pl-note">{p.note}</span>}
-                              <button
-                                className="pl-remove"
-                                onClick={() => removeDownPayment(order.id, p.id)}
-                                title="Remove"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Add payment form */}
-                      <div className="payment-form">
-                        <div className="payment-form-title">Log Payment</div>
-                        <label className="pf-down-check">
-                          <input
-                            type="checkbox"
-                            checked={form.isDownPayment || false}
-                            onChange={(e) => patchDownPaymentForm(order.id, { isDownPayment: e.target.checked })}
-                          />
-                          Down payment only
-                        </label>
-                        <div className="payment-form-fields">
-                          <input
-                            className="pf-input pf-amount"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="Amount"
-                            value={form.amount || ''}
-                            onChange={(e) => patchDownPaymentForm(order.id, { amount: e.target.value })}
-                            onFocus={(e) => e.target.select()}
-                          />
-                          <input
-                            className="pf-input pf-date"
-                            type="date"
-                            value={form.date || new Date().toISOString().slice(0, 10)}
-                            onChange={(e) => patchDownPaymentForm(order.id, { date: e.target.value })}
-                          />
-                          <select
-                            className="pf-input pf-method"
-                            value={form.method || 'Crypto'}
-                            onChange={(e) => patchDownPaymentForm(order.id, { method: e.target.value })}
-                          >
-                            <option>Crypto</option>
-                            <option>Wire</option>
-                          </select>
-                          <input
-                            className="pf-input pf-note"
-                            type="text"
-                            placeholder="Note (optional)"
-                            value={form.note || ''}
-                            onChange={(e) => patchDownPaymentForm(order.id, { note: e.target.value })}
-                          />
-                          <button
-                            className="pf-submit"
-                            onClick={() => addDownPayment(order.id)}
-                            disabled={!form.amount || parseFloat(form.amount) <= 0}
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                </div>
-              );
-            })()}
           </div>
-        </div>
+        )}
+
+        {/* ── Tracking tab ── */}
+        {activeTab === 'tracking' && (
+          <div className="odt-panel">
+            <div className="tracking-list-footer">
+              <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>+ Add Tracking</button>
+              <button className="tracking-add tracking-auto-create" onClick={() => autoCreateTrackingEntries(order.id)}>+ Auto-Create from Products</button>
+              <button className="tracking-add tracking-sync" onClick={() => syncTrackingStatus(order.id)} disabled={syncingOrderId === order.id}>
+                {syncingOrderId === order.id ? 'Syncing…' : '↻ Sync Status'}
+              </button>
+              <button
+                className={`tracking-add tracking-copy-all${copiedOrderId === order.id && copiedOrderType === 'tracking' ? ' copied' : ''}`}
+                onClick={() => {
+                  const entries = getEffectiveTrackingEntries(order);
+                  const blocks = entries.flatMap((e) => {
+                    const nums = getTrackingNumbers(e.number);
+                    if (!nums.length) return [];
+                    const pnd = e.perNumberData || {};
+                    const delivered = new Set(e.deliveredNumbers || []);
+                    const items = (Array.isArray(e.itemIds) ? e.itemIds : []).map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
+                    const label = items.length ? items.map(formatTrackingItemLabel).join(', ') : (e.note || '');
+                    const numLines = nums.map((num) => `  ${num}  ${delivered.has(num) ? 'Delivered' : (pnd[num]?.trackStatus || 'Pending')}`);
+                    return label ? [label, ...numLines] : numLines;
+                  });
+                  if (!blocks.length) return;
+                  navigator.clipboard.writeText(blocks.join('\n'));
+                  setCopiedOrderId(order.id); setCopiedOrderType('tracking');
+                  setTimeout(() => { setCopiedOrderId(null); setCopiedOrderType(null); }, 2000);
+                }}
+              >
+                {copiedOrderId === order.id && copiedOrderType === 'tracking' ? '✓ Copied' : '⎘ Copy All Tracking'}
+              </button>
+            </div>
+            {pendingTrackingEntries.length > 0 && (
+              <div className="tracking-display-grid tracking-display-grid-pending">
+                {pendingTrackingEntries.map(renderTrackingCard)}
+              </div>
+            )}
+            {deliveredTrackingEntries.length > 0 && (
+              <div className="tracking-delivered-section">
+                <div className="tracking-display-grid tracking-display-grid-delivered">
+                  {deliveredTrackingEntries.map(renderTrackingCard)}
+                </div>
+              </div>
+            )}
+            {isEditing && <button onClick={() => cancelEdit(order.id)} className="btn-cancel-edit">Cancel</button>}
+          </div>
+        )}
+
+        {/* ── Payments tab ── */}
+        {activeTab === 'payments' && (() => {
+          const downPayments = order.downPayments || [];
+          const totalPaid = totalDownPaid;
+          const form = downPaymentForms[order.id] || {};
+          return (
+            <div className="odt-panel">
+              <div className="payment-panel">
+                <div className="payment-summary-row">
+                  <div className="payment-summary-cell"><span className="psc-label">Order Total</span><span className="psc-value">${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                  <div className="payment-summary-cell"><span className="psc-label">Total Paid</span><span className="psc-value psc-paid">${totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                  {unpaidDeliveredCost > 0 && <div className="payment-summary-cell"><span className="psc-label">Delivered (Unpaid)</span><span className="psc-value psc-owed">${unpaidDeliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}
+                  {undeliveredCost > 0 && <div className="payment-summary-cell"><span className="psc-label">Undelivered</span><span className="psc-value psc-pending">${undeliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}
+                </div>
+                {(order.items || []).some((i) => i.paid) && (
+                  <div className="pl-reset-row"><button className="pl-reset-paid" onClick={() => resetPaidStatus(order.id)}>Reset Paid Status</button></div>
+                )}
+                {downPayments.length > 0 && (
+                  <div className="payment-log">
+                    <div className="payment-log-header">Payment History</div>
+                    {downPayments.map((p) => (
+                      <div key={p.id} className="payment-log-row">
+                        <span className={`pl-type-badge ${p.isDownPayment ? 'pl-type-down' : 'pl-type-delivered'}`}>{p.isDownPayment ? 'Down' : 'Delivered'}</span>
+                        <span className="pl-date">{p.date}</span>
+                        <span className="pl-method">{p.method}</span>
+                        <span className="pl-amount">${Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        {p.note && <span className="pl-note">{p.note}</span>}
+                        <button className="pl-remove" onClick={() => removeDownPayment(order.id, p.id)} title="Remove">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="payment-form">
+                  <div className="payment-form-title">Log Payment</div>
+                  <label className="pf-down-check">
+                    <input type="checkbox" checked={form.isDownPayment || false} onChange={(e) => patchDownPaymentForm(order.id, { isDownPayment: e.target.checked })} />
+                    Down payment only
+                  </label>
+                  <div className="payment-form-fields">
+                    <input className="pf-input pf-amount" type="number" min="0" step="0.01" placeholder="Amount" value={form.amount || ''} onChange={(e) => patchDownPaymentForm(order.id, { amount: e.target.value })} onFocus={(e) => e.target.select()} />
+                    <input className="pf-input pf-date" type="date" value={form.date || new Date().toISOString().slice(0, 10)} onChange={(e) => patchDownPaymentForm(order.id, { date: e.target.value })} />
+                    <select className="pf-input pf-method" value={form.method || 'Crypto'} onChange={(e) => patchDownPaymentForm(order.id, { method: e.target.value })}>
+                      <option>Crypto</option>
+                      <option>Wire</option>
+                    </select>
+                    <input className="pf-input pf-note" type="text" placeholder="Note (optional)" value={form.note || ''} onChange={(e) => patchDownPaymentForm(order.id, { note: e.target.value })} />
+                    <button className="pf-submit" onClick={() => addDownPayment(order.id)} disabled={!form.amount || parseFloat(form.amount) <= 0}>Add</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -2989,51 +2711,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false }) => {
           {filteredDeliveredOrders.length === 0 ? (
             <div className="empty-orders">No delivered orders.</div>
           ) : (
-            <>
-              <div className="order-picker-list">
-                {filteredDeliveredOrders.map((o) => {
-                  const totalKits = (o.items || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
-                  const totalPaid = (o.downPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-                  const fin = getOrderFinancials(o);
-                  const balance = Math.max(0, fin.finalTotal - totalPaid);
-                  const color = vendorColor(o.vendor || 'TSC', vendorColorMap);
-                  const date = new Date(o.deliveredAt || o.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                  const isSelected = selectedDeliveredOrderId === o.id;
-                  const fmt0 = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-                  return (
-                    <button
-                      key={o.id}
-                      className={`opc-card${isSelected ? ' opc-card--selected' : ''}`}
-                      onClick={() => setSelectedDeliveredOrderId(o.id)}
-                    >
-                      <div className="opc-accent" style={{ background: color }} />
-                      <div className="opc-content">
-                        <div className="opc-top">
-                          <span className="opc-vendor">{o.vendor || 'TSC'}</span>
-                          <span className="opc-date">{date}</span>
-                        </div>
-                        <div className="opc-kits-line">
-                          <strong>{totalKits.toLocaleString()}</strong><span className="opc-kits-of"> kits</span>
-                        </div>
-                        <div className="opc-money">
-                          <span className="opc-total">${fmt0(fin.finalTotal)}</span>
-                        </div>
-                        {(totalPaid > 0 || balance > 0) && (
-                          <div className="opc-money-sub">
-                            {totalPaid > 0 && <span className="opc-paid">${fmt0(totalPaid)} paid</span>}
-                            {balance > 0 && totalPaid > 0 && <span className="opc-balance">${fmt0(balance)} owed</span>}
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              {(() => {
-                const order = filteredDeliveredOrders.find(o => o.id === selectedDeliveredOrderId) || filteredDeliveredOrders[0];
-                return order ? renderOrder(order) : null;
-              })()}
-            </>
+            filteredDeliveredOrders.map((o) => renderOrder(o))
           )}
         </div>
       )}
