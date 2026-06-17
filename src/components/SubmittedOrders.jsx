@@ -50,7 +50,7 @@ function copyToClipboard(text) {
   }
 }
 
-function TrackingAlerts({ problems, onResolve }) {
+function TrackingAlerts({ problems, onResolve, onBulkResolve }) {
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [replacingNums, setReplacingNums] = useState({});
@@ -98,7 +98,12 @@ function TrackingAlerts({ problems, onResolve }) {
   const anyFilled = matches.length > 0;
 
   const saveAll = () => {
-    matches.forEach((p) => onResolve(p.orderId, p.entryIdx, p.trackingNum, parsedMap.get(p.trackingNum)));
+    const replacements = matches.map((p) => ({ orderId: p.orderId, entryIdx: p.entryIdx, oldNum: p.trackingNum, newNum: parsedMap.get(p.trackingNum) }));
+    if (onBulkResolve) {
+      onBulkResolve(replacements);
+    } else {
+      matches.forEach((p) => onResolve(p.orderId, p.entryIdx, p.trackingNum, parsedMap.get(p.trackingNum)));
+    }
     cancelBulk();
   };
 
@@ -147,19 +152,21 @@ function TrackingAlerts({ problems, onResolve }) {
                 autoFocus
                 onChange={(e) => setBulkText(e.target.value)}
               />
-              {bulkText.trim() && (
+              {bulkText.trim() && parsedMap.size > 0 && (
                 <div className="ta-bulk-matches">
-                  {matches.length > 0 ? (
-                    matches.map((p) => (
-                      <div key={p.trackingNum} className="ta-bulk-match-row">
-                        <span className="ta-bulk-old">{p.trackingNum}</span>
+                  {Array.from(parsedMap.entries()).map(([oldNum, newNum]) => {
+                    const matched = problems.some((p) => p.trackingNum === oldNum);
+                    return (
+                      <div key={oldNum} className={`ta-bulk-match-row${matched ? '' : ' ta-bulk-match-row--miss'}`}>
+                        <span className="ta-bulk-old">{oldNum}</span>
                         <span className="ta-bulk-arrow">→</span>
-                        <span className="ta-bulk-new">{parsedMap.get(p.trackingNum)}</span>
+                        {matched
+                          ? <span className="ta-bulk-new">{newNum}</span>
+                          : <span className="ta-bulk-no-match">No match</span>
+                        }
                       </div>
-                    ))
-                  ) : (
-                    <span className="ta-bulk-no-match">No matching tracking numbers found</span>
-                  )}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1180,6 +1187,100 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     }
   };
 
+  const resolveBulkTrackingNumbers = async (replacements) => {
+    // Group by orderId so same-order replacements are applied in one pass (avoids stale-state race)
+    const byOrder = {};
+    for (const r of replacements) {
+      if (!byOrder[r.orderId]) byOrder[r.orderId] = [];
+      byOrder[r.orderId].push(r);
+    }
+
+    const updatedEntriesByOrder = {};
+    const numsToSync = []; // { orderId, entryIdx, trimmed }
+
+    for (const [orderId, reps] of Object.entries(byOrder)) {
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) continue;
+      const entries = [...getEffectiveTrackingEntries(order)];
+
+      for (const { entryIdx, oldNum, newNum } of reps) {
+        const trimmed = newNum.trim();
+        if (!trimmed) continue;
+        const entry = entries[entryIdx];
+        if (!entry) continue;
+        const nums = getTrackingNumbers(entry.number);
+        const updatedNums = nums.map((n) => (n === oldNum ? trimmed : n));
+        const pnd = { ...(entry.perNumberData || {}) };
+        const oldData = pnd[oldNum] || {};
+        pnd[trimmed] = Object.fromEntries(Object.entries({ qty: oldData.qty, cost: oldData.cost }).filter(([, v]) => v !== undefined));
+        delete pnd[oldNum];
+        entries[entryIdx] = {
+          ...entry,
+          number: updatedNums.join('\n'),
+          perNumberData: pnd,
+          deliveredNumbers: (entry.deliveredNumbers || []).filter((n) => n !== oldNum),
+          pendingDeliveryNumbers: (entry.pendingDeliveryNumbers || []).filter((n) => n !== oldNum),
+          replacedNumbers: [...(entry.replacedNumbers || []), { old: oldNum, new: trimmed, replacedAt: new Date().toISOString() }],
+        };
+        numsToSync.push({ orderId, entryIdx, trimmed });
+      }
+
+      updatedEntriesByOrder[orderId] = entries;
+    }
+
+    setOrders((prev) => prev.map((o) => updatedEntriesByOrder[o.id] ? { ...o, trackingEntries: updatedEntriesByOrder[o.id] } : o));
+    await Promise.all(Object.entries(updatedEntriesByOrder).map(([oid, entries]) => saveTrackingEntries(oid, entries)));
+
+    if (!numsToSync.length) return;
+
+    try {
+      const trackingItems = numsToSync.map(({ trimmed }) => ({ number: trimmed, carrier: detectCarrier(trimmed) || 'UPS' }));
+      const res = await fetch('/api/17track/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingItems }),
+      });
+      if (!res.ok) {
+        onSuccess?.(`Replaced ${numsToSync.length} number${numsToSync.length > 1 ? 's' : ''}. Status pending.`);
+        return;
+      }
+      const data = await res.json();
+      const resultsByNum = Object.fromEntries((data.results || []).map((r) => [r.number, r]));
+
+      const syncedEntriesByOrder = {};
+      for (const { orderId, entryIdx, trimmed } of numsToSync) {
+        const entries = syncedEntriesByOrder[orderId] || [...updatedEntriesByOrder[orderId]];
+        syncedEntriesByOrder[orderId] = entries;
+        const result = resultsByNum[trimmed];
+        if (!result) continue;
+        const entry = entries[entryIdx];
+        const pnd = { ...(entry.perNumberData || {}) };
+        const patch = { rejected: null };
+        if (result.latestDesc || result.status) patch.trackStatus = result.latestDesc || result.status;
+        if (result.currentLocation) patch.currentLocation = result.currentLocation;
+        if (result.lastUpdated) patch.lastUpdated = result.lastUpdated;
+        if (result.estimatedDelivery) patch.estimatedDelivery = result.estimatedDelivery;
+        if (result.deliveryDate) patch.deliveryDate = result.deliveryDate;
+        pnd[trimmed] = { ...(pnd[trimmed] || {}), ...patch };
+        entries[entryIdx] = {
+          ...entry,
+          perNumberData: pnd,
+          ...(result.isDelivered && { pendingDeliveryNumbers: [...new Set([...(entry.pendingDeliveryNumbers || []), trimmed])] }),
+        };
+      }
+
+      if (Object.keys(syncedEntriesByOrder).length) {
+        setOrders((prev) => prev.map((o) => syncedEntriesByOrder[o.id] ? { ...o, trackingEntries: syncedEntriesByOrder[o.id] } : o));
+        await Promise.all(Object.entries(syncedEntriesByOrder).map(([oid, entries]) => {
+          try { return updateDoc(doc(db, 'c&pProductOrders', oid), { trackingEntries: entries }); } catch { return Promise.resolve(); }
+        }));
+      }
+      onSuccess?.(`Replaced ${numsToSync.length} number${numsToSync.length > 1 ? 's' : ''} and synced status.`);
+    } catch {
+      onSuccess?.(`Replaced ${numsToSync.length} number${numsToSync.length > 1 ? 's' : ''}. Status pending.`);
+    }
+  };
+
   const resolveTrackingNumber = async (orderId, entryIdx, oldNum, newNum) => {
     const trimmed = newNum.trim();
     if (!trimmed) return;
@@ -2099,42 +2200,56 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
             </>
           ) : (
             <>
-              {/* Edit button row */}
-              {canEditTracking && (
-                <div className="tvc-edit-row">
+              {/* Row 1: product name + edit button */}
+              <div className="tvc-name-edit-row">
+                <div className="tvc-items-left">
+                  {assignedItems.map((item) => (
+                    <span key={item.itemId} className="tvc-item-chip">{formatTrackingItemLabel(item)}</span>
+                  ))}
+                </div>
+                {canEditTracking && (
                   <button
                     className="tracking-card-edit-link tvc-edit-btn"
                     onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
                   >
                     Edit
                   </button>
-                </div>
-              )}
-
-              {/* Items + delivery count row */}
-              <div className="tvc-items-row">
-                <div className="tvc-items-left">
-                  {assignedItems.map((item) => (
-                    <span key={item.itemId} className="tvc-item-chip">{formatTrackingItemLabel(item)}</span>
-                  ))}
-                </div>
-                <div className="tvc-items-right">
-                  {hasTrackingNumbers ? (() => {
-                    const deliveredKits = deliveredNums.reduce((s, n) => s + (Number(perNumberData[n]?.qty) || 0), 0);
-                    const trueTotal = cardQtyTotal > 0 ? cardQtyTotal : totalTrackingKits;
-                    const unassigned = cardQtyTotal > 0 ? cardQtyTotal - totalTrackingKits : 0;
-                    const countClass = `tvc-kit-count ${isDelivered ? 'tvc-kit-count--done' : deliveredKits > 0 || deliveredNums.length > 0 ? 'tvc-kit-count--partial' : ''}`;
-                    return trueTotal > 0 ? (
-                      <>
-                        <span className={countClass}>{deliveredKits}/{trueTotal} kits delivered</span>
-                        {unassigned > 0 && <span className="tvc-awaiting">{unassigned} awaiting tracking</span>}
-                      </>
-                    ) : (
-                      <span className={countClass}>{deliveredNums.length}/{trackingNumbers.length} delivered</span>
-                    );
-                  })() : null}
-                </div>
+                )}
               </div>
+
+              {/* Row 2: kits delivered (left) + payment columns (right) */}
+              {hasTrackingNumbers && (() => {
+                const deliveredKits = deliveredNums.reduce((s, n) => s + (Number(perNumberData[n]?.qty) || 0), 0);
+                const trueTotal = cardQtyTotal > 0 ? cardQtyTotal : totalTrackingKits;
+                const unassigned = cardQtyTotal > 0 ? cardQtyTotal - totalTrackingKits : 0;
+                const countClass = `tvc-kit-count ${isDelivered ? 'tvc-kit-count--done' : deliveredKits > 0 || deliveredNums.length > 0 ? 'tvc-kit-count--partial' : ''}`;
+                const cardItems = (Array.isArray(entry.itemIds) ? entry.itemIds : [])
+                  .map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
+                const totalVal = cardItems.reduce((v, i) => v + (Number(i.quantity) || 0) * (Number(i.pricePerKit) || 0), 0);
+                const totalQtyItems = cardItems.reduce((v, i) => v + (Number(i.quantity) || 0), 0);
+                const avgPrice = totalQtyItems > 0 ? totalVal / totalQtyItems : 0;
+                const grossCost = cardQtyTotal > 0 && avgPrice > 0 ? cardQtyTotal * avgPrice : 0;
+                const paidAmount = grossCost * paidFraction;
+                const netCost = grossCost * (1 - paidFraction);
+                const fmt = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                if (trueTotal === 0) return null;
+                return (
+                  <div className="tvc-delivery-payment-row">
+                    <div className="tvc-delivery-left">
+                      <span className={countClass}>{deliveredKits}/{trueTotal} kits delivered</span>
+                      {unassigned > 0 && <span className="tvc-awaiting">{unassigned} awaiting tracking</span>}
+                    </div>
+                    {grossCost > 0 && (
+                      <div className="tvc-payment-detail">
+                        <span className="tvc-pd-row"><span className="tvc-pd-label">Total</span><span className="tvc-pd-val">${fmt(grossCost)}</span></span>
+                        {paidAmount > 0 && <span className="tvc-pd-row"><span className="tvc-pd-label">Paid</span><span className="tvc-pd-val tvc-pd-paid">${fmt(paidAmount)}</span></span>}
+                        {netCost > 0.01 && <span className="tvc-pd-row"><span className="tvc-pd-label">Due</span><span className="tvc-pd-val tvc-pd-due">${fmt(netCost)}</span></span>}
+                        {netCost <= 0.01 && paidAmount > 0 && <span className="tvc-pd-row tvc-pd-clear"><span className="tvc-pd-label">Paid in full</span></span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Tracking numbers grouped by carrier */}
               {hasTrackingNumbers ? (
@@ -2331,30 +2446,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                   <span className="tracking-text">No tracking number</span>
                 </div>
               )}
-
-              {/* Cost/qty summary */}
-              {(() => {
-                const cardQty = Number(entry.cardQty) || 0;
-                const cardItems = (Array.isArray(entry.itemIds) ? entry.itemIds : [])
-                  .map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
-                const totalVal = cardItems.reduce((v, i) => v + (Number(i.quantity) || 0) * (Number(i.pricePerKit) || 0), 0);
-                const totalQtyItems = cardItems.reduce((v, i) => v + (Number(i.quantity) || 0), 0);
-                const avgPrice = totalQtyItems > 0 ? totalVal / totalQtyItems : 0;
-                const grossCost = cardQty * avgPrice;
-                const netCost = grossCost * (1 - paidFraction);
-                if (!cardQty) return null;
-                return (
-                  <div className="tracking-card-summary">
-                    <span className="tcs-qty">{cardQty.toLocaleString()} kits</span>
-                    {netCost > 0 && (
-                      <span className="tcs-cost">
-                        ${netCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due
-                        {paidFraction > 0 && <span className="tcs-cost-note"> (after payments)</span>}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
 
               {entry.note ? (
                 <div className="tracking-note-display">{entry.note}</div>
@@ -2630,13 +2721,26 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                     if (!nums.length) return [];
                     const pnd = e.perNumberData || {};
                     const delivered = new Set(e.deliveredNumbers || []);
+                    const carrier = e.carrier || '';
                     const items = (Array.isArray(e.itemIds) ? e.itemIds : []).map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
                     const label = items.length ? items.map(formatTrackingItemLabel).join(', ') : (e.note || '');
-                    const numLines = nums.map((num) => `  ${num}  ${delivered.has(num) ? 'Delivered' : (pnd[num]?.trackStatus || 'Pending')}`);
-                    return label ? [label, ...numLines] : numLines;
+                    const numLines = nums.map((num) => {
+                      const d = pnd[num] || {};
+                      const isDelivered = delivered.has(num);
+                      const status = isDelivered ? 'Delivered ✓' : (d.trackStatus || 'Pending');
+                      const parts = [`  ${num}`];
+                      if (carrier) parts.push(`[${carrier}]`);
+                      if (d.qty) parts.push(`${d.qty} kits`);
+                      if (d.cost) parts.push(`$${Number(d.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                      parts.push(status);
+                      if (!isDelivered && d.destination) parts.push(`→ ${d.destination}`);
+                      if (!isDelivered && d.lastUpdated) parts.push(`(updated ${new Date(d.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`);
+                      return parts.join('  ');
+                    });
+                    return label ? [`${label}:`, ...numLines, ''] : [...numLines, ''];
                   });
                   if (!blocks.length) return;
-                  navigator.clipboard.writeText(blocks.join('\n'));
+                  navigator.clipboard.writeText(blocks.join('\n').trim());
                   setCopiedOrderId(order.id); setCopiedOrderType('tracking');
                   setTimeout(() => { setCopiedOrderId(null); setCopiedOrderType(null); }, 2000);
                 }}
@@ -2668,28 +2772,69 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
           return (
             <div className="odt-panel">
               <div className="payment-panel">
-                <div className="payment-summary-row">
-                  <div className="payment-summary-cell"><span className="psc-label">Order Total</span><span className="psc-value">${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                  <div className="payment-summary-cell"><span className="psc-label">Total Paid</span><span className="psc-value psc-paid">${totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                  {unpaidDeliveredCost > 0 && <div className="payment-summary-cell"><span className="psc-label">Delivered (Unpaid)</span><span className="psc-value psc-owed">${unpaidDeliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}
-                  {undeliveredCost > 0 && <div className="payment-summary-cell"><span className="psc-label">Undelivered</span><span className="psc-value psc-pending">${undeliveredCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}
-                </div>
+                {(() => {
+                  const remainingBalance = Math.max(0, finalTotal - totalPaid);
+                  const fmt = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  // Undelivered due = whatever is left after subtracting what's owed for delivered items
+                  const undeliveredDue = Math.max(0, remainingBalance - unpaidDeliveredCost);
+                  return (
+                    <>
+                      {remainingBalance > 0.01 ? (
+                        <div className="psc-remaining-banner">
+                          <span className="psc-remaining-label">Remaining Balance</span>
+                          <span className="psc-remaining-value">${fmt(remainingBalance)}</span>
+                        </div>
+                      ) : (
+                        <div className="psc-remaining-banner psc-remaining-clear">
+                          <span className="psc-remaining-label">Paid in Full</span>
+                          <span className="psc-remaining-value">$0.00</span>
+                        </div>
+                      )}
+                      <div className="payment-summary-row">
+                        <div className="payment-summary-cell"><span className="psc-label">Order Total</span><span className="psc-value">${fmt(finalTotal)}</span></div>
+                        <div className="payment-summary-cell"><span className="psc-label">Total Paid</span><span className="psc-value psc-paid">${fmt(totalPaid)}</span></div>
+                        {unpaidDeliveredCost > 0.01 && <div className="payment-summary-cell"><span className="psc-label">Owed Now</span><span className="psc-value psc-owed">${fmt(unpaidDeliveredCost)}</span></div>}
+                        {undeliveredDue > 0.01 && <div className="payment-summary-cell"><span className="psc-label">On Delivery</span><span className="psc-value psc-pending">${fmt(undeliveredDue)}</span></div>}
+                      </div>
+                    </>
+                  );
+                })()}
                 {(order.items || []).some((i) => i.paid) && (
                   <div className="pl-reset-row"><button className="pl-reset-paid" onClick={() => resetPaidStatus(order.id)}>Reset Paid Status</button></div>
                 )}
                 {downPayments.length > 0 && (
                   <div className="payment-log">
                     <div className="payment-log-header">Payment History</div>
-                    {downPayments.map((p) => (
-                      <div key={p.id} className="payment-log-row">
-                        <span className={`pl-type-badge ${p.isDownPayment ? 'pl-type-down' : 'pl-type-delivered'}`}>{p.isDownPayment ? 'Down' : 'Delivered'}</span>
-                        <span className="pl-date">{p.date}</span>
-                        <span className="pl-method">{p.method}</span>
-                        <span className="pl-amount">${Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        {p.note && <span className="pl-note">{p.note}</span>}
-                        <button className="pl-remove" onClick={() => removeDownPayment(order.id, p.id)} title="Remove">×</button>
-                      </div>
-                    ))}
+                    {downPayments.map((p) => {
+                      const coveredItems = (p.coveredItemIds || [])
+                        .map((id) => (order.items || []).find((i) => i.itemId === id))
+                        .filter(Boolean);
+                      const coveredNums = p.coveredTrackingNums || [];
+                      return (
+                        <div key={p.id} className="payment-log-row">
+                          <div className="pl-main-row">
+                            <span className={`pl-type-badge ${p.isDownPayment ? 'pl-type-down' : 'pl-type-delivered'}`}>{p.isDownPayment ? 'Down' : 'Delivered'}</span>
+                            <span className="pl-date">{p.date}</span>
+                            <span className="pl-method">{p.method}</span>
+                            <span className="pl-amount">${Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            {p.note && <span className="pl-note">{p.note}</span>}
+                            <button className="pl-remove" onClick={() => removeDownPayment(order.id, p.id)} title="Remove">×</button>
+                          </div>
+                          {(coveredItems.length > 0 || coveredNums.length > 0) && (
+                            <div className="pl-covers">
+                              {coveredItems.length > 0 && (
+                                <span className="pl-covers-items">
+                                  {coveredItems.map((item) => `${formatProductName(item.productName || item.product || '')}${item.productStrength || item.strength ? ` ${item.productStrength || item.strength}` : ''} ×${item.quantity}`).join(', ')}
+                                </span>
+                              )}
+                              {coveredNums.length > 0 && (
+                                <span className="pl-covers-boxes">{coveredNums.length} box{coveredNums.length !== 1 ? 'es' : ''}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="payment-form">
@@ -2804,7 +2949,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
         const pnd = e.perNumberData || {};
         return es + (e.deliveredNumbers || []).reduce((ns, n) => ns + (Number(pnd[n]?.qty) || 0), 0);
       }, 0), 0);
-    return { vendor, total, paid, deliveredUnpaid, totalKits, deliveredKits };
+    const remaining = Math.max(0, total - paid);
+    return { vendor, total, paid, deliveredUnpaid, remaining, totalKits, deliveredKits };
   });
 
   const deliveredVendors = [...new Set(deliveredOrders.map(o => o.vendor || 'TSC'))].sort((a, b) => {
@@ -2931,9 +3077,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
 
   return (
     <div className="submitted-orders-section">
-      {!deliveredOnly && problemTracking.length > 0 && (
-        <TrackingAlerts problems={problemTracking} onResolve={resolveTrackingNumber} />
-      )}
       {!deliveredOnly && (
         <div className="orders-group">
           <div className="pending-top-bar">
@@ -2967,6 +3110,22 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                       <span className="vsp-value">${fmt2(vs.total)}</span>
                     </div>
                     <div className="vsp-stat">
+                      <span className="vsp-label">Paid</span>
+                      <span className="vsp-value vsp-paid">${fmt2(vs.paid)}</span>
+                    </div>
+                    {vs.remaining > 0.01 && (
+                      <div className="vsp-stat">
+                        <span className="vsp-label">Remaining</span>
+                        <span className="vsp-value vsp-owed">${fmt2(vs.remaining)}</span>
+                      </div>
+                    )}
+                    {vs.deliveredUnpaid > 0.01 && (
+                      <div className="vsp-stat">
+                        <span className="vsp-label">Owed Now</span>
+                        <span className="vsp-value vsp-owed">${fmt2(vs.deliveredUnpaid)}</span>
+                      </div>
+                    )}
+                    <div className="vsp-stat">
                       <span className="vsp-label">Kits</span>
                       <span className="vsp-value">
                         {vs.deliveredKits > 0
@@ -2974,21 +3133,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                           : vs.totalKits.toLocaleString()}
                       </span>
                     </div>
-                    <div className="vsp-stat">
-                      <span className="vsp-label">Paid</span>
-                      <span className="vsp-value vsp-paid">${fmt2(vs.paid)}</span>
-                    </div>
-                    {vs.deliveredUnpaid > 0 && (
-                      <div className="vsp-stat">
-                        <span className="vsp-label">Owed</span>
-                        <span className="vsp-value vsp-owed">${fmt2(vs.deliveredUnpaid)}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
             })()}
           </div>
+          {problemTracking.length > 0 && (
+            <TrackingAlerts problems={problemTracking} onResolve={resolveTrackingNumber} onBulkResolve={resolveBulkTrackingNumbers} />
+          )}
           {filteredPendingOrders.length === 0 ? (
             <div className="empty-orders">No pending orders.</div>
           ) : (

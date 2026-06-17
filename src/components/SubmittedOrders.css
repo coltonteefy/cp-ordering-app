@@ -16,6 +16,11 @@
 
 .pending-top-left h2 {
   margin: 0;
+  font-size: 1.1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #2f2218;
 }
 
 /* Vendor spotlight — shown when a specific vendor is filtered */
@@ -1941,9 +1946,13 @@
 .tracking-list-footer {
   display: flex;
   justify-content: flex-start;
-  gap: 0.5rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.75rem;
+  padding: 0.75rem 1rem;
+  background: #faf6f0;
+  border: 1px solid #ede3d4;
+  border-radius: 10px;
 }
 
 .tracking-auto-create {
@@ -2634,14 +2643,14 @@
 }
 
 /* Items row at top of tracking card (view mode) */
-.tvc-items-row {
+.tvc-name-edit-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.5rem;
-  padding-bottom: 0.45rem;
+  padding-bottom: 0.3rem;
   border-bottom: 1px solid #ede3d4;
-  margin-bottom: 0.1rem;
+  margin-bottom: 0.35rem;
 }
 
 .tvc-items-left {
@@ -2652,16 +2661,25 @@
   min-width: 0;
 }
 
-.tvc-items-right {
+.tvc-delivery-payment-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  flex-shrink: 0;
+  gap: 1rem;
+  margin-bottom: 0.1rem;
+}
+
+.tvc-delivery-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
 }
 
 .tvc-item-chip {
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: #7a4f1b;
   white-space: nowrap;
 }
@@ -2682,6 +2700,48 @@
   white-space: nowrap;
 }
 
+.tvc-due {
+  font-size: 0.72rem;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+.tvc-payment-detail {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+}
+
+.tvc-pd-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  font-size: 0.7rem;
+}
+
+.tvc-pd-label {
+  color: #9ca3af;
+}
+
+.tvc-pd-val {
+  font-weight: 600;
+  color: #d1c4a8;
+}
+
+.tvc-pd-paid {
+  color: #4ade80;
+}
+
+.tvc-pd-due {
+  color: #fb923c;
+}
+
+.tvc-pd-clear .tvc-pd-label {
+  color: #4ade80;
+  font-style: italic;
+}
+
 .tvc-edit-row {
   display: flex;
   justify-content: flex-end;
@@ -2692,7 +2752,7 @@
   margin-left: 0;
 }
 
-.tracking-card.delivered-card .tvc-items-row {
+.tracking-card.delivered-card .tvc-name-edit-row {
   border-bottom-color: #cfe6d4;
 }
 
@@ -3840,6 +3900,45 @@
 }
 
 /* Summary row */
+.psc-remaining-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff4e6;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.psc-remaining-clear {
+  background: #f0fdf4;
+  border-color: #4ade80;
+}
+
+.psc-remaining-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #92400e;
+}
+
+.psc-remaining-clear .psc-remaining-label {
+  color: #166534;
+}
+
+.psc-remaining-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #b45309;
+  font-variant-numeric: tabular-nums;
+}
+
+.psc-remaining-clear .psc-remaining-value {
+  color: #16a34a;
+}
+
 .payment-summary-row {
   display: flex;
   gap: 0;
@@ -3930,14 +4029,38 @@
 
 .payment-log-row {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 0.25rem;
   padding: 0.35rem 0.55rem;
   border-radius: 6px;
   background: #fdf8f3;
   border: 1px solid #ede3d7;
   margin-bottom: 0.3rem;
   font-size: 0.82rem;
+}
+
+.pl-main-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pl-covers {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 0.25rem;
+}
+
+.pl-covers-items {
+  font-size: 0.74rem;
+  color: #7a5c3a;
+}
+
+.pl-covers-boxes {
+  font-size: 0.72rem;
+  color: #a08060;
+  white-space: nowrap;
 }
 
 .pl-date {
@@ -4454,9 +4577,14 @@
 .ta-bulk-arrow { color: #b0a090; }
 .ta-bulk-new { color: #1a7a48; font-weight: 700; }
 
+.ta-bulk-match-row--miss {
+  opacity: 0.55;
+}
+
 .ta-bulk-no-match {
   font-size: 0.75rem;
   color: #c05030;
+  font-style: italic;
 }
 
 .ta-row-matched {

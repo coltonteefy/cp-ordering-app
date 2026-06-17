@@ -506,6 +506,7 @@ export const handler = async (event) => {
         return jsonResponse(400, { error: 'No tracking numbers provided.' });
       }
 
+      const CHUNK_SIZE = 40;
       const registerPayload = trackingItems.map(({ number, carrier }) => {
         const entry = { number };
         const code = CARRIER_CODES[carrier];
@@ -513,35 +514,43 @@ export const handler = async (event) => {
         return entry;
       });
 
-      const regRes = await fetch('https://api.17track.net/track/v2.2/register', {
-        method: 'POST',
-        headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify(registerPayload),
-        signal: AbortSignal.timeout(15000),
-      });
-      await regRes.json();
-
-      await new Promise((r) => setTimeout(r, 3000));
-
-      const infoRes = await fetch('https://api.17track.net/track/v2.2/gettrackinfo', {
-        method: 'POST',
-        headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify(registerPayload),
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!infoRes.ok) {
-        return jsonResponse(infoRes.status, { error: `17track API error: ${await infoRes.text()}` });
+      const chunks = [];
+      for (let i = 0; i < registerPayload.length; i += CHUNK_SIZE) {
+        chunks.push(registerPayload.slice(i, i + CHUNK_SIZE));
       }
 
-      const data = await infoRes.json();
-      const accepted = data?.data?.accepted || [];
-      const rejected = (data?.data?.rejected || []).map((r) => ({
-        number: r.number,
-        reason: r.error?.message || 'No data available',
-      }));
+      const allAccepted = [];
+      const allRejected = [];
 
-      const results = accepted.map((item) => {
+      for (const chunk of chunks) {
+        const regRes = await fetch('https://api.17track.net/track/v2.2/register', {
+          method: 'POST',
+          headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(chunk),
+          signal: AbortSignal.timeout(10000),
+        });
+        await regRes.json();
+
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const infoRes = await fetch('https://api.17track.net/track/v2.2/gettrackinfo', {
+          method: 'POST',
+          headers: { '17token': SEVENTEEN_TRACK_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(chunk),
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!infoRes.ok) continue;
+
+        const data = await infoRes.json();
+        allAccepted.push(...(data?.data?.accepted || []));
+        allRejected.push(...(data?.data?.rejected || []).map((r) => ({
+          number: r.number,
+          reason: r.error?.message || 'No data available',
+        })));
+      }
+
+      const results = allAccepted.map((item) => {
         const latestStatus = item.track_info?.latest_status?.status || '';
         const subStatus = item.track_info?.latest_status?.sub_status || '';
         const isDelivered = latestStatus === 'Delivered';
@@ -562,7 +571,7 @@ export const handler = async (event) => {
         return { number: item.number, isDelivered, status: latestStatus, subStatus, latestDesc, detectedCarrier, destination, currentLocation, lastUpdated, deliveryDate, estimatedDelivery };
       });
 
-      return jsonResponse(200, { results, rejected });
+      return jsonResponse(200, { results, rejected: allRejected });
     }
 
     if (pathname.endsWith('/17track/webhook') && event.httpMethod === 'POST') {
