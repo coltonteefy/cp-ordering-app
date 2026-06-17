@@ -54,6 +54,8 @@ function TrackingAlerts({ problems, onResolve }) {
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [replacingNums, setReplacingNums] = useState({});
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkText, setBulkText] = useState('');
 
   const returns = problems.filter((p) => p.isReturn);
   const exceptions = problems.filter((p) => !p.isReturn);
@@ -74,9 +76,35 @@ function TrackingAlerts({ problems, onResolve }) {
     cancelReplace(key);
   };
 
+  const enterBulk = () => { setBulkMode(true); setBulkText(''); setCollapsed(false); };
+  const cancelBulk = () => { setBulkMode(false); setBulkText(''); };
+
+  // Parse lines like "OLD = NEW", "OLD → NEW", "OLD NEW", "OLD -> NEW"
+  const parseBulkText = (text) => {
+    const map = new Map();
+    text.split('\n').forEach((line) => {
+      const parts = line.trim().split(/\s*[=→>]+\s*|\s{2,}|\t/);
+      if (parts.length >= 2) {
+        const oldNum = parts[0].trim();
+        const newNum = parts[parts.length - 1].trim();
+        if (oldNum && newNum && oldNum !== newNum) map.set(oldNum, newNum);
+      }
+    });
+    return map;
+  };
+
+  const parsedMap = parseBulkText(bulkText);
+  const matches = problems.filter((p) => parsedMap.has(p.trackingNum));
+  const anyFilled = matches.length > 0;
+
+  const saveAll = () => {
+    matches.forEach((p) => onResolve(p.orderId, p.entryIdx, p.trackingNum, parsedMap.get(p.trackingNum)));
+    cancelBulk();
+  };
+
   return (
     <div className="tracking-alerts-wrap">
-      <div className="tracking-alerts-header" onClick={() => setCollapsed((c) => !c)}>
+      <div className="tracking-alerts-header" onClick={() => !bulkMode && setCollapsed((c) => !c)}>
         <div className="ta-header-left">
           <span className="ta-icon">⚠</span>
           <span className="ta-title">Tracking Issues</span>
@@ -84,19 +112,64 @@ function TrackingAlerts({ problems, onResolve }) {
           {exceptions.length > 0 && <span className="ta-badge ta-badge-exception">{exceptions.length} Exception</span>}
         </div>
         <div className="ta-header-right">
-          <button className={`ta-copy-btn${copied ? ' copied' : ''}`} onClick={(e) => { e.stopPropagation(); copyAll(); }}>
-            {copied ? '✓ Copied' : '⎘ Copy All'}
-          </button>
-          <span className="ta-chevron">{collapsed ? '▸' : '▾'}</span>
+          {!bulkMode ? (
+            <>
+              {onResolve && (
+                <button className="ta-bulk-btn" onClick={(e) => { e.stopPropagation(); enterBulk(); }}>
+                  Bulk Replace
+                </button>
+              )}
+              <button className={`ta-copy-btn${copied ? ' copied' : ''}`} onClick={(e) => { e.stopPropagation(); copyAll(); }}>
+                {copied ? '✓ Copied' : '⎘ Copy All'}
+              </button>
+              <span className="ta-chevron">{collapsed ? '▸' : '▾'}</span>
+            </>
+          ) : (
+            <>
+              <button className="ta-replace-save" disabled={!anyFilled} onClick={(e) => { e.stopPropagation(); saveAll(); }}>
+                Save All
+              </button>
+              <button className="ta-replace-cancel" onClick={(e) => { e.stopPropagation(); cancelBulk(); }}>
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
       {!collapsed && (
         <div className="tracking-alerts-body">
+          {bulkMode && (
+            <div className="ta-bulk-panel" onClick={(e) => e.stopPropagation()}>
+              <textarea
+                className="ta-bulk-textarea"
+                placeholder={"Paste replacements — one per line:\nEF001489687CN = 382050506119\nEF001494302CN = 382050319812"}
+                value={bulkText}
+                autoFocus
+                onChange={(e) => setBulkText(e.target.value)}
+              />
+              {bulkText.trim() && (
+                <div className="ta-bulk-matches">
+                  {matches.length > 0 ? (
+                    matches.map((p) => (
+                      <div key={p.trackingNum} className="ta-bulk-match-row">
+                        <span className="ta-bulk-old">{p.trackingNum}</span>
+                        <span className="ta-bulk-arrow">→</span>
+                        <span className="ta-bulk-new">{parsedMap.get(p.trackingNum)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="ta-bulk-no-match">No matching tracking numbers found</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {problems.map((p, i) => {
             const key = `${p.orderId}:${p.entryIdx}:${p.trackingNum}`;
             const replaceVal = replacingNums[key];
+            const isMatched = bulkMode && parsedMap.has(p.trackingNum);
             return (
-              <div key={i} className={`ta-row${p.isReturn ? ' ta-row-return' : ' ta-row-exception'}`}>
+              <div key={i} className={`ta-row${p.isReturn ? ' ta-row-return' : ' ta-row-exception'}${isMatched ? ' ta-row-matched' : ''}`}>
                 <div className="ta-row-main">
                   <span className={`ta-status-pill${p.isReturn ? ' ta-pill-return' : ' ta-pill-exception'}`}>
                     {p.isReturn ? 'Returned' : 'Exception'}
@@ -109,13 +182,13 @@ function TrackingAlerts({ problems, onResolve }) {
                   )}
                   <span className="ta-vendor">{p.vendor}</span>
                   <span className="ta-order-id">{p.orderId}</span>
-                  {onResolve && replaceVal === undefined && (
+                  {onResolve && !bulkMode && replaceVal === undefined && (
                     <button className="ta-replace-btn" onClick={(e) => { e.stopPropagation(); startReplace(key); }}>
                       Replace #
                     </button>
                   )}
                 </div>
-                {onResolve && replaceVal !== undefined && (
+                {!bulkMode && onResolve && replaceVal !== undefined && (
                   <div className="ta-replace-row" onClick={(e) => e.stopPropagation()}>
                     <input
                       className="ta-replace-input"
@@ -2026,7 +2099,19 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
             </>
           ) : (
             <>
-              {/* Items row at top with Edit + delivery count */}
+              {/* Edit button row */}
+              {canEditTracking && (
+                <div className="tvc-edit-row">
+                  <button
+                    className="tracking-card-edit-link tvc-edit-btn"
+                    onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+
+              {/* Items + delivery count row */}
               <div className="tvc-items-row">
                 <div className="tvc-items-left">
                   {assignedItems.map((item) => (
@@ -2048,14 +2133,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                       <span className={countClass}>{deliveredNums.length}/{trackingNumbers.length} delivered</span>
                     );
                   })() : null}
-                  {canEditTracking && (
-                    <button
-                      className="tracking-card-edit-link tvc-edit-btn"
-                      onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
-                    >
-                      Edit
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -2063,30 +2140,32 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
               {hasTrackingNumbers ? (
                 <div className="tracking-number-checklist">
                   {(() => {
-                    // Group numbers by detected carrier
-                    const groups = [];
-                    const seen = new Map();
+                    const carrierIcon = (c) => {
+                      const name = (c || '').toLowerCase();
+                      if (name === 'fedex') return '🟣';
+                      if (name === 'ups') return '🟤';
+                      if (name === 'usps') return '🔵';
+                      if (name === 'dhl') return '🟡';
+                      if (name === '17track') return '📦';
+                      return '📦';
+                    };
+                    // Build flat list preserving per-number carrier for URL + icon
+                    const numCarrier = new Map();
                     trackingNumbers.forEach((num) => {
-                      const c = detectCarrier(num) || entry.carrier || 'Unknown';
-                      if (!seen.has(c)) { seen.set(c, []); groups.push(c); }
-                      seen.get(c).push(num);
+                      numCarrier.set(num, detectCarrier(num) || entry.carrier || 'Unknown');
                     });
-                    return groups.map((grpCarrier) => {
-                      const allNums = seen.get(grpCarrier);
-                      const activeNums = allNums.filter((n) => !deliveredNums.includes(n));
-                      const doneNums = allNums.filter((n) => deliveredNums.includes(n));
-                      return (
-                        <div key={grpCarrier} className="tnc-carrier-group">
-                          <div className="tnc-carrier-row">
-                            <span className="carrier-text">{grpCarrier}</span>
-                          </div>
+                    const activeNums = trackingNumbers.filter((n) => !deliveredNums.includes(n));
+                    const doneNums = trackingNumbers.filter((n) => deliveredNums.includes(n));
+                    const grpCarrier = entry.carrier || 'Unknown'; // kept for done-nums section key
+                    return (
+                        <div className="tnc-carrier-group">
 
                           {/* Active (undelivered) numbers — full detail */}
                           {activeNums.map((num) => {
                             const numPending = pendingDeliveryNums.has(num);
                             const numPaid = paidNums.has(num);
                             const pnd = perNumberData[num] || {};
-                            const hasPills = pnd.trackStatus || pnd.subStatus || pnd.destination || pnd.currentLocation || pnd.deliveryDate || pnd.estimatedDelivery || pnd.lastUpdated || pnd.rejected || pnd.confirmedAt;
+                            const hasPills = pnd.trackStatus || pnd.subStatus || pnd.destination || pnd.deliveryDate || pnd.estimatedDelivery || pnd.rejected || pnd.confirmedAt;
                             const sub = pnd.subStatus || '';
                             const isReturn = /return/i.test(sub);
                             const isException = /exception/i.test(sub) && !isReturn;
@@ -2102,7 +2181,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                                   />
                                   <div className="tn-num-block">
                                     <a
-                                      href={getTrackingUrl(grpCarrier, num)}
+                                      href={getTrackingUrl(numCarrier.get(num), num)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="tracking-number-link"
@@ -2132,11 +2211,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                                   >
                                     {syncingNum === num ? '…' : '↻'}
                                   </button>
-                                  {pnd.lastUpdated && (
-                                    <span className="tn-last-updated">
-                                      Updated {new Date(pnd.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  )}
+                                  <div className="tn-carrier-updated">
+                                    <span className="tn-carrier-label">{numCarrier.get(num)}</span>
+                                    {pnd.lastUpdated && (
+                                      <span className="tn-last-updated">
+                                        Updated {new Date(pnd.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                                 {numPending && (
                                   <div className="tn-pending-confirm-row">
@@ -2204,9 +2286,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                                     {pnd.destination && (
                                       <span className="tn-pill tn-pill-dest">→ {pnd.destination}</span>
                                     )}
-                                    {pnd.currentLocation && pnd.currentLocation.trim().length > 3 && (
-                                      <span className="tn-pill tn-pill-location">📍 {pnd.currentLocation}</span>
-                                    )}
                                   </div>
                                 )}
                               </div>
@@ -2227,7 +2306,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                                       onChange={() => toggleDeliveredNumber(order.id, originalIndex, num)}
                                       title="Unmark delivered"
                                     />
-                                    <a href={getTrackingUrl(grpCarrier, num)} target="_blank" rel="noopener noreferrer" className="tnc-done-num">
+                                    <a href={getTrackingUrl(numCarrier.get(num), num)} target="_blank" rel="noopener noreferrer" className="tnc-done-num">
                                       {num}
                                     </a>
                                     {pnd.qty > 0 && <span className="tnc-done-kits">{pnd.qty} kits</span>}
@@ -2242,7 +2321,6 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                           )}
                         </div>
                       );
-                    });
                   })()}
                 </div>
               ) : (
@@ -2925,6 +3003,16 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                   const totalPaid = (o.downPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
                   const fin = getOrderFinancials(o);
                   const balance = Math.max(0, fin.finalTotal - totalPaid);
+                  const deliveredPaid = (o.trackingEntries || []).reduce((s, e) => {
+                    const pnd = e.perNumberData || {};
+                    const paid = new Set(e.paidNumbers || []);
+                    return s + (e.deliveredNumbers || []).filter(n => paid.has(n)).reduce((ds, n) => ds + (Number(pnd[n]?.cost) || 0), 0);
+                  }, 0);
+                  const deliveredOwed = (o.trackingEntries || []).reduce((s, e) => {
+                    const pnd = e.perNumberData || {};
+                    const paid = new Set(e.paidNumbers || []);
+                    return s + (e.deliveredNumbers || []).filter(n => !paid.has(n)).reduce((ds, n) => ds + (Number(pnd[n]?.cost) || 0), 0);
+                  }, 0);
                   const color = vendorColor(o.vendor || 'TSC', vendorColorMap);
                   const date = new Date(o.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                   const isSelected = selectedOrderId === o.id;
@@ -2959,6 +3047,13 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                           <div className="opc-money-sub">
                             {totalPaid > 0 && <span className="opc-paid">${fmt0(totalPaid)} paid</span>}
                             {balance > 0 && totalPaid > 0 && <span className="opc-balance">${fmt0(balance)} owed</span>}
+                          </div>
+                        )}
+                        {(deliveredPaid > 0 || deliveredOwed > 0) && (
+                          <div className="opc-delivered-pay">
+                            <span className="opc-delivered-label">Delivered:</span>
+                            {deliveredPaid > 0 && <span className="opc-delivered-paid">${fmt0(deliveredPaid)} paid</span>}
+                            {deliveredOwed > 0 && <span className="opc-delivered-owed">${fmt0(deliveredOwed)} owed</span>}
                           </div>
                         )}
                       </div>
