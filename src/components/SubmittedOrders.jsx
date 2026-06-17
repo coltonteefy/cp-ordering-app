@@ -50,9 +50,10 @@ function copyToClipboard(text) {
   }
 }
 
-function TrackingAlerts({ problems }) {
+function TrackingAlerts({ problems, onResolve }) {
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [replacingNums, setReplacingNums] = useState({});
 
   const returns = problems.filter((p) => p.isReturn);
   const exceptions = problems.filter((p) => !p.isReturn);
@@ -62,6 +63,15 @@ function TrackingAlerts({ problems }) {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const startReplace = (key) => setReplacingNums((prev) => ({ ...prev, [key]: '' }));
+  const cancelReplace = (key) => setReplacingNums((prev) => { const n = { ...prev }; delete n[key]; return n; });
+  const submitReplace = (p, key) => {
+    const val = replacingNums[key]?.trim();
+    if (!val) return;
+    onResolve(p.orderId, p.entryIdx, p.trackingNum, val);
+    cancelReplace(key);
   };
 
   return (
@@ -82,25 +92,51 @@ function TrackingAlerts({ problems }) {
       </div>
       {!collapsed && (
         <div className="tracking-alerts-body">
-          {problems.map((p, i) => (
-            <div key={i} className={`ta-row${p.isReturn ? ' ta-row-return' : ' ta-row-exception'}`}>
-              <span className={`ta-status-pill${p.isReturn ? ' ta-pill-return' : ' ta-pill-exception'}`}>
-                {p.isReturn ? 'Returned' : 'Exception'}
-              </span>
-              <button
-                className="ta-tracking-num"
-                onClick={() => { copyToClipboard(p.trackingNum); }}
-                title="Click to copy"
-              >
-                {p.trackingNum}
-              </button>
-              {p.items.length > 0 && (
-                <span className="ta-items">{p.items.map((it) => `${it.productName || it.product} ${it.productStrength || it.strength}`).join(', ')}</span>
-              )}
-              <span className="ta-vendor">{p.vendor}</span>
-              <span className="ta-order-id">{p.orderId}</span>
-            </div>
-          ))}
+          {problems.map((p, i) => {
+            const key = `${p.orderId}:${p.entryIdx}:${p.trackingNum}`;
+            const replaceVal = replacingNums[key];
+            return (
+              <div key={i} className={`ta-row${p.isReturn ? ' ta-row-return' : ' ta-row-exception'}`}>
+                <div className="ta-row-main">
+                  <span className={`ta-status-pill${p.isReturn ? ' ta-pill-return' : ' ta-pill-exception'}`}>
+                    {p.isReturn ? 'Returned' : 'Exception'}
+                  </span>
+                  <button className="ta-tracking-num" onClick={() => copyToClipboard(p.trackingNum)} title="Click to copy">
+                    {p.trackingNum}
+                  </button>
+                  {p.items.length > 0 && (
+                    <span className="ta-items">{p.items.map((it) => `${it.productName || it.product} ${it.productStrength || it.strength}`).join(', ')}</span>
+                  )}
+                  <span className="ta-vendor">{p.vendor}</span>
+                  <span className="ta-order-id">{p.orderId}</span>
+                  {onResolve && replaceVal === undefined && (
+                    <button className="ta-replace-btn" onClick={(e) => { e.stopPropagation(); startReplace(key); }}>
+                      Replace #
+                    </button>
+                  )}
+                </div>
+                {onResolve && replaceVal !== undefined && (
+                  <div className="ta-replace-row" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      className="ta-replace-input"
+                      placeholder="New tracking number"
+                      value={replaceVal}
+                      autoFocus
+                      onChange={(e) => setReplacingNums((prev) => ({ ...prev, [key]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') submitReplace(p, key);
+                        if (e.key === 'Escape') cancelReplace(key);
+                      }}
+                    />
+                    <button className="ta-replace-save" disabled={!replaceVal.trim()} onClick={() => submitReplace(p, key)}>
+                      Save
+                    </button>
+                    <button className="ta-replace-cancel" onClick={() => cancelReplace(key)}>Cancel</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -136,6 +172,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
   const [expandedPaymentPanels, setExpandedPaymentPanels] = useState(new Set());
   const [downPaymentForms, setDownPaymentForms] = useState({});
   const [trackingFillQtys, setTrackingFillQtys] = useState({});
+  const [replacingNums, setReplacingNums] = useState({});
 
   // Load vendor colors from Firestore
   useEffect(() => {
@@ -812,11 +849,17 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     });
   };
 
+  const stripUndef = (v) => {
+    if (Array.isArray(v)) return v.map(stripUndef);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).filter(([, val]) => val !== undefined).map(([k, val]) => [k, stripUndef(val)]));
+    return v;
+  };
+
   const saveTrackingEntries = async (orderId, entries) => {
     try {
       const isDeliveredOrder = deliveredOrders.some((o) => o.id === orderId);
       const collection = isDeliveredOrder ? 'c&pPastInventoryOrders' : 'c&pProductOrders';
-      await updateDoc(doc(db, collection, orderId), { trackingEntries: entries });
+      await updateDoc(doc(db, collection, orderId), { trackingEntries: stripUndef(entries) });
     } catch (error) {
       console.error('Error saving tracking entries:', error);
       onError && onError('Failed to update tracking entries.');
@@ -1064,6 +1107,82 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     }
   };
 
+  const resolveTrackingNumber = async (orderId, entryIdx, oldNum, newNum) => {
+    const trimmed = newNum.trim();
+    if (!trimmed) return;
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const entries = [...getEffectiveTrackingEntries(order)];
+    const entry = entries[entryIdx];
+    if (!entry) return;
+
+    const nums = getTrackingNumbers(entry.number);
+    const updatedNums = nums.map((n) => (n === oldNum ? trimmed : n));
+    const pnd = { ...(entry.perNumberData || {}) };
+    const oldData = pnd[oldNum] || {};
+    pnd[trimmed] = Object.fromEntries(Object.entries({ qty: oldData.qty, cost: oldData.cost }).filter(([, v]) => v !== undefined));
+    delete pnd[oldNum];
+
+    const updatedEntry = {
+      ...entry,
+      number: updatedNums.join('\n'),
+      perNumberData: pnd,
+      deliveredNumbers: (entry.deliveredNumbers || []).filter((n) => n !== oldNum),
+      pendingDeliveryNumbers: (entry.pendingDeliveryNumbers || []).filter((n) => n !== oldNum),
+      replacedNumbers: [...(entry.replacedNumbers || []), { old: oldNum, new: trimmed, replacedAt: new Date().toISOString() }],
+    };
+    entries[entryIdx] = updatedEntry;
+
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
+    await saveTrackingEntries(orderId, entries);
+    setReplacingNums((prev) => { const n = { ...prev }; delete n[`${orderId}:${entryIdx}:${oldNum}`]; return n; });
+
+    // Sync using the already-updated entries — avoids stale state overwriting the replacement
+    setSyncingNum(trimmed);
+    try {
+      const carrier = detectCarrier(trimmed) || 'UPS';
+      const res = await fetch('/api/17track/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingItems: [{ number: trimmed, carrier }] }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const result = (data.results || []).find((r) => r.number === trimmed);
+        if (result) {
+          const syncedPnd = { ...pnd };
+          const patch = { rejected: null };
+          if (result.latestDesc || result.status) patch.trackStatus = result.latestDesc || result.status;
+          if (result.currentLocation) patch.currentLocation = result.currentLocation;
+          if (result.lastUpdated) patch.lastUpdated = result.lastUpdated;
+          if (result.estimatedDelivery) patch.estimatedDelivery = result.estimatedDelivery;
+          if (result.deliveryDate) patch.deliveryDate = result.deliveryDate;
+          syncedPnd[trimmed] = { ...(syncedPnd[trimmed] || {}), ...patch };
+          const syncedEntry = {
+            ...updatedEntry,
+            perNumberData: syncedPnd,
+            ...(result.isDelivered && { pendingDeliveryNumbers: [...new Set([...(updatedEntry.pendingDeliveryNumbers || []), trimmed])] }),
+          };
+          entries[entryIdx] = syncedEntry;
+          // Write directly — avoids triggering the error modal if this secondary save races
+          try {
+            await updateDoc(doc(db, 'c&pProductOrders', orderId), { trackingEntries: entries });
+            setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: [...entries] } : o)));
+          } catch {
+            // silent — replacement already saved, webhook will deliver status updates
+          }
+          onSuccess?.(`Replaced — ${result.latestDesc || result.status || 'tracking started'}.`);
+        } else {
+          onSuccess?.('Tracking number replaced. No status yet — will update via webhook.');
+        }
+      }
+    } catch {
+      // silent — replacement is saved, user can manually sync
+    } finally {
+      setSyncingNum(null);
+    }
+  };
+
   const autoCreateTrackingEntries = async (orderId) => {
     const order = orders.find((o) => o.id === orderId);
     const existing = getEffectiveTrackingEntries(order);
@@ -1086,6 +1205,11 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     const order = orders.find((o) => o.id === orderId);
     const entries = [...getEffectiveTrackingEntries(order)];
     const entry = entries[entryIdx];
+
+    // Capture which numbers existed before this edit
+    const key = trackingCardKey(orderId, entryIdx);
+    const snapshot = trackingCardSnapshots[key];
+    const prevNums = new Set(getTrackingNumbers(snapshot?.number || ''));
 
     // Normalize tracking numbers to one per line
     const nums = getTrackingNumbers(entry.number);
@@ -1118,6 +1242,12 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, trackingEntries: entries } : o)));
     await saveTrackingEntries(orderId, entries);
     setTrackingCardEditing(orderId, entryIdx, false);
+
+    // Auto-sync any tracking numbers that weren't in the entry before
+    const newNums = nums.filter((n) => !prevNums.has(n));
+    for (const num of newNums) {
+      syncSingleTracking(orderId, entryIdx, num);
+    }
   };
 
   const updateAllPerNumberData = async (orderId, entryIdx, pndPatch) => {
@@ -1742,7 +1872,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                     className="tracking-card-btn"
                     onClick={() => handleTrackingDone(order.id, originalIndex)}
                   >
-                    Done
+                    Save
                   </button>
                 </div>
               </div>
@@ -1896,39 +2026,37 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
             </>
           ) : (
             <>
-              {/* Items row at top with Edit */}
+              {/* Items row at top with Edit + delivery count */}
               <div className="tvc-items-row">
-                {assignedItems.map((item) => (
-                  <span key={item.itemId} className="tvc-item-chip">{formatTrackingItemLabel(item)}</span>
-                ))}
-                {canEditTracking && (
-                  <button
-                    className="tracking-card-edit-link tvc-edit-btn"
-                    onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-
-              {/* Status chip row */}
-              <div className="tracking-card-header">
-                {hasTrackingNumbers ? (() => {
-                  const deliveredKits = deliveredNums.reduce((s, n) => s + (Number(perNumberData[n]?.qty) || 0), 0);
-                  const trueTotal = cardQtyTotal > 0 ? cardQtyTotal : totalTrackingKits;
-                  const unassigned = cardQtyTotal > 0 ? cardQtyTotal - totalTrackingKits : 0;
-                  const chipClass = `tnc-count-chip ${isDelivered ? 'tnc-all-delivered' : deliveredKits > 0 || deliveredNums.length > 0 ? 'tnc-partial' : 'tnc-none'}`;
-                  return trueTotal > 0 ? (
-                    <>
-                      <span className={chipClass}>{deliveredKits}/{trueTotal} kits delivered</span>
-                      {unassigned > 0 && (
-                        <span className="tnc-awaiting-chip">{unassigned} awaiting tracking</span>
-                      )}
-                    </>
-                  ) : (
-                    <span className={chipClass}>{deliveredNums.length}/{trackingNumbers.length} delivered</span>
-                  );
-                })() : null}
+                <div className="tvc-items-left">
+                  {assignedItems.map((item) => (
+                    <span key={item.itemId} className="tvc-item-chip">{formatTrackingItemLabel(item)}</span>
+                  ))}
+                </div>
+                <div className="tvc-items-right">
+                  {hasTrackingNumbers ? (() => {
+                    const deliveredKits = deliveredNums.reduce((s, n) => s + (Number(perNumberData[n]?.qty) || 0), 0);
+                    const trueTotal = cardQtyTotal > 0 ? cardQtyTotal : totalTrackingKits;
+                    const unassigned = cardQtyTotal > 0 ? cardQtyTotal - totalTrackingKits : 0;
+                    const countClass = `tvc-kit-count ${isDelivered ? 'tvc-kit-count--done' : deliveredKits > 0 || deliveredNums.length > 0 ? 'tvc-kit-count--partial' : ''}`;
+                    return trueTotal > 0 ? (
+                      <>
+                        <span className={countClass}>{deliveredKits}/{trueTotal} kits delivered</span>
+                        {unassigned > 0 && <span className="tvc-awaiting">{unassigned} awaiting tracking</span>}
+                      </>
+                    ) : (
+                      <span className={countClass}>{deliveredNums.length}/{trackingNumbers.length} delivered</span>
+                    );
+                  })() : null}
+                  {canEditTracking && (
+                    <button
+                      className="tracking-card-edit-link tvc-edit-btn"
+                      onClick={() => setTrackingCardEditing(order.id, originalIndex, true)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Tracking numbers grouped by carrier */}
@@ -1962,6 +2090,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                             const sub = pnd.subStatus || '';
                             const isReturn = /return/i.test(sub);
                             const isException = /exception/i.test(sub) && !isReturn;
+                            const replaceKey = `${order.id}:${originalIndex}:${num}`;
+                            const replaceVal = replacingNums[replaceKey];
                             return (
                               <div key={num} className={`tn-check-row${numPending ? ' tn-pending-delivery' : ''}${numPaid ? ' tn-paid' : ''}`}>
                                 <div className="tn-main-row">
@@ -2002,6 +2132,11 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                                   >
                                     {syncingNum === num ? '…' : '↻'}
                                   </button>
+                                  {pnd.lastUpdated && (
+                                    <span className="tn-last-updated">
+                                      Updated {new Date(pnd.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  )}
                                 </div>
                                 {numPending && (
                                   <div className="tn-pending-confirm-row">
@@ -2025,7 +2160,43 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                                         {isReturn ? 'Returned to Sender'
                                           : isException ? `Exception: ${sub.replace('Exception_', '').replace(/([A-Z])/g, ' $1').trim()}`
                                           : pnd.trackStatus.replace(/([a-z])([A-Z])/g, '$1 $2')}
+                                        {(isReturn || isException) && canEditTracking && !replaceVal && (
+                                          <button
+                                            className="tn-replace-btn"
+                                            onClick={() => setReplacingNums((prev) => ({ ...prev, [replaceKey]: '' }))}
+                                          >
+                                            Replace #
+                                          </button>
+                                        )}
                                       </span>
+                                    )}
+                                    {(isReturn || isException) && canEditTracking && replaceVal !== undefined && (
+                                      <div className="tn-replace-row">
+                                        <input
+                                          className="tn-replace-input"
+                                          placeholder="New tracking number"
+                                          value={replaceVal}
+                                          autoFocus
+                                          onChange={(e) => setReplacingNums((prev) => ({ ...prev, [replaceKey]: e.target.value }))}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') resolveTrackingNumber(order.id, originalIndex, num, replaceVal);
+                                            if (e.key === 'Escape') setReplacingNums((prev) => { const n = { ...prev }; delete n[replaceKey]; return n; });
+                                          }}
+                                        />
+                                        <button
+                                          className="tn-replace-save"
+                                          onClick={() => resolveTrackingNumber(order.id, originalIndex, num, replaceVal)}
+                                          disabled={!replaceVal.trim()}
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          className="tn-replace-cancel"
+                                          onClick={() => setReplacingNums((prev) => { const n = { ...prev }; delete n[replaceKey]; return n; })}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
                                     )}
                                     {!pnd.deliveryDate && pnd.estimatedDelivery && (
                                       <span className="tn-pill tn-pill-eta">Est. {new Date(pnd.estimatedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
@@ -2033,13 +2204,8 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                                     {pnd.destination && (
                                       <span className="tn-pill tn-pill-dest">→ {pnd.destination}</span>
                                     )}
-                                    {pnd.currentLocation && (
+                                    {pnd.currentLocation && pnd.currentLocation.trim().length > 3 && (
                                       <span className="tn-pill tn-pill-location">📍 {pnd.currentLocation}</span>
-                                    )}
-                                    {pnd.lastUpdated && (
-                                      <span className="tn-pill tn-pill-time">
-                                        {new Date(pnd.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                      </span>
                                     )}
                                   </div>
                                 )}
@@ -2115,6 +2281,18 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
               {entry.note ? (
                 <div className="tracking-note-display">{entry.note}</div>
               ) : null}
+
+              {(entry.replacedNumbers || []).length > 0 && (
+                <div className="tn-replaced-history">
+                  {entry.replacedNumbers.map((r, i) => (
+                    <span key={i} className="tn-replaced-row">
+                      <span className="tn-replaced-old">{r.old}</span>
+                      <span className="tn-replaced-arrow">→</span>
+                      <span className="tn-replaced-new">{r.new}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -2642,7 +2820,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     const entries = Array.isArray(order.trackingEntries)
       ? order.trackingEntries
       : Object.values(order.trackingEntries || {});
-    return entries.flatMap((entry) => {
+    return entries.flatMap((entry, entryIdx) => {
       const nums = getTrackingNumbers(entry.number);
       const pnd = entry.perNumberData || {};
       const delivered = new Set(entry.deliveredNumbers || []);
@@ -2662,6 +2840,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
             .filter(Boolean);
           return {
             orderId: order.id,
+            entryIdx,
             vendor: order.vendor || 'TSC',
             trackingNum: num,
             isReturn,
@@ -2675,7 +2854,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
   return (
     <div className="submitted-orders-section">
       {!deliveredOnly && problemTracking.length > 0 && (
-        <TrackingAlerts problems={problemTracking} />
+        <TrackingAlerts problems={problemTracking} onResolve={resolveTrackingNumber} />
       )}
       {!deliveredOnly && (
         <div className="orders-group">
@@ -2762,6 +2941,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                           <span className="opc-vendor">{o.vendor || 'TSC'}</span>
                           <span className="opc-date">{date}</span>
                         </div>
+                        <div className="opc-order-id">{o.id}</div>
                         <div className="opc-kits-line">
                           {deliveredKits > 0
                             ? <><strong>{deliveredKits.toLocaleString()}</strong><span className="opc-kits-of">/{totalKits.toLocaleString()} kits</span></>
