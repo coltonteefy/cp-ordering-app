@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, reauthenticateWithCredential, updatePassword, EmailAuthProvider } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { doc, getDoc, setDoc, getDocs, collection, updateDoc } from 'firebase/firestore';
 import { auth, db, secondaryAuth } from './firebaseConfig';
 import Modal from './components/Modal';
 import LoginForm from './components/LoginForm';
@@ -128,18 +128,18 @@ function App() {
   const [showNextOrderModal, setShowNextOrderModal] = useState(false);
   const [isClosingNewOrderModal, setIsClosingNewOrderModal] = useState(false);
 
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [profileCurrentPassword, setProfileCurrentPassword] = useState('');
-  const [profileNewPassword, setProfileNewPassword] = useState('');
-  const [profileNewPassword2, setProfileNewPassword2] = useState('');
-  const [profileLoading, setProfileLoading] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [userMgmtTab, setUserMgmtTab] = useState('add');
   const [addUserEmail, setAddUserEmail] = useState('');
   const [addUserPassword, setAddUserPassword] = useState('');
   const [addUserRole, setAddUserRole] = useState('admin');
   const [addUserVendorName, setAddUserVendorName] = useState('');
   const [addUserPerms, setAddUserPerms] = useState({ viewDelivered: false, viewItems: true, viewPayments: false, editTracking: true });
   const [addUserLoading, setAddUserLoading] = useState(false);
+  const [usersList, setUsersList] = useState([]);
+  const [usersListLoading, setUsersListLoading] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editUserLoading, setEditUserLoading] = useState(false);
   const [vendorGuest, setVendorGuest] = useState(null);
   const vendorGuestRef = useRef(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -217,10 +217,11 @@ function App() {
     e.preventDefault();
     setAddUserLoading(true);
     try {
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, addUserEmail.trim(), addUserPassword);
+      const email = addUserEmail.trim();
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, email, addUserPassword);
       const profile = addUserRole === 'vendor'
-        ? { role: 'vendor', vendorName: addUserVendorName.trim().toUpperCase(), permissions: addUserPerms }
-        : { role: 'admin' };
+        ? { role: 'vendor', email, vendorName: addUserVendorName.trim().toUpperCase(), permissions: addUserPerms }
+        : { role: 'admin', email };
       await setDoc(doc(db, 'users', cred.user.uid), profile);
       await secondaryAuth.signOut();
       setAddUserEmail('');
@@ -237,35 +238,53 @@ function App() {
     }
   };
 
+  const loadUsers = async () => {
+    setUsersListLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      setUsersList(snap.docs.map(d => ({ uid: d.id, ...d.data() })));
+    } catch (error) {
+      showModal('Failed to load users: ' + error.message, 'Error');
+    } finally {
+      setUsersListLoading(false);
+    }
+  };
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault();
+    setEditUserLoading(true);
+    try {
+      const { uid, ...profileData } = editingUser;
+      await updateDoc(doc(db, 'users', uid), profileData);
+      setUsersList(prev => prev.map(u => u.uid === uid ? editingUser : u));
+      setEditingUser(null);
+      showToast('User updated successfully.');
+    } catch (error) {
+      showModal('Failed to update user: ' + error.message, 'Error');
+    } finally {
+      setEditUserLoading(false);
+    }
+  };
+
+  const handleSendPasswordReset = async (email) => {
+    if (!email) {
+      showModal('No email address stored for this user. Add the user again to store their email.', 'Error');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      showToast(`Password reset email sent to ${email}.`);
+    } catch (error) {
+      showModal('Failed to send reset email: ' + error.message, 'Error');
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut(auth);
       setVendorGuest(null);
     } catch (error) {
       showModal('Sign out failed: ' + error.message, 'Error');
-    }
-  };
-
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-    if (profileNewPassword !== profileNewPassword2) {
-      showModal('New passwords do not match.', 'Error');
-      return;
-    }
-    setProfileLoading(true);
-    try {
-      const credential = EmailAuthProvider.credential(user.email, profileCurrentPassword);
-      await reauthenticateWithCredential(user, credential);
-      await updatePassword(user, profileNewPassword);
-      setProfileCurrentPassword('');
-      setProfileNewPassword('');
-      setProfileNewPassword2('');
-      setShowProfileModal(false);
-      showToast('Password updated successfully.');
-    } catch (error) {
-      showModal('Failed to update password: ' + error.message, 'Error');
-    } finally {
-      setProfileLoading(false);
     }
   };
 
@@ -372,13 +391,8 @@ function App() {
 
               <div className="sidebar-footer">
                 {!isGuest && !isVendor && (
-                  <button onClick={() => setShowAddUserModal(true)} className="btn-secondary sidebar-action-btn">
-                    Add User
-                  </button>
-                )}
-                {isVendor && (
-                  <button onClick={() => setShowProfileModal(true)} className="btn-secondary sidebar-action-btn">
-                    My Profile
+                  <button onClick={() => { setUserMgmtTab('add'); setShowAddUserModal(true); }} className="btn-secondary sidebar-action-btn">
+                    Users
                   </button>
                 )}
                 <button onClick={handleSignOut} className="btn-secondary sidebar-action-btn">
@@ -476,135 +490,224 @@ function App() {
       {showAddUserModal && (
         <div
           className="next-order-modal-overlay open"
-          onClick={() => setShowAddUserModal(false)}
+          onClick={() => { setShowAddUserModal(false); setEditingUser(null); }}
         >
           <div className="next-order-modal" onClick={(e) => e.stopPropagation()}>
             <div className="next-order-modal-header">
-              <h3>Add New User</h3>
-              <button className="next-order-modal-close" onClick={() => setShowAddUserModal(false)}>
+              <h3>Users</h3>
+              <button className="next-order-modal-close" onClick={() => { setShowAddUserModal(false); setEditingUser(null); }}>
                 Cancel
               </button>
             </div>
             <div className="next-order-modal-body">
-              <form onSubmit={handleAddUser} className="auth-form">
-                <div className="form-group">
-                  <label>Role</label>
-                  <div className="add-user-role-row">
-                    <label className="add-user-role-opt">
-                      <input type="radio" name="role" value="admin" checked={addUserRole === 'admin'} onChange={() => setAddUserRole('admin')} />
-                      Admin
-                    </label>
-                    <label className="add-user-role-opt">
-                      <input type="radio" name="role" value="vendor" checked={addUserRole === 'vendor'} onChange={() => setAddUserRole('vendor')} />
-                      Vendor
-                    </label>
-                  </div>
-                </div>
-                {addUserRole === 'vendor' && (
+              <div className="vendor-tabs" style={{ marginBottom: '1.25rem' }}>
+                <button
+                  className={`vendor-tab-btn${userMgmtTab === 'add' ? ' active' : ''}`}
+                  onClick={() => setUserMgmtTab('add')}
+                >
+                  Add User
+                </button>
+                <button
+                  className={`vendor-tab-btn${userMgmtTab === 'manage' ? ' active' : ''}`}
+                  onClick={() => { setUserMgmtTab('manage'); setEditingUser(null); loadUsers(); }}
+                >
+                  Manage Users
+                </button>
+              </div>
+
+              {userMgmtTab === 'add' && (
+                <form onSubmit={handleAddUser} className="auth-form">
                   <div className="form-group">
-                    <label htmlFor="add-user-vendor">Vendor Name</label>
+                    <label>Role</label>
+                    <div className="add-user-role-row">
+                      <label className="add-user-role-opt">
+                        <input type="radio" name="role" value="admin" checked={addUserRole === 'admin'} onChange={() => setAddUserRole('admin')} />
+                        Admin
+                      </label>
+                      <label className="add-user-role-opt">
+                        <input type="radio" name="role" value="vendor" checked={addUserRole === 'vendor'} onChange={() => setAddUserRole('vendor')} />
+                        Vendor
+                      </label>
+                    </div>
+                  </div>
+                  {addUserRole === 'vendor' && (
+                    <div className="form-group">
+                      <label htmlFor="add-user-vendor">Vendor Name</label>
+                      <input
+                        type="text"
+                        id="add-user-vendor"
+                        value={addUserVendorName}
+                        onChange={(e) => setAddUserVendorName(e.target.value)}
+                        placeholder="e.g. JOSH"
+                        required
+                        disabled={addUserLoading}
+                      />
+                      <span className="form-hint">Must match the vendor name on their orders exactly.</span>
+                    </div>
+                  )}
+                  <div className="form-group">
+                    <label htmlFor="add-user-email">Email</label>
                     <input
-                      type="text"
-                      id="add-user-vendor"
-                      value={addUserVendorName}
-                      onChange={(e) => setAddUserVendorName(e.target.value)}
-                      placeholder="e.g. JOSH"
+                      type="email"
+                      id="add-user-email"
+                      value={addUserEmail}
+                      onChange={(e) => setAddUserEmail(e.target.value)}
+                      placeholder="vendor@email.com"
                       required
                       disabled={addUserLoading}
                     />
-                    <span className="form-hint">Must match the vendor name on their orders exactly.</span>
                   </div>
-                )}
-                <div className="form-group">
-                  <label htmlFor="add-user-email">Email</label>
-                  <input
-                    type="email"
-                    id="add-user-email"
-                    value={addUserEmail}
-                    onChange={(e) => setAddUserEmail(e.target.value)}
-                    placeholder="vendor@email.com"
-                    required
-                    disabled={addUserLoading}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="add-user-password">Temporary Password</label>
-                  <input
-                    type="text"
-                    id="add-user-password"
-                    value={addUserPassword}
-                    onChange={(e) => setAddUserPassword(e.target.value)}
-                    placeholder="They can reset this after logging in"
-                    required
-                    minLength={6}
-                    disabled={addUserLoading}
-                  />
-                </div>
-                {addUserRole === 'vendor' && (
                   <div className="form-group">
-                    <label>Permissions</label>
-                    <div className="add-user-perms">
-                      {[
-                        { key: 'viewItems', label: 'View Items & Costs' },
-                        { key: 'editTracking', label: 'Edit Tracking' },
-                        { key: 'viewDelivered', label: 'View Delivered Orders' },
-                        { key: 'viewPayments', label: 'View Payments' },
-                      ].map(({ key, label }) => (
-                        <label key={key} className="add-user-perm-row">
-                          <input
-                            type="checkbox"
-                            checked={addUserPerms[key]}
-                            onChange={(e) => setAddUserPerms(p => ({ ...p, [key]: e.target.checked }))}
-                            disabled={addUserLoading}
-                          />
-                          {label}
-                        </label>
+                    <label htmlFor="add-user-password">Temporary Password</label>
+                    <input
+                      type="text"
+                      id="add-user-password"
+                      value={addUserPassword}
+                      onChange={(e) => setAddUserPassword(e.target.value)}
+                      placeholder="They can reset this after logging in"
+                      required
+                      minLength={6}
+                      disabled={addUserLoading}
+                    />
+                  </div>
+                  {addUserRole === 'vendor' && (
+                    <div className="form-group">
+                      <label>Permissions</label>
+                      <div className="add-user-perms">
+                        {[
+                          { key: 'viewItems', label: 'View Items & Costs' },
+                          { key: 'editTracking', label: 'Edit Tracking' },
+                          { key: 'viewDelivered', label: 'View Delivered Orders' },
+                          { key: 'viewPayments', label: 'View Payments' },
+                        ].map(({ key, label }) => (
+                          <label key={key} className="add-user-perm-row">
+                            <input
+                              type="checkbox"
+                              checked={addUserPerms[key]}
+                              onChange={(e) => setAddUserPerms(p => ({ ...p, [key]: e.target.checked }))}
+                              disabled={addUserLoading}
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="form-actions">
+                    <button type="submit" className="btn-neon-cyan" disabled={addUserLoading}>
+                      {addUserLoading ? 'Creating...' : 'Create User'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {userMgmtTab === 'manage' && (
+                <div>
+                  {usersListLoading && <div className="loading" style={{ padding: '1rem 0' }}>Loading users...</div>}
+                  {!usersListLoading && !editingUser && (
+                    <div className="users-list">
+                      {usersList.length === 0 && <p style={{ color: 'var(--text-muted, #888)', fontSize: '0.9rem' }}>No users found.</p>}
+                      {usersList.map(u => (
+                        <div key={u.uid} className="user-list-row">
+                          <div className="user-list-info">
+                            <span className="user-list-email">{u.email || <em style={{ color: 'var(--text-muted,#888)' }}>no email stored</em>}</span>
+                            <span className="user-list-role">{u.role}{u.vendorName ? ` · ${u.vendorName}` : ''}</span>
+                          </div>
+                          <div className="user-list-actions">
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}
+                              onClick={() => setEditingUser({ ...u })}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}
+                              onClick={() => handleSendPasswordReset(u.email)}
+                            >
+                              Reset Password
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
-                  </div>
-                )}
-                <div className="form-actions">
-                  <button type="submit" className="btn-neon-cyan" disabled={addUserLoading}>
-                    {addUserLoading ? 'Creating...' : 'Create User'}
-                  </button>
+                  )}
+                  {!usersListLoading && editingUser && (
+                    <form onSubmit={handleUpdateUser} className="auth-form">
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <button type="button" className="btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setEditingUser(null)}>
+                          ← Back to list
+                        </button>
+                      </div>
+                      <div className="profile-info" style={{ marginBottom: '1rem' }}>
+                        <div className="profile-info-row">
+                          <span className="profile-info-label">Email</span>
+                          <span className="profile-info-value">{editingUser.email || '—'}</span>
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>Role</label>
+                        <div className="add-user-role-row">
+                          <label className="add-user-role-opt">
+                            <input type="radio" name="edit-role" value="admin" checked={editingUser.role === 'admin'} onChange={() => setEditingUser(u => ({ ...u, role: 'admin', vendorName: '', permissions: undefined }))} disabled={editUserLoading} />
+                            Admin
+                          </label>
+                          <label className="add-user-role-opt">
+                            <input type="radio" name="edit-role" value="vendor" checked={editingUser.role === 'vendor'} onChange={() => setEditingUser(u => ({ ...u, role: 'vendor', vendorName: u.vendorName || '', permissions: u.permissions || { viewDelivered: false, viewItems: true, viewPayments: false, editTracking: true } }))} disabled={editUserLoading} />
+                            Vendor
+                          </label>
+                        </div>
+                      </div>
+                      {editingUser.role === 'vendor' && (
+                        <>
+                          <div className="form-group">
+                            <label htmlFor="edit-vendor-name">Vendor Name</label>
+                            <input
+                              type="text"
+                              id="edit-vendor-name"
+                              value={editingUser.vendorName || ''}
+                              onChange={(e) => setEditingUser(u => ({ ...u, vendorName: e.target.value.toUpperCase() }))}
+                              placeholder="e.g. JOSH"
+                              required
+                              disabled={editUserLoading}
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Permissions</label>
+                            <div className="add-user-perms">
+                              {[
+                                { key: 'viewItems', label: 'View Items & Costs' },
+                                { key: 'editTracking', label: 'Edit Tracking' },
+                                { key: 'viewDelivered', label: 'View Delivered Orders' },
+                                { key: 'viewPayments', label: 'View Payments' },
+                              ].map(({ key, label }) => (
+                                <label key={key} className="add-user-perm-row">
+                                  <input
+                                    type="checkbox"
+                                    checked={editingUser.permissions?.[key] ?? false}
+                                    onChange={(e) => setEditingUser(u => ({ ...u, permissions: { ...u.permissions, [key]: e.target.checked } }))}
+                                    disabled={editUserLoading}
+                                  />
+                                  {label}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      <div className="form-actions">
+                        <button type="submit" className="btn-neon-cyan" disabled={editUserLoading}>
+                          {editUserLoading ? 'Saving...' : 'Save Changes'}
+                        </button>
+                        <button type="button" className="btn-secondary" onClick={() => handleSendPasswordReset(editingUser.email)} disabled={editUserLoading}>
+                          Send Password Reset Email
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showProfileModal && (
-        <div className="next-order-modal-overlay open" onClick={() => setShowProfileModal(false)}>
-          <div className="next-order-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="next-order-modal-header">
-              <h3>My Profile</h3>
-              <button className="next-order-modal-close" onClick={() => setShowProfileModal(false)}>Cancel</button>
-            </div>
-            <div className="next-order-modal-body">
-              <div className="profile-info">
-                <div className="profile-info-row"><span className="profile-info-label">Email</span><span className="profile-info-value">{user?.email || '—'}</span></div>
-                <div className="profile-info-row"><span className="profile-info-label">Vendor</span><span className="profile-info-value">{userProfile?.vendorName || '—'}</span></div>
-              </div>
-              <form onSubmit={handleChangePassword} className="auth-form" style={{ marginTop: '1.25rem' }}>
-                <div className="form-group">
-                  <label htmlFor="profile-current">Current Password</label>
-                  <input type="password" id="profile-current" value={profileCurrentPassword} onChange={(e) => setProfileCurrentPassword(e.target.value)} placeholder="• • • • • •" required disabled={profileLoading} />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="profile-new">New Password</label>
-                  <input type="password" id="profile-new" value={profileNewPassword} onChange={(e) => setProfileNewPassword(e.target.value)} placeholder="• • • • • •" required minLength={6} disabled={profileLoading} />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="profile-new2">Confirm New Password</label>
-                  <input type="password" id="profile-new2" value={profileNewPassword2} onChange={(e) => setProfileNewPassword2(e.target.value)} placeholder="• • • • • •" required minLength={6} disabled={profileLoading} />
-                </div>
-                <div className="form-actions">
-                  <button type="submit" className="btn-neon-cyan" disabled={profileLoading}>
-                    {profileLoading ? 'Updating...' : 'Change Password'}
-                  </button>
-                </div>
-              </form>
+              )}
             </div>
           </div>
         </div>

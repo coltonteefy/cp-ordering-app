@@ -50,6 +50,63 @@ function copyToClipboard(text) {
   }
 }
 
+function TrackingAlerts({ problems }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const returns = problems.filter((p) => p.isReturn);
+  const exceptions = problems.filter((p) => !p.isReturn);
+
+  const copyAll = () => {
+    const text = problems.map((p) => `${p.trackingNum}  ${p.label}  (${p.vendor} / ${p.orderId})`).join('\n');
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="tracking-alerts-wrap">
+      <div className="tracking-alerts-header" onClick={() => setCollapsed((c) => !c)}>
+        <div className="ta-header-left">
+          <span className="ta-icon">⚠</span>
+          <span className="ta-title">Tracking Issues</span>
+          {returns.length > 0 && <span className="ta-badge ta-badge-return">{returns.length} Returned</span>}
+          {exceptions.length > 0 && <span className="ta-badge ta-badge-exception">{exceptions.length} Exception</span>}
+        </div>
+        <div className="ta-header-right">
+          <button className={`ta-copy-btn${copied ? ' copied' : ''}`} onClick={(e) => { e.stopPropagation(); copyAll(); }}>
+            {copied ? '✓ Copied' : '⎘ Copy All'}
+          </button>
+          <span className="ta-chevron">{collapsed ? '▸' : '▾'}</span>
+        </div>
+      </div>
+      {!collapsed && (
+        <div className="tracking-alerts-body">
+          {problems.map((p, i) => (
+            <div key={i} className={`ta-row${p.isReturn ? ' ta-row-return' : ' ta-row-exception'}`}>
+              <span className={`ta-status-pill${p.isReturn ? ' ta-pill-return' : ' ta-pill-exception'}`}>
+                {p.isReturn ? 'Returned' : 'Exception'}
+              </span>
+              <button
+                className="ta-tracking-num"
+                onClick={() => { copyToClipboard(p.trackingNum); }}
+                title="Click to copy"
+              >
+                {p.trackingNum}
+              </button>
+              {p.items.length > 0 && (
+                <span className="ta-items">{p.items.map((it) => `${it.productName || it.product} ${it.productStrength || it.strength}`).join(', ')}</span>
+              )}
+              <span className="ta-vendor">{p.vendor}</span>
+              <span className="ta-order-id">{p.orderId}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProfile = null }) => {
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [copiedOrderType, setCopiedOrderType] = useState(null); // 'price' or 'no-price'
@@ -2581,8 +2638,45 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     return acc;
   }, {});
 
+  const problemTracking = orders.flatMap((order) => {
+    const entries = Array.isArray(order.trackingEntries)
+      ? order.trackingEntries
+      : Object.values(order.trackingEntries || {});
+    return entries.flatMap((entry) => {
+      const nums = getTrackingNumbers(entry.number);
+      const pnd = entry.perNumberData || {};
+      const delivered = new Set(entry.deliveredNumbers || []);
+      return nums
+        .filter((num) => {
+          if (delivered.has(num)) return false;
+          const sub = pnd[num]?.subStatus || '';
+          const trackSt = pnd[num]?.trackStatus || '';
+          return /return/i.test(sub) || /exception/i.test(sub) || /return/i.test(trackSt) || /exception/i.test(trackSt);
+        })
+        .map((num) => {
+          const sub = pnd[num]?.subStatus || '';
+          const trackSt = pnd[num]?.trackStatus || '';
+          const isReturn = /return/i.test(sub) || /return/i.test(trackSt);
+          const assignedItems = (Array.isArray(entry.itemIds) ? entry.itemIds : [])
+            .map((id) => (order.items || []).find((i) => i.itemId === id))
+            .filter(Boolean);
+          return {
+            orderId: order.id,
+            vendor: order.vendor || 'TSC',
+            trackingNum: num,
+            isReturn,
+            label: isReturn ? 'Returned to Sender' : `Exception: ${(sub || trackSt).replace('Exception_', '').replace(/([A-Z])/g, ' $1').trim()}`,
+            items: assignedItems,
+          };
+        });
+    });
+  });
+
   return (
     <div className="submitted-orders-section">
+      {!deliveredOnly && problemTracking.length > 0 && (
+        <TrackingAlerts problems={problemTracking} />
+      )}
       {!deliveredOnly && (
         <div className="orders-group">
           <div className="pending-top-bar">

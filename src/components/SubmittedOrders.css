@@ -4164,3 +4164,150 @@
 .odt-panel {
   padding: 1rem 1.25rem 1.25rem;
 }
+
+/* ── Tracking Alerts Banner ── */
+.tracking-alerts-wrap {
+  border: 1.5px solid #e8a030;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+  background: #fffbf4;
+}
+
+.tracking-alerts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 1rem;
+  background: #fff8ec;
+  cursor: pointer;
+  user-select: none;
+  gap: 1rem;
+}
+
+.ta-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ta-icon {
+  font-size: 1rem;
+  color: #c07a10;
+}
+
+.ta-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #2f2218;
+}
+
+.ta-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+}
+
+.ta-badge-return {
+  background: #ffe0e0;
+  color: #a02020;
+}
+
+.ta-badge-exception {
+  background: #fff0d0;
+  color: #8a5a00;
+}
+
+.ta-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ta-copy-btn {
+  background: none;
+  border: 1px solid #e0a030;
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8a5a10;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ta-copy-btn:hover { background: #fff0d8; }
+.ta-copy-btn.copied { color: #4a8a4a; border-color: #4a8a4a; }
+
+.ta-chevron {
+  font-size: 0.8rem;
+  color: #a08060;
+}
+
+.tracking-alerts-body {
+  padding: 0.5rem 0;
+}
+
+.ta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid #f0e8dc;
+  flex-wrap: wrap;
+}
+
+.ta-row:last-child { border-bottom: none; }
+
+.ta-row-return { background: #fff8f8; }
+.ta-row-exception { background: #fffdf4; }
+
+.ta-status-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ta-pill-return { background: #ffe0e0; color: #a02020; }
+.ta-pill-exception { background: #fff0d0; color: #8a5a00; }
+
+.ta-tracking-num {
+  font-family: monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #3a5a8a;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline dotted;
+  flex-shrink: 0;
+}
+
+.ta-tracking-num:hover { color: #1a3a6a; }
+
+.ta-items {
+  font-size: 0.78rem;
+  color: #6a5040;
+  flex: 1;
+  min-width: 0;
+}
+
+.ta-vendor {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #8a7060;
+  flex-shrink: 0;
+}
+
+.ta-order-id {
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: #b0a090;
+  flex-shrink: 0;
+}

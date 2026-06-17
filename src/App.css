@@ -1361,3 +1361,48 @@ body {
   font-weight: 700;
   color: #2f2218;
 }
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.user-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  background: #fdf6ee;
+  border: 1px solid #e8ddd0;
+  border-radius: 8px;
+}
+
+.user-list-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.user-list-email {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #2f2218;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-list-role {
+  font-size: 0.75rem;
+  color: #a08060;
+  text-transform: capitalize;
+}
+
+.user-list-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}

@@ -1,6 +1,24 @@
 import { Readable } from 'node:stream';
 import Busboy from 'busboy';
 import { extractText } from 'unpdf';
+import { initializeApp as initAdminApp, cert, getApps as getAdminApps } from 'firebase-admin/app';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+
+const WEBHOOK_SECRET = process.env.SEVENTEEN_TRACK_WEBHOOK_SECRET || '';
+
+function getAdminDb() {
+  if (!getAdminApps().length) {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
+    if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON env var not set.');
+    initAdminApp({ credential: cert(JSON.parse(raw)) });
+  }
+  return getAdminFirestore();
+}
+
+function getTrackingNums(raw) {
+  if (!raw) return [];
+  return String(raw).replace(/\r/g, '\n').split(/[\n,;|]+/).map(v => v.trim()).filter(v => v.length >= 6);
+}
 
 const COA_BASE_URL = 'https://coas.freedomdiagnosticstesting.com';
 const SEVENTEEN_TRACK_API_KEY = process.env.SEVENTEEN_TRACK_API_KEY || '';
@@ -545,6 +563,67 @@ export const handler = async (event) => {
       });
 
       return jsonResponse(200, { results, rejected });
+    }
+
+    if (pathname.endsWith('/17track/webhook') && event.httpMethod === 'POST') {
+      // Optional shared secret check
+      if (WEBHOOK_SECRET) {
+        const provided = (event.queryStringParameters || {}).secret || '';
+        if (provided !== WEBHOOK_SECRET) return jsonResponse(401, { error: 'Unauthorized.' });
+      }
+
+      const body = JSON.parse(event.body || '{}');
+      const updates = Array.isArray(body.data) ? body.data : [];
+      if (!updates.length) return jsonResponse(200, { ok: true, processed: 0 });
+
+      const adminDb = getAdminDb();
+      const snap = await adminDb.collection('c&pProductOrders').get();
+      const orders = snap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
+
+      let processed = 0;
+
+      for (const update of updates) {
+        const trackNum = String(update.number || '').trim();
+        if (!trackNum) continue;
+
+        const latestStatus = update.track_info?.latest_status?.status || '';
+        const isDelivered = latestStatus === 'Delivered';
+        const latestEvent = update.track_info?.latest_event;
+        const rawDesc = latestEvent?.description || '';
+        const latestDesc = KNOWN_STATUSES.has(latestStatus) ? latestStatus : (rawDesc && isAscii(rawDesc) ? rawDesc : latestStatus);
+        const rawLocation = latestEvent?.location || '';
+        const currentLocation = rawLocation && isAscii(rawLocation) ? rawLocation : null;
+        const lastUpdated = latestEvent?.time_utc || null;
+        const timeMetrics = update.track_info?.time_metrics;
+        const estFrom = timeMetrics?.estimated_delivery_date?.from || null;
+        const estTo = timeMetrics?.estimated_delivery_date?.to || null;
+        const estimatedDelivery = !isDelivered ? (estTo || estFrom || null) : null;
+        const deliveryDate = isDelivered ? lastUpdated : null;
+        const pndPatch = { trackStatus: latestDesc || null, lastUpdated, currentLocation, estimatedDelivery, deliveryDate, rejected: null };
+
+        for (const order of orders) {
+          const entries = order.trackingEntries || [];
+          let changed = false;
+
+          const updatedEntries = entries.map(entry => {
+            const nums = getTrackingNums(entry.number);
+            if (!nums.includes(trackNum)) return entry;
+            changed = true;
+            const pnd = { ...(entry.perNumberData || {}), [trackNum]: { ...(entry.perNumberData?.[trackNum] || {}), ...pndPatch } };
+            const pending = isDelivered
+              ? [...new Set([...(entry.pendingDeliveryNumbers || []), trackNum])]
+              : (entry.pendingDeliveryNumbers || []);
+            return { ...entry, perNumberData: pnd, pendingDeliveryNumbers: pending };
+          });
+
+          if (changed) {
+            await order.ref.update({ trackingEntries: updatedEntries });
+            processed++;
+          }
+        }
+      }
+
+      return jsonResponse(200, { ok: true, processed });
     }
 
     return jsonResponse(404, { error: 'Not found.' });
