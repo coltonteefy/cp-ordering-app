@@ -3040,7 +3040,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
     return acc;
   }, {});
 
-  const problemTracking = orders.flatMap((order) => {
+  const problemTracking = filteredPendingOrders.flatMap((order) => {
     const entries = Array.isArray(order.trackingEntries)
       ? order.trackingEntries
       : Object.values(order.trackingEntries || {});
@@ -3169,13 +3169,15 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                   const date = new Date(o.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                   const isSelected = selectedOrderId === o.id;
                   const fmt0 = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                  const isFullyDelivered = totalKits > 0 && deliveredKits >= totalKits;
                   return (
                     <button
                       key={o.id}
-                      className={`opc-card${isSelected ? ' opc-card--selected' : ''}`}
+                      className={`opc-card${isSelected ? ' opc-card--selected' : ''}${isFullyDelivered ? ' opc-card--delivered' : ''}`}
                       onClick={() => setSelectedOrderId(o.id)}
                     >
-                      <div className="opc-accent" style={{ background: color }} />
+                      <div className="opc-accent" style={{ background: isFullyDelivered ? '#16a34a' : color }} />
+                      {isFullyDelivered && <div className="opc-delivered-overlay"><span>DELIVERED</span></div>}
                       <div className="opc-content">
                         <div className="opc-top">
                           <span className="opc-vendor">{o.vendor || 'TSC'}</span>

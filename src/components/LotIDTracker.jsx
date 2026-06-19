@@ -4,6 +4,7 @@ import { collection, onSnapshot, updateDoc, doc, getDocs } from "firebase/firest
 import { db } from "../firebaseConfig";
 import "./LotIDTracker.css";
 
+
 const createEmptyCOA = () => ({ lot: "", url: "", capColor: "", capShade: "" });
 const coaListSafe = (arr) => (Array.isArray(arr) ? arr : []);
 const buildCoaUrl = (id) => (id ? `https://coffeeandpeppers.com/${id}` : "");
@@ -2917,6 +2918,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       return "lot-testing-lot-cell";
     };
 
+
   return (
     <>
     <div className="lot-id-tracker-container">
@@ -4407,7 +4409,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                 <button
                   className="lot-modal-btn secondary"
                   onClick={() => {
-                    const rows = [["Product ID", "Product Name", "Lot ID", "Cap Color"]];
+                    const rows = [["Product ID", "Product Name", "Lot ID", "Cap Color", "Vendor"]];
                     products
                       .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
                       .forEach((p) => {
@@ -4419,6 +4421,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                             p.product || "",
                             coa.lot || "",
                             coa.capColor || "",
+                            coa.vendor || "",
                           ]);
                         });
                       });

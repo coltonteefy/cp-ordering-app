@@ -704,6 +704,7 @@
 }
 
 .vendor-wallet-add-btn {
+  background: #c0392b;
   color: #fff;
   border: none;
   border-radius: 14px;

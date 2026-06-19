@@ -463,6 +463,7 @@
 
 /* Order picker cards */
 .opc-card {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -489,6 +490,37 @@
   border-color: #8f5e2a;
   background: #fdf7f0;
   box-shadow: 0 4px 16px rgba(93,58,26,0.18);
+}
+
+.opc-card--delivered {
+  border-color: #86efac;
+}
+
+.opc-delivered-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.opc-delivered-overlay span {
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(22, 101, 52, 0.82);
+  border: 3px solid rgba(22, 101, 52, 0.82);
+  outline: 1.5px solid rgba(22, 101, 52, 0.35);
+  outline-offset: 3px;
+  padding: 0.25rem 0.7rem;
+  border-radius: 3px;
+  transform: rotate(-18deg);
+  text-shadow: 1px 1px 0 rgba(22, 101, 52, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(22, 101, 52, 0.15);
+  mix-blend-mode: multiply;
 }
 
 .opc-accent {

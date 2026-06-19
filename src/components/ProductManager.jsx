@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 import { db } from '../firebaseConfig';
 import './ProductManager.css';
 
@@ -55,8 +56,15 @@ const ProductManager = ({ onSuccess, onError }) => {
   const [walletEditForm, setWalletEditForm] = useState({ label: '', address: '' });
   const [selectedWalletLabelPreset, setSelectedWalletLabelPreset] = useState('USDC');
   const [editingProduct, setEditingProduct] = useState(null);
-  const [editProductForm, setEditProductForm] = useState({ product: '', strength: '', price: 0, priceHK: 0 });
+  const [editProductForm, setEditProductForm] = useState({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
   const [showMasterPricing, setShowMasterPricing] = useState(false);
+  const [showNewVendorModal, setShowNewVendorModal] = useState(false);
+  const [newVendorName, setNewVendorName] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importPasteText, setImportPasteText] = useState('');
+  const [showExtractModal, setShowExtractModal] = useState(false);
+  const [extractedProducts, setExtractedProducts] = useState([]);
+  const [extractError, setExtractError] = useState('');
 
   const saveAllToFirestore = useCallback(async () => {
     try {
@@ -72,7 +80,7 @@ const ProductManager = ({ onSuccess, onError }) => {
           canvaTemplateUrl: product.canvaTemplateUrl || '',
           currentCoa: product.currentCoa || { lot: '', url: '' },
           pastCoas: product.pastCoas || []
-        });
+        }, { merge: true });
       }
       onSuccess('All products saved to Firestore!', 'Success');
     } catch (error) {
@@ -95,7 +103,7 @@ const ProductManager = ({ onSuccess, onError }) => {
           canvaTemplateUrl: product.canvaTemplateUrl || '',
           currentCoa: product.currentCoa || { lot: '', url: '' },
           pastCoas: product.pastCoas || []
-        });
+        }, { merge: true });
       }
       onSuccess('Products copied to c&pProductList with extended fields.', 'Success');
     } catch (error) {
@@ -313,9 +321,9 @@ const ProductManager = ({ onSuccess, onError }) => {
         .filter(p => (p.vendor || 'TSC') === 'TSC')
         .sort((a, b) => (a.product || '').localeCompare(b.product || '') || (a.strength || '').localeCompare(b.strength || ''));
     }
-    // Non-TSC: full catalog (TSC products) + any vendor-exclusive products
+    // Non-TSC: show all TSC products + any vendor-specific products
     return products
-      .filter(p => (p.vendor || 'TSC') === 'TSC' || p.vendor === activeProfile.name)
+      .filter(p => (p.vendor || 'TSC') === 'TSC' || p.vendor === activeProfile.name || p.vendorPricing?.[activeProfile.name] !== undefined)
       .sort((a, b) => (a.product || '').localeCompare(b.product || '') || (a.strength || '').localeCompare(b.strength || ''));
   }, [products, activeProfile, isTSC]);
 
@@ -330,7 +338,7 @@ const ProductManager = ({ onSuccess, onError }) => {
       .map(v => {
         const count = v.name === 'TSC'
           ? products.filter(p => (p.vendor || 'TSC') === 'TSC').length
-          : products.filter(p => (p.vendor || 'TSC') === 'TSC' || p.vendor === v.name).length;
+          : products.filter(p => p.vendor === v.name || p.vendorPricing?.[v.name] !== undefined).length;
         return { id: v.id, name: v.name, count };
       });
   }, [vendors, products]);
@@ -358,7 +366,7 @@ const ProductManager = ({ onSuccess, onError }) => {
         canvaTemplateUrl: product.canvaTemplateUrl || '',
         currentCoa: product.currentCoa || { lot: '', url: '' },
         pastCoas: product.pastCoas || []
-      });
+      }, { merge: true });
       setProducts(prev =>
         prev.map(p =>
           p.docId === product.docId
@@ -511,6 +519,7 @@ const ProductManager = ({ onSuccess, onError }) => {
     setEditingProduct(product);
     if (isTSC) {
       setEditProductForm({
+        id: product.id || product.docId || '',
         product: product.product,
         strength: product.strength,
         price: product.warehouseCosts?.US || 0,
@@ -520,6 +529,7 @@ const ProductManager = ({ onSuccess, onError }) => {
       const legacyKey = `${product.product}__${product.strength}`;
       const legacyPrice = activeProfile?.products?.[legacyKey]?.price || 0;
       setEditProductForm({
+        id: product.id || product.docId || '',
         product: product.product,
         strength: product.strength,
         price: product.vendorPricing?.[activeProfile.name]?.price ?? legacyPrice,
@@ -542,9 +552,11 @@ const ProductManager = ({ onSuccess, onError }) => {
     try {
       const docId = editingProduct.docId;
 
+      const trimmedId = editProductForm.id?.trim() || '';
       if (isTSC) {
         // TSC: update warehouseCosts on the product doc
         await setDoc(doc(db, 'c&pProductList', docId), {
+          ...(trimmedId ? { id: trimmedId } : {}),
           product: trimmedProduct,
           strength: trimmedStrength,
           warehouseCosts: {
@@ -560,9 +572,12 @@ const ProductManager = ({ onSuccess, onError }) => {
           // Vendor-specific product: can rename + update price
           const newDocId = buildDocId(trimmedProduct, trimmedStrength);
           if (newDocId !== docId) {
-            // Name/strength changed — create new doc, delete old
+            // Name/strength changed — fetch full existing doc first to preserve lot/label data
+            const existingSnap = await getDoc(doc(db, 'c&pProductList', docId));
+            const existingData = existingSnap.exists() ? existingSnap.data() : {};
             await setDoc(doc(db, 'c&pProductList', newDocId), {
-              id: newDocId,
+              ...existingData,
+              id: trimmedId || newDocId,
               product: trimmedProduct,
               strength: trimmedStrength,
               warehouseCosts: editingProduct.warehouseCosts || { US: 0, HK: 0 },
@@ -572,12 +587,11 @@ const ProductManager = ({ onSuccess, onError }) => {
                 [vendorName]: { price: parseFloat(editProductForm.price) || 0 }
               },
               canvaTemplateUrl: editingProduct.canvaTemplateUrl || '',
-              currentCoa: editingProduct.currentCoa || { lot: '', url: '' },
-              pastCoas: editingProduct.pastCoas || []
             });
             await deleteDoc(doc(db, 'c&pProductList', docId));
           } else {
             await setDoc(doc(db, 'c&pProductList', docId), {
+              ...(trimmedId ? { id: trimmedId } : {}),
               product: trimmedProduct,
               strength: trimmedStrength,
               vendorPricing: {
@@ -598,7 +612,7 @@ const ProductManager = ({ onSuccess, onError }) => {
       }
 
       setEditingProduct(null);
-      setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+      setEditProductForm({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
       onSuccess('Product updated');
     } catch (error) {
       console.error('Error updating product:', error);
@@ -627,7 +641,7 @@ const ProductManager = ({ onSuccess, onError }) => {
       }
 
       setEditingProduct(null);
-      setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+      setEditProductForm({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
       onSuccess('Product deleted');
     } catch (error) {
       console.error('Error deleting product:', error);
@@ -666,7 +680,7 @@ const ProductManager = ({ onSuccess, onError }) => {
           canvaTemplateUrl: data.canvaTemplateUrl || '',
           currentCoa: data.currentCoa || { lot: '', url: '' },
           pastCoas: data.pastCoas || []
-        });
+        }, { merge: true });
         migratedCount++;
       }
 
@@ -674,6 +688,263 @@ const ProductManager = ({ onSuccess, onError }) => {
     } catch (error) {
       console.error('Error migrating products:', error);
       onError('Failed to migrate products: ' + error.message, 'Error');
+    }
+  };
+
+  const createNewVendor = async () => {
+    const name = newVendorName.trim();
+    if (!name) {
+      onError('Enter a vendor name.', 'Notice');
+      return;
+    }
+    const vendorId = name.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+    if (vendors.some(v => v.id === vendorId || v.name.toLowerCase() === name.toLowerCase())) {
+      onError('A vendor with that name already exists.', 'Notice');
+      return;
+    }
+    try {
+      await setDoc(doc(db, 'c&pVendors', vendorId), {
+        name,
+        products: {},
+        createdAt: new Date().toISOString(),
+      });
+      setSelectedVendorProfile(vendorId);
+      setNewVendorName('');
+      setShowNewVendorModal(false);
+      setShowMasterPricing(false);
+      onSuccess(`Vendor "${name}" created!`);
+    } catch (error) {
+      onError('Failed to create vendor: ' + error.message, 'Error');
+    }
+  };
+
+
+  const deleteVendor = async (vendorId) => {
+    const vendor = vendors.find(v => v.id === vendorId);
+    if (!vendor) return;
+    if (!window.confirm(`Delete vendor "${vendor.name}"? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, 'c&pVendors', vendorId));
+      const fallback = vendors.find(v => v.id !== vendorId)?.id || '';
+      setSelectedVendorProfile(fallback);
+      setShowMasterPricing(false);
+      onSuccess(`Vendor "${vendor.name}" deleted.`);
+    } catch (error) {
+      onError('Failed to delete vendor: ' + error.message, 'Error');
+    }
+  };
+
+  const findProductMatch = (name, strength) => {
+    const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const sigWords = s => String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length >= 3);
+
+    const nName = norm(name);
+    const nStrength = norm(strength);
+    if (!nName) return null;
+
+    const strengthFits = (p) => {
+      if (!nStrength) return true;
+      const ps = norm(p.strength || '');
+      const prefix = norm((strength || '').split(/[*x]/i)[0]);
+      return ps === nStrength || ps === prefix || nStrength.startsWith(ps) || ps.startsWith(nStrength);
+    };
+
+    // 1. Exact docId
+    const exactId = buildDocId(name, strength || '');
+    const exact = products.find(p => (p.docId || buildDocId(p.product, p.strength)) === exactId);
+    if (exact) return exact;
+
+    // 2. Normalized name + strength
+    const byNorm = products.find(p => norm(p.product) === nName && norm(p.strength || '') === nStrength);
+    if (byNorm) return byNorm;
+
+    // 3. Normalized name only
+    const byName = products.filter(p => norm(p.product) === nName);
+    if (byName.length === 1) return byName[0];
+    if (byName.length > 1) {
+      const hit = byName.find(strengthFits);
+      if (hit) return hit;
+    }
+
+    // 4. All significant words of the existing product appear in the pasted name
+    // e.g. "GLOW" (words: ["glow"]) inside "Glow (BPC10mg+TB500...)" → match
+    const pastedWords = sigWords(name);
+    const wordMatches = products.filter(p => {
+      const pw = sigWords(p.product);
+      return pw.length > 0 && pw.every(w => pastedWords.includes(w));
+    });
+    // Always require strength to fit — avoids matching TB-500 10mg to a pasted "TB500 5mg"
+    if (wordMatches.length === 1 && strengthFits(wordMatches[0])) return wordMatches[0];
+    if (wordMatches.length > 1) {
+      const hit = wordMatches.find(strengthFits);
+      if (hit) return hit;
+    }
+
+    // 5. Normalized name starts with (or contains) the existing product's normalized name
+    // e.g. pasted "semaglutide10mg10vials" starts with "semaglutide" → match product "Semaglutide"
+    const subMatches = products.filter(p => {
+      const pn = norm(p.product);
+      return pn.length >= 4 && (nName.startsWith(pn) || pn.startsWith(nName) || nName.includes(pn));
+    });
+    if (subMatches.length === 1 && strengthFits(subMatches[0])) return subMatches[0];
+    if (subMatches.length > 1) {
+      const hit = subMatches.find(strengthFits);
+      if (hit) return hit;
+    }
+
+    return null;
+  };
+
+  const parseSheetRows = (rawRows) => {
+    const clean = (v) => String(v ?? '').replace(/^["'\s]+|["'\s]+$/g, '').trim();
+    const nonEmpty = rawRows.filter(r => r.some(c => clean(c)));
+    if (nonEmpty.length === 0) return [];
+    const first = nonEmpty[0].map(c => clean(c).toLowerCase());
+    const hasHeader = first.some(c => /name|product|item|description|price|cost|strength|size/.test(c));
+    const dataRows = hasHeader ? nonEmpty.slice(1) : nonEmpty;
+    let nameIdx = 0, strengthIdx = -1, costIdx = -1;
+    if (hasHeader) {
+      nameIdx = first.findIndex(c => /name|product|item|description/.test(c));
+      strengthIdx = first.findIndex(c => /strength|size|weight|unit|volume/.test(c));
+      costIdx = first.findIndex(c => /price|cost|rate|amount/.test(c));
+      if (nameIdx === -1) nameIdx = 0;
+    } else {
+      const cols = nonEmpty[0].length;
+      if (cols === 1) { nameIdx = 0; }
+      else if (cols === 2) {
+        // If second column looks like a price (pure number), treat as cost; else strength
+        const secondVal = clean(nonEmpty[0][1]);
+        const looksLikePrice = /^\$?[\d,]+(\.\d+)?$/.test(secondVal);
+        if (looksLikePrice) { nameIdx = 0; costIdx = 1; }
+        else { nameIdx = 0; strengthIdx = 1; }
+      } else {
+        nameIdx = 0; strengthIdx = 1; costIdx = 2;
+      }
+    }
+    return dataRows
+      .map(row => {
+        const name = clean(row[nameIdx]);
+        const rawStrength = strengthIdx >= 0 ? clean(row[strengthIdx]) : '';
+        // Strip vial count suffix: "10mg*10vials" → "10mg", "36iu*10 vials" → "36iu"
+        const strength = rawStrength.replace(/\s*[*×x]\s*\d+\s*vials?/gi, '').trim();
+        const rawCost = costIdx >= 0 ? clean(row[costIdx]) : '';
+        const cost = parseFloat(rawCost.replace(/[^0-9.]/g, '')) || 0;
+        return { name, strength, cost, selected: true };
+      })
+      .filter(p => p.name);
+  };
+
+  const parsePasteText = (text) => {
+    if (!text.trim()) return [];
+    // Collapse quoted multiline cells (e.g. "Glow\n (BPC...)") into a single line
+    const collapsed = text.replace(/"[^"]*"/gs, m => m.replace(/\n\s*/g, ' ').replace(/\s+/g, ' '));
+    const lines = collapsed.split('\n').map(l => l.trim()).filter(l => l);
+
+    const tabCount = lines.reduce((n, l) => n + (l.match(/\t/g) || []).length, 0);
+    const commaCount = lines.reduce((n, l) => n + (l.match(/,(?!\s*\d{3})/g) || []).length, 0);
+    const multiSpaceCount = lines.reduce((n, l) => n + (l.match(/\S\s{2,}\S/g) || []).length, 0);
+
+    let rawRows;
+    if (tabCount > 0) {
+      rawRows = lines.map(l => l.split('\t'));
+    } else if (commaCount > multiSpaceCount) {
+      rawRows = lines.map(l => l.split(','));
+    } else {
+      // Space-separated: split on 2+ consecutive spaces
+      rawRows = lines.map(l => l.split(/\s{2,}/));
+    }
+    return parseSheetRows(rawRows);
+  };
+
+  const attachMatches = (rows) => rows.map(p => {
+    const matchedProduct = findProductMatch(p.name, p.strength);
+    const productId = matchedProduct
+      ? (matchedProduct.id || matchedProduct.docId)
+      : buildDocId(p.name, p.strength || '');
+    return { ...p, matchedProduct, productId };
+  });
+
+  const handleFileImport = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const parsed = attachMatches(parseSheetRows(rawRows));
+        if (parsed.length === 0) { setExtractError('No rows found in file.'); } else { setExtractError(''); }
+        setExtractedProducts(parsed);
+        setShowImportModal(false);
+        setShowExtractModal(true);
+      } catch (err) {
+        setExtractError(err.message);
+        setExtractedProducts([]);
+        setShowImportModal(false);
+        setShowExtractModal(true);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handlePasteImport = () => {
+    const text = importPasteText.trim();
+    if (!text) return;
+    const parsed = attachMatches(parsePasteText(text));
+    if (parsed.length === 0) { setExtractError('Could not parse any rows from the pasted text.'); } else { setExtractError(''); }
+    setExtractedProducts(parsed);
+    setImportPasteText('');
+    setShowImportModal(false);
+    setShowExtractModal(true);
+  };
+
+  const confirmExtractedProducts = async () => {
+    const toAdd = extractedProducts.filter(p => p.selected);
+    const vendorName = selectedVendorProfile && !showMasterPricing
+      ? (vendors.find(v => v.id === selectedVendorProfile)?.name || '')
+      : '';
+    let updated = 0, created = 0;
+    try {
+      const isTSCImport = !vendorName;
+      for (const p of toAdd) {
+        const cost = parseFloat(p.cost) || 0;
+        const existing = p.matchedProduct;
+        if (existing) {
+          const existingDocId = existing.docId || buildDocId(existing.product, existing.strength);
+          if (isTSCImport) {
+            await setDoc(doc(db, 'c&pProductList', existingDocId), {
+              warehouseCosts: { US: cost, HK: existing.warehouseCosts?.HK ?? 0 }
+            }, { merge: true });
+          } else {
+            const updatedPricing = { ...existing.vendorPricing, [vendorName]: { price: cost } };
+            await setDoc(doc(db, 'c&pProductList', existingDocId), { vendorPricing: updatedPricing }, { merge: true });
+          }
+          updated++;
+        } else {
+          const docId = buildDocId(p.name, p.strength || '');
+          await setDoc(doc(db, 'c&pProductList', docId), {
+            id: p.productId?.trim() || docId,
+            product: p.name,
+            strength: p.strength || '',
+            warehouseCosts: isTSCImport ? { US: cost, HK: 0 } : { US: 0, HK: 0 },
+            vendor: isTSCImport ? 'TSC' : vendorName,
+            vendorPricing: isTSCImport ? {} : { [vendorName]: { price: cost } },
+            canvaTemplateUrl: '',
+            currentCoa: { lot: '', url: '' },
+            pastCoas: [],
+          });
+          created++;
+        }
+      }
+      setShowExtractModal(false);
+      setExtractedProducts([]);
+      const parts = [];
+      if (updated) parts.push(`${updated} matched`);
+      if (created) parts.push(`${created} new`);
+      onSuccess(`Saved ${parts.join(', ')} product${toAdd.length !== 1 ? 's' : ''}!`);
+    } catch (err) {
+      onError('Failed to save products: ' + err.message, 'Error');
     }
   };
 
@@ -742,19 +1013,40 @@ const ProductManager = ({ onSuccess, onError }) => {
       <div className="vendor-profiles-header">
         <div className="vendor-profile-tabs">
           {vendorOptions.map(v => {
-              const vColor = v.id === selectedVendorProfile
+              const isActive = v.id === selectedVendorProfile && !showMasterPricing;
+              const vColor = isActive
                 ? (vendors.find(x => x.id === v.id)?.color || vendorColor(v.name))
                 : undefined;
+              const isTSCTab = v.name === 'TSC';
               return (
-                <button
-                  key={v.id}
-                  className={`vendor-profile-tab${v.id === selectedVendorProfile && !showMasterPricing ? ' active' : ''}`}
-                  style={v.id === selectedVendorProfile && !showMasterPricing ? { background: vColor, borderColor: vColor } : undefined}
-                  onClick={() => { setSelectedVendorProfile(v.id); setShowAddForm(false); setShowMasterPricing(false); }}
-                >
-                  {v.name}
-                  <span className="vendor-profile-tab-count">{v.count}</span>
-                </button>
+                <div key={v.id} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                  <button
+                    className={`vendor-profile-tab${isActive ? ' active' : ''}`}
+                    style={{
+                      ...(isActive ? { background: vColor, borderColor: vColor } : undefined),
+                      ...((!isTSCTab) ? { paddingRight: '28px' } : undefined),
+                    }}
+                    onClick={() => { setSelectedVendorProfile(v.id); setShowAddForm(false); setShowMasterPricing(false); }}
+                  >
+                    {v.name}
+                    <span className="vendor-profile-tab-count">{v.count}</span>
+                  </button>
+                  {!isTSCTab && (
+                    <button
+                      title={`Delete ${v.name}`}
+                      onClick={(e) => { e.stopPropagation(); deleteVendor(v.id); }}
+                      style={{
+                        position: 'absolute', right: '4px',
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: isActive ? 'rgba(255,255,255,0.7)' : '#666',
+                        fontSize: '11px', padding: '2px 3px', lineHeight: 1,
+                        borderRadius: '3px',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               );
             })}
           <button
@@ -764,11 +1056,258 @@ const ProductManager = ({ onSuccess, onError }) => {
           >
             Master Pricing
           </button>
+          <button
+            className="vendor-profile-tab"
+            style={{ borderStyle: 'dashed', opacity: 0.7 }}
+            onClick={() => setShowNewVendorModal(true)}
+            title="Create a new vendor"
+          >
+            + New Vendor
+          </button>
         </div>
+        {showNewVendorModal && ReactDOM.createPortal(
+          <div className="vendor-wallet-modal-backdrop" onClick={() => { setShowNewVendorModal(false); setNewVendorName(''); }}>
+            <div className="vendor-wallet-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="vendor-wallet-modal-header">
+                <div>
+                  <h3 className="vendor-wallet-modal-title">New Vendor</h3>
+                  <p className="vendor-wallet-modal-subtitle">Create a new vendor profile.</p>
+                </div>
+                <button className="vendor-wallet-modal-close" onClick={() => { setShowNewVendorModal(false); setNewVendorName(''); }}>Cancel</button>
+              </div>
+              <div className="vendor-wallet-modal-body">
+                <div className="form-group">
+                  <label>Vendor Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., ALLEN"
+                    value={newVendorName}
+                    onChange={(e) => setNewVendorName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && createNewVendor()}
+                    className="vendor-wallet-modal-input"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <div className="vendor-wallet-modal-actions">
+                <button className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary" onClick={() => { setShowNewVendorModal(false); setNewVendorName(''); }}>Cancel</button>
+                <button className="vendor-wallet-add-btn" onClick={createNewVendor} disabled={!newVendorName.trim()}>Create Vendor</button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+        {showImportModal && ReactDOM.createPortal(
+          <div className="vendor-wallet-modal-backdrop" onClick={() => setShowImportModal(false)}>
+            <div className="vendor-wallet-modal" style={{ maxWidth: '520px', width: '90vw' }} onClick={(e) => e.stopPropagation()}>
+              <div className="vendor-wallet-modal-header">
+                <div>
+                  <h3 className="vendor-wallet-modal-title">Import Products</h3>
+                  <p className="vendor-wallet-modal-subtitle">Upload a CSV or XLSX file, or paste a list.</p>
+                </div>
+                <button className="vendor-wallet-modal-close" onClick={() => setShowImportModal(false)}>✕</button>
+              </div>
+              <div className="vendor-wallet-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#aaa' }}>Upload CSV or XLSX</label>
+                  <label
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '8px 16px', border: '1px dashed #555', borderRadius: '6px', fontSize: '13px', color: '#ccc' }}
+                  >
+                    Choose file
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      style={{ display: 'none' }}
+                      onChange={(e) => { handleFileImport(e.target.files[0]); e.target.value = ''; }}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#555', fontSize: '12px' }}>
+                  <div style={{ flex: 1, height: '1px', background: '#333' }} />
+                  or paste
+                  <div style={{ flex: 1, height: '1px', background: '#333' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#aaa' }}>
+                    Paste from Excel, a price list, etc.
+                  </label>
+                  <textarea
+                    className="vendor-wallet-modal-input"
+                    style={{ width: '100%', minHeight: '120px', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical', boxSizing: 'border-box' }}
+                    placeholder={"Product Name\tStrength\tCost\nCBD Oil\t500mg\t12.50\nCBD Gummies\t25mg\t8.00"}
+                    value={importPasteText}
+                    onChange={(e) => setImportPasteText(e.target.value)}
+                  />
+                  <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                    Columns: name, strength (optional), cost. Comma or tab separated. First row can be headers.
+                  </p>
+                </div>
+              </div>
+              <div className="vendor-wallet-modal-actions">
+                <button className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary" onClick={() => setShowImportModal(false)}>Cancel</button>
+                <button
+                  className="vendor-wallet-add-btn"
+                  onClick={handlePasteImport}
+                  disabled={!importPasteText.trim()}
+                >
+                  Parse List
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+        {showExtractModal && ReactDOM.createPortal(
+          <div className="vendor-wallet-modal-backdrop" onClick={() => setShowExtractModal(false)}>
+            <div className="vendor-wallet-modal" style={{ maxWidth: '860px', width: '95vw' }} onClick={(e) => e.stopPropagation()}>
+              <div className="vendor-wallet-modal-header">
+                <div>
+                  <h3 className="vendor-wallet-modal-title">Extracted Products</h3>
+                  <p className="vendor-wallet-modal-subtitle">Review and deselect any rows you don't want to add.</p>
+                </div>
+                <button className="vendor-wallet-modal-close" onClick={() => setShowExtractModal(false)}>✕</button>
+              </div>
+              <div className="vendor-wallet-modal-body" style={{ padding: 0 }}>
+                {extractError ? (
+                  <p style={{ color: '#f44', padding: '12px 16px' }}>{extractError}</p>
+                ) : extractedProducts.length === 0 ? (
+                  <p style={{ color: '#888', padding: '12px 16px' }}>No products found.</p>
+                ) : (
+                  <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'fixed' }}>
+                      <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary, #1e1e1e)', zIndex: 1 }}>
+                        <tr style={{ borderBottom: '1px solid #333' }}>
+                          <th style={{ padding: '8px', width: '32px' }}></th>
+                          <th style={{ padding: '8px', textAlign: 'left', width: '22%' }}>Product</th>
+                          <th style={{ padding: '8px', textAlign: 'left', width: '12%' }}>Strength</th>
+                          <th style={{ padding: '8px', textAlign: 'left', width: '16%' }}>ID</th>
+                          <th style={{ padding: '8px', textAlign: 'right', width: '9%' }}>Cost ($)</th>
+                          <th style={{ padding: '8px', textAlign: 'left' }}>Match</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {extractedProducts.map((p, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid #222', opacity: p.selected ? 1 : 0.4 }}>
+                            <td style={{ padding: '6px 8px' }}>
+                              <input
+                                type="checkbox"
+                                checked={p.selected}
+                                onChange={(e) => setExtractedProducts(prev => prev.map((row, j) => j === i ? { ...row, selected: e.target.checked } : row))}
+                              />
+                            </td>
+                            <td style={{ padding: '4px 8px' }}>
+                              <input
+                                className="vendor-wallet-modal-input"
+                                style={{ padding: '2px 6px', width: '100%' }}
+                                value={p.name}
+                                onChange={(e) => {
+                                  const name = e.target.value;
+                                  setExtractedProducts(prev => prev.map((row, j) => {
+                                    if (j !== i) return row;
+                                    const matched = findProductMatch(name, row.strength);
+                                    return { ...row, name, matchedProduct: matched, productId: matched ? (matched.id || matched.docId) : buildDocId(name, row.strength || '') };
+                                  }));
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '4px 8px' }}>
+                              <input
+                                className="vendor-wallet-modal-input"
+                                style={{ padding: '2px 6px', width: '100%' }}
+                                value={p.strength || ''}
+                                onChange={(e) => {
+                                  const strength = e.target.value;
+                                  setExtractedProducts(prev => prev.map((row, j) => {
+                                    if (j !== i) return row;
+                                    const matched = findProductMatch(row.name, strength);
+                                    return { ...row, strength, matchedProduct: matched, productId: matched ? (matched.id || matched.docId) : buildDocId(row.name, strength) };
+                                  }));
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '4px 8px' }}>
+                              {p.matchedProduct ? (
+                                <span style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace' }}>{p.productId}</span>
+                              ) : (
+                                <input
+                                  className="vendor-wallet-modal-input"
+                                  style={{ padding: '2px 6px', width: '90px', fontFamily: 'monospace', fontSize: '12px' }}
+                                  value={p.productId || ''}
+                                  placeholder="e.g. CP-2 TZ"
+                                  onChange={(e) => setExtractedProducts(prev => prev.map((row, j) => j === i ? { ...row, productId: e.target.value } : row))}
+                                />
+                              )}
+                            </td>
+                            <td style={{ padding: '4px 8px' }}>
+                              <input
+                                type="number"
+                                className="vendor-wallet-modal-input"
+                                style={{ padding: '2px 6px', width: '70px', textAlign: 'right' }}
+                                value={p.cost ?? 0}
+                                step="0.01"
+                                onChange={(e) => setExtractedProducts(prev => prev.map((row, j) => j === i ? { ...row, cost: parseFloat(e.target.value) || 0 } : row))}
+                              />
+                            </td>
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap' }}>
+                              {p.matchedProduct ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: '#1a3a1a', color: '#5cb85c', border: '1px solid #2a5a2a' }}>
+                                    {p.matchedProduct.product}{p.matchedProduct.strength ? ` · ${p.matchedProduct.strength}` : ''}
+                                  </span>
+                                  <button
+                                    title="Clear match — will create new product"
+                                    onClick={() => setExtractedProducts(prev => prev.map((row, j) => j === i ? { ...row, matchedProduct: null, productId: buildDocId(row.name, row.strength || '') } : row))}
+                                    style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '11px', padding: '0 2px' }}
+                                  >✕</button>
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: '#2a1a00', color: '#e6a020', border: '1px solid #5a3a00' }}>
+                                  New
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              {!extractError && extractedProducts.length > 0 && (
+                <div className="vendor-wallet-modal-actions">
+                  <button className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary" onClick={() => setShowExtractModal(false)}>Cancel</button>
+                  <button
+                    className="vendor-wallet-add-btn"
+                    onClick={confirmExtractedProducts}
+                    disabled={!extractedProducts.some(p => p.selected)}
+                  >
+                    {(() => {
+                      const sel = extractedProducts.filter(p => p.selected);
+                      const matched = sel.filter(p => p.matchedProduct).length;
+                      const newCount = sel.length - matched;
+                      const parts = [];
+                      if (matched) parts.push(`Update ${matched}`);
+                      if (newCount) parts.push(`Add ${newCount} New`);
+                      return parts.join(' · ') || 'Save';
+                    })()}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
         {!showMasterPricing && (
           <>
             <button onClick={() => setShowAddForm(true)} className="btn-neon-cyan">
               Add Product
+            </button>
+            <button
+              className="vendor-wallet-toggle-btn"
+              onClick={() => { setImportPasteText(''); setShowImportModal(true); }}
+              title="Import products from CSV, XLSX, or pasted text"
+            >
+              Import Products
             </button>
             <button
               className="vendor-wallet-toggle-btn"
@@ -1185,6 +1724,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                 <table className="vendor-profile-table">
                   <thead>
                     <tr>
+                      <th style={{ borderBottomColor: profileColor + '40' }}>ID</th>
                       <th style={{ borderBottomColor: profileColor + '40' }}>Product</th>
                       <th style={{ borderBottomColor: profileColor + '40' }}>Strength</th>
                       {isTSC
@@ -1206,6 +1746,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                       const hkPrice = p.warehouseCosts?.HK || 0;
                       return (
                         <tr key={p.docId || i}>
+                          <td style={{ fontFamily: 'monospace', fontSize: '12px', color: '#888', whiteSpace: 'nowrap' }}>{p.id || p.docId || '—'}</td>
                           <td className="product-table-name">{p.product}</td>
                           <td>{p.strength || '—'}</td>
                           <td className="vendor-profile-price" style={{ color: (isTSC ? catalogPrice : vendorPrice) > 0 ? profileColor : undefined }}>
@@ -1247,7 +1788,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                 className="vendor-wallet-modal-backdrop"
                 onClick={() => {
                   setEditingProduct(null);
-                  setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+                  setEditProductForm({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
                 }}
               >
                 <div
@@ -1266,7 +1807,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                       className="vendor-wallet-modal-close"
                       onClick={() => {
                         setEditingProduct(null);
-                        setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+                        setEditProductForm({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
                       }}
                     >
                       Cancel
@@ -1274,6 +1815,17 @@ const ProductManager = ({ onSuccess, onError }) => {
                   </div>
 
                   <div className="vendor-wallet-modal-body">
+                    <div className="form-group">
+                      <label>ID</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., CP-2 TZ"
+                        value={editProductForm.id || ''}
+                        onChange={(e) => setEditProductForm(prev => ({ ...prev, id: e.target.value }))}
+                        className="vendor-wallet-modal-input"
+                        style={{ fontFamily: 'monospace' }}
+                      />
+                    </div>
                     {/* Product name — editable for TSC or vendor-specific products, read-only for TSC products in non-TSC view */}
                     <div className="form-group">
                       <label>Product Name</label>
@@ -1334,7 +1886,7 @@ const ProductManager = ({ onSuccess, onError }) => {
                       className="vendor-wallet-toggle-btn vendor-wallet-toggle-btn-secondary"
                       onClick={() => {
                         setEditingProduct(null);
-                        setEditProductForm({ product: '', strength: '', price: 0, priceHK: 0 });
+                        setEditProductForm({ id: '', product: '', strength: '', price: 0, priceHK: 0 });
                       }}
                     >
                       Cancel
