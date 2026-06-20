@@ -140,15 +140,22 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
       }
       const coupons = await resp.json();
       setImportRows(
-        coupons.map((c) => ({
-          wooId: c.id,
-          code: c.code,
-          name: c.description || '',
-          paypalEmail: c.emailRestrictions[0] || '',
-          commissionRate: '10',
-          selected: !existingCodes.has(c.code.toLowerCase()),
-          alreadyExists: existingCodes.has(c.code.toLowerCase()),
-        }))
+        coupons.map((c) => {
+          const hasEmail = c.emailRestrictions.length > 0;
+          const alreadyExists = existingCodes.has(c.code.toLowerCase());
+          return {
+            wooId: c.id,
+            code: c.code,
+            name: c.description || '',
+            paypalEmail: c.emailRestrictions[0] || '',
+            commissionRate: '10',
+            discountType: c.discountType || '',
+            discountAmount: c.amount || '0',
+            isAffiliate: hasEmail,
+            selected: hasEmail && !alreadyExists,
+            alreadyExists,
+          };
+        })
       );
       setShowImport(true);
     } catch (err) {
@@ -463,6 +470,7 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
                       <th>Coupon Code</th>
                       <th>Name</th>
                       <th>PayPal Email</th>
+                      <th>Woo Discount</th>
                       <th>Rate (%)</th>
                       <th>Status</th>
                     </tr>
@@ -511,6 +519,13 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
                             }
                           />
                         </td>
+                        <td className="import-discount-cell">
+                          {row.discountType === 'percent'
+                            ? `${parseFloat(row.discountAmount || 0).toFixed(0)}%`
+                            : row.discountType === 'fixed_cart' || row.discountType === 'fixed_product'
+                              ? `$${parseFloat(row.discountAmount || 0).toFixed(2)}`
+                              : row.discountAmount || '—'}
+                        </td>
                         <td>
                           <input
                             className="import-inline-input import-rate-input"
@@ -530,7 +545,9 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
                         <td>
                           {row.alreadyExists
                             ? <span className="status-badge inactive">Already added</span>
-                            : <span className="status-badge active">New</span>
+                            : row.isAffiliate
+                              ? <span className="status-badge active">Affiliate</span>
+                              : <span className="status-badge coupon-only">Coupon only</span>
                           }
                         </td>
                       </tr>

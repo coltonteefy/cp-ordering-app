@@ -537,9 +537,39 @@ const PaymentTracker = ({ onError, onSuccess }) => {
               <h3>Payment History</h3>
               <span className="payment-view-pill">{activeVendor === 'all' ? 'All Vendors' : activeVendor}</span>
             </div>
-            <span className="payment-count">
-              {filteredPayments.length} {filteredPayments.length === 1 ? "entry" : "entries"}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span className="payment-count">
+                {filteredPayments.length} {filteredPayments.length === 1 ? "entry" : "entries"}
+              </span>
+              {filteredPayments.length > 0 && (
+                <button
+                  className="payment-download-btn"
+                  onClick={() => {
+                    const headers = ['Date', 'Vendor', 'Amount', 'Method', 'Note', 'Transaction ID'];
+                    const rows = filteredPayments.map(p => [
+                      p.date || '',
+                      p.vendor || 'TSC',
+                      p.amount || 0,
+                      p.method || '',
+                      p.note || '',
+                      p.cryptoTransactionId || '',
+                    ]);
+                    const csv = [headers, ...rows]
+                      .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+                      .join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `payments-${activeVendor === 'all' ? 'all' : activeVendor}-${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  ↓ CSV
+                </button>
+              )}
+            </div>
           </div>
           {filteredPayments.length === 0 ? (
             <div className="empty-payments">No payments logged yet.</div>

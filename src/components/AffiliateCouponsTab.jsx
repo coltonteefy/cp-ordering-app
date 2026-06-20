@@ -18,7 +18,7 @@ const PAYOUTS_COLLECTION = 'c&pAffiliatePayouts';
 const fmt = (value) =>
   Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }) => {
+const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, wooCouponCatalog, wooAffiliateUsers, onSuccess, onError }) => {
   const [affiliates, setAffiliates] = useState([]);
   const [payoutHistory, setPayoutHistory] = useState([]);
   const [editing, setEditing] = useState({});
@@ -48,14 +48,35 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
     return map;
   }, [affiliates]);
 
+  const catalogMap = useMemo(() => {
+    const map = new Map();
+    (wooCouponCatalog || []).forEach((c) => map.set(c.code.toLowerCase(), c));
+    return map;
+  }, [wooCouponCatalog]);
+
+  const affiliateUserMap = useMemo(() => {
+    const map = new Map();
+    (wooAffiliateUsers || []).forEach((u) => map.set(u.id, u));
+    return map;
+  }, [wooAffiliateUsers]);
+
   const enrichedCoupons = useMemo(() =>
     (wooCouponUsage || []).map((coupon) => {
       const affiliate = couponAffiliateMap.get(coupon.code.toLowerCase()) ?? null;
       const rate = affiliate?.commissionRate ?? 0;
       const commission = Number(((coupon.netSales || 0) * rate / 100).toFixed(2));
-      return { ...coupon, affiliate, commission };
+      const catalogEntry = catalogMap.get(coupon.code.toLowerCase());
+      const wooUser = catalogEntry?.affiliateUserId
+        ? affiliateUserMap.get(catalogEntry.affiliateUserId) ?? null
+        : null;
+      const isAffiliate = Boolean(catalogEntry?.affiliateUserId) || Boolean(affiliate);
+      const wooCommissionRate = catalogEntry?.commissionRate ? String(catalogEntry.commissionRate) : null;
+      const wooDiscount = catalogEntry
+        ? { type: catalogEntry.discountType, amount: catalogEntry.amount }
+        : null;
+      return { ...coupon, affiliate, commission, isAffiliate, wooUser, wooCommissionRate, wooDiscount };
     }),
-    [wooCouponUsage, couponAffiliateMap]
+    [wooCouponUsage, couponAffiliateMap, catalogMap, affiliateUserMap]
   );
 
   // Deduplicated totals per affiliate (one affiliate may have multiple coupons)
@@ -76,13 +97,16 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
 
   const totalOwed = affiliateTotals.reduce((s, a) => s + a.commission, 0);
 
-  const startEditing = (code, affiliate) => {
+  const startEditing = (code, affiliate, coupon) => {
+    const wooRate = coupon?.wooCommissionRate;
+    const wooEmail = coupon?.wooUser?.email || '';
+    const wooName = coupon?.wooUser?.displayName || '';
     setEditing((prev) => ({
       ...prev,
       [code]: {
-        name: affiliate?.name || '',
-        paypalEmail: affiliate?.paypalEmail || '',
-        commissionRate: String(affiliate?.commissionRate ?? 10),
+        name: affiliate?.name || wooName,
+        paypalEmail: affiliate?.paypalEmail || wooEmail,
+        commissionRate: String(affiliate?.commissionRate ?? wooRate ?? 10),
       },
     }));
   };
@@ -195,6 +219,7 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
             {affiliateTotals.map((a) => (
               <div key={a.affiliate.id} className="aff-summary-chip">
                 <span className="aff-chip-name">{a.affiliate.name}</span>
+                <span className="aff-chip-rate">{a.affiliate.commissionRate}%</span>
                 <span className="aff-chip-amount">${fmt(a.commission)}</span>
               </div>
             ))}
@@ -229,10 +254,11 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
               <th>Coupon Code</th>
               <th>Affiliate</th>
               <th>PayPal Email</th>
-              <th className="number-head">Rate</th>
+              <th className="number-head">Comm. Rate</th>
+              <th className="number-head">Cust. Discount</th>
               <th className="number-head">Orders</th>
               <th className="number-head">Net Sales</th>
-              <th className="number-head">Discount</th>
+              <th className="number-head">Discount Given</th>
               <th className="number-head">Commission</th>
               <th />
             </tr>
@@ -245,10 +271,40 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
               return (
                 <React.Fragment key={coupon.code}>
                   <tr className={coupon.commission > 0 ? 'aff-row-active' : ''}>
-                    <td className="product-name">{coupon.code}</td>
-                    <td>{coupon.affiliate?.name ?? <span className="aff-unlinked">Not set</span>}</td>
-                    <td className="aff-paypal-cell">{coupon.affiliate?.paypalEmail || '—'}</td>
-                    <td className="number">{coupon.affiliate ? `${coupon.affiliate.commissionRate}%` : '—'}</td>
+                    <td className="product-name">
+                      {coupon.code}
+                      {wooCouponCatalog.length > 0 && (
+                        <span className={`aff-type-badge ${coupon.isAffiliate ? 'aff-type-affiliate' : 'aff-type-promo'}`}>
+                          {coupon.isAffiliate ? 'affiliate' : 'promo'}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {coupon.affiliate?.name ?? (
+                        coupon.wooUser
+                          ? <span className="aff-woo-name">{coupon.wooUser.displayName}</span>
+                          : <span className="aff-unlinked">Not set</span>
+                      )}
+                    </td>
+                    <td className="aff-paypal-cell">
+                      {coupon.affiliate?.paypalEmail || (coupon.wooUser?.email
+                        ? <span className="aff-woo-email">{coupon.wooUser.email}</span>
+                        : '—')}
+                    </td>
+                    <td className="number">
+                      {coupon.affiliate
+                        ? `${coupon.affiliate.commissionRate}%`
+                        : coupon.wooCommissionRate
+                          ? <span className="aff-woo-rate">{coupon.wooCommissionRate}%</span>
+                          : '—'}
+                    </td>
+                    <td className="number">
+                      {coupon.wooDiscount
+                        ? coupon.wooDiscount.type === 'percent'
+                          ? `${parseFloat(coupon.wooDiscount.amount || 0).toFixed(0)}% off`
+                          : `$${parseFloat(coupon.wooDiscount.amount || 0).toFixed(2)} off`
+                        : '—'}
+                    </td>
                     <td className="number">{coupon.orderCount}</td>
                     <td className="number revenue">${fmt(coupon.netSales)}</td>
                     <td className="number">${fmt(coupon.totalDiscount)}</td>
@@ -259,7 +315,7 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
                       {!isEditing && (
                         <button
                           className="aff-edit-btn"
-                          onClick={() => startEditing(coupon.code, coupon.affiliate)}
+                          onClick={() => startEditing(coupon.code, coupon.affiliate, coupon)}
                         >
                           {coupon.affiliate ? 'Edit' : 'Set Affiliate'}
                         </button>
@@ -298,7 +354,7 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
                           onChange={(e) => patchEditing(coupon.code, 'commissionRate', e.target.value)}
                         />
                       </td>
-                      <td colSpan={4} />
+                      <td colSpan={5} />
                       <td>
                         <div className="aff-edit-actions">
                           <button
@@ -323,7 +379,7 @@ const AffiliateCouponsTab = ({ wooCouponUsage, wooPullInfo, onSuccess, onError }
           {totalOwed > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={7} className="aff-tfoot-label">Total Owed</td>
+                <td colSpan={8} className="aff-tfoot-label">Total Owed</td>
                 <td className="number revenue aff-tfoot-value">${fmt(totalOwed)}</td>
                 <td />
               </tr>

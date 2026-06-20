@@ -434,16 +434,58 @@ app.get('/api/woo/coupons', async (req, res) => {
       page += 1;
     } while (page <= totalPages);
 
-    res.json(collected.map((c) => ({
-      id: c.id,
-      code: String(c.code || '').toLowerCase().trim(),
-      description: c.description || '',
-      discountType: c.discount_type || '',
-      amount: c.amount || '0',
-      emailRestrictions: Array.isArray(c.email_restrictions) ? c.email_restrictions : [],
-    })));
+    res.json(collected.map((c) => {
+      const meta = Array.isArray(c.meta_data) ? c.meta_data : [];
+      const getMeta = (key) => meta.find((m) => m.key === key)?.value ?? null;
+      const affiliateUserId = getMeta('wcu_select_coupon_user');
+      const commissionRate = getMeta('wcu_text_coupon_commission')
+        || String(getMeta('wcu_commission_message') || '').replace('%', '').trim() || null;
+      return {
+        id: c.id,
+        code: String(c.code || '').toLowerCase().trim(),
+        description: c.description || '',
+        discountType: c.discount_type || '',
+        amount: c.amount || '0',
+        emailRestrictions: Array.isArray(c.email_restrictions) ? c.email_restrictions : [],
+        affiliateUserId: affiliateUserId ? String(affiliateUserId) : null,
+        commissionRate: commissionRate ? String(commissionRate) : null,
+      };
+    }));
   } catch (error) {
     res.status(500).json({ error: error?.message || 'Failed to fetch coupons.' });
+  }
+});
+
+app.get('/api/woo/affiliate-users', async (_req, res) => {
+  try {
+    const collected = [];
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+      const url = buildWooUrl('customers', { per_page: 100, page, role: 'coupon_affiliate' });
+      const response = await fetch(url, { signal: AbortSignal.timeout(WOO_REQUEST_TIMEOUT_MS) });
+      if (!response.ok) {
+        const body = await response.text();
+        return res.status(response.status).json({ error: `Woo customers API failed (${response.status}): ${body}` });
+      }
+      const rows = await response.json();
+      if (!Array.isArray(rows)) break;
+      collected.push(...rows);
+      totalPages = Number.parseInt(response.headers.get('x-wp-totalpages') || '1', 10) || 1;
+      page += 1;
+    } while (page <= totalPages);
+
+    res.json(collected.map((u) => ({
+      id: String(u.id),
+      username: u.username || '',
+      firstName: u.first_name || '',
+      lastName: u.last_name || '',
+      email: u.email || '',
+      displayName: u.display_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || '',
+    })));
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Failed to fetch affiliate users.' });
   }
 });
 

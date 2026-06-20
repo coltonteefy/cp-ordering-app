@@ -285,6 +285,12 @@
   color: #8b6f00;
 }
 
+.status-badge.coupon-only {
+  background: #f0f0f0;
+  border: 1px solid #d0d0d0;
+  color: #777;
+}
+
 /* Affiliate form */
 .affiliate-manage-header {
   display: flex;
@@ -478,6 +484,13 @@
 .import-rate-input {
   min-width: 64px;
   max-width: 80px;
+}
+
+.import-discount-cell {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
 }
 
 /* Empty states */

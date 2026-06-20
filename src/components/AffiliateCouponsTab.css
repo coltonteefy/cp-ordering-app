@@ -2,6 +2,30 @@
   margin-top: 0.5rem;
 }
 
+.aff-type-badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.aff-type-affiliate {
+  background: #e6f7f0;
+  border: 1px solid #a8dfc7;
+  color: #1a5c3a;
+}
+
+.aff-type-promo {
+  background: #f0f0f0;
+  border: 1px solid #d0d0d0;
+  color: #888;
+}
+
 /* Summary bar */
 .aff-summary-bar {
   display: flex;
@@ -36,6 +60,13 @@
   font-size: 0.8rem;
   font-weight: 600;
   color: #1a5c3a;
+}
+
+.aff-chip-rate {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2d7a4f;
+  opacity: 0.75;
 }
 
 .aff-chip-amount {
@@ -114,6 +145,22 @@
   color: #bbb;
   font-style: italic;
   font-size: 0.85rem;
+}
+
+.aff-woo-name {
+  color: #777;
+  font-size: 0.85rem;
+}
+
+.aff-woo-rate {
+  color: #777;
+  font-size: 0.85rem;
+}
+
+.aff-woo-email {
+  color: #888;
+  font-size: 0.8rem;
+  font-style: italic;
 }
 
 .aff-paypal-cell {

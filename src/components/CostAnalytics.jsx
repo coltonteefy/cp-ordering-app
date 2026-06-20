@@ -13,7 +13,7 @@ import {
 import { deleteObject, getBytes, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseConfig';
 import { costDatabase, getCost } from '../data/costDatabase';
-import AffiliatePayouts from './AffiliatePayouts';
+import AffiliateCouponsTab from './AffiliateCouponsTab';
 import './CostAnalytics.css';
 
 const CostAnalytics = () => {
@@ -48,6 +48,8 @@ const CostAnalytics = () => {
   const [wooAutoPullEnabled, setWooAutoPullEnabled] = useState(false);
   const [wooPullInfo, setWooPullInfo] = useState(null);
   const [wooCouponUsage, setWooCouponUsage] = useState([]);
+  const [wooCouponCatalog, setWooCouponCatalog] = useState([]);
+  const [wooAffiliateUsers, setWooAffiliateUsers] = useState([]);
   const [wooPullStartDate, setWooPullStartDate] = useState(defaultWooDate);
   const [wooPullEndDate, setWooPullEndDate] = useState(defaultWooDate);
   const [successToastMessage, setSuccessToastMessage] = useState('');
@@ -332,6 +334,14 @@ const CostAnalytics = () => {
       setWooAutoPullEnabled(false);
     }
   }, [inputSource, wooAutoPullEnabled]);
+
+  useEffect(() => {
+    if (activeTab !== 'coupons') return;
+    const id = window.setTimeout(() => {
+      pullWooDailyReport({ silent: true, startDate: wooPullStartDate, endDate: wooPullEndDate });
+    }, wooPullInfo ? 600 : 0);
+    return () => window.clearTimeout(id);
+  }, [activeTab, wooPullStartDate, wooPullEndDate]);
 
   const applyReportFromCsvText = (csvText, sourceName) => {
     setInputSource('csv');
@@ -1535,7 +1545,18 @@ const CostAnalytics = () => {
           role="tab"
           aria-selected={activeTab === 'coupons'}
           className={`cost-view-tab ${activeTab === 'coupons' ? 'active' : ''}`}
-          onClick={() => setActiveTab('coupons')}
+          onClick={() => {
+            setActiveTab('coupons');
+            if (wooCouponCatalog.length === 0) {
+              Promise.all([
+                fetch('/api/woo/coupons').then((r) => r.ok ? r.json() : []),
+                fetch('/api/woo/affiliate-users').then((r) => r.ok ? r.json() : []),
+              ]).then(([coupons, users]) => {
+                setWooCouponCatalog(Array.isArray(coupons) ? coupons : []);
+                setWooAffiliateUsers(Array.isArray(users) ? users : []);
+              }).catch(() => {});
+            }
+          }}
         >
           Affiliate/Coupons
         </button>
@@ -1637,7 +1658,11 @@ const CostAnalytics = () => {
       )}
 
       {activeTab === 'coupons' && (
-        <AffiliatePayouts
+        <AffiliateCouponsTab
+          wooCouponUsage={wooCouponUsage}
+          wooPullInfo={wooPullInfo}
+          wooCouponCatalog={wooCouponCatalog}
+          wooAffiliateUsers={wooAffiliateUsers}
           onSuccess={showSuccessToast}
           onError={(msg) => alert(msg)}
         />
