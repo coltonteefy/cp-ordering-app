@@ -37,6 +37,22 @@ function vendorColor(name) {
   return VENDOR_PALETTE[Math.abs(hash) % VENDOR_PALETTE.length];
 }
 
+function autoAssignLotCode(vendorName, takenCodes) {
+  const clean = String(vendorName || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const taken = new Set(takenCodes);
+
+  for (let len = 1; len <= clean.length; len++) {
+    const candidate = clean.slice(0, len);
+    if (!taken.has(candidate)) return candidate;
+  }
+
+  // All prefixes taken — append an incrementing number to the first letter
+  const base = clean[0] || 'V';
+  let n = 2;
+  while (taken.has(`${base}${n}`)) n++;
+  return `${base}${n}`;
+}
+
 const ProductManager = ({ onSuccess, onError }) => {
   const [products, setProducts] = useState([]);
   const [editForm, setEditForm] = useState(null);
@@ -48,6 +64,7 @@ const ProductManager = ({ onSuccess, onError }) => {
   const [vendors, setVendors] = useState([]);
   const [selectedVendorProfile, setSelectedVendorProfile] = useState('');
   const [editingColor, setEditingColor] = useState(false);
+  const [lotCodeDraft, setLotCodeDraft] = useState('');
   const [newWallet, setNewWallet] = useState({ label: '', address: '' });
   const [showWalletComposer, setShowWalletComposer] = useState(false);
   const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
@@ -200,6 +217,22 @@ const ProductManager = ({ onSuccess, onError }) => {
     });
   }, [vendors]);
 
+  // Auto-assign lot codes to vendors that don't have one
+  useEffect(() => {
+    const withoutCode = vendors.filter(v => !v.lotCode);
+    if (!withoutCode.length) return;
+
+    const taken = new Set(vendors.filter(v => v.lotCode).map(v => v.lotCode));
+    const sorted = [...withoutCode].sort((a, b) => a.name.localeCompare(b.name));
+
+    sorted.forEach(v => {
+      const code = autoAssignLotCode(v.name, taken);
+      taken.add(code);
+      setDoc(doc(db, 'c&pVendors', v.id), { lotCode: code }, { merge: true })
+        .catch(err => console.error('Error auto-assigning lot code:', err));
+    });
+  }, [vendors]);
+
   // Active vendor profile data
   const activeProfile = useMemo(() => {
     if (!selectedVendorProfile) return null;
@@ -223,6 +256,22 @@ const ProductManager = ({ onSuccess, onError }) => {
       setEditingColor(false);
     } catch (error) {
       console.error('Error updating vendor color:', error);
+    }
+  };
+
+  useEffect(() => {
+    setLotCodeDraft(activeProfile?.lotCode || '');
+  }, [activeProfile?.id]);
+
+  const saveLotCode = async () => {
+    if (!activeProfile) return;
+    const sanitized = lotCodeDraft.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    setLotCodeDraft(sanitized);
+    if (sanitized === (activeProfile.lotCode || '')) return;
+    try {
+      await setDoc(doc(db, 'c&pVendors', activeProfile.id), { lotCode: sanitized }, { merge: true });
+    } catch (error) {
+      console.error('Error saving lot code:', error);
     }
   };
 
@@ -703,8 +752,11 @@ const ProductManager = ({ onSuccess, onError }) => {
       return;
     }
     try {
+      const existingCodes = vendors.filter(v => v.lotCode).map(v => v.lotCode);
+      const lotCode = autoAssignLotCode(name, existingCodes);
       await setDoc(doc(db, 'c&pVendors', vendorId), {
         name,
+        lotCode,
         products: {},
         createdAt: new Date().toISOString(),
       });
@@ -1535,6 +1587,20 @@ const ProductManager = ({ onSuccess, onError }) => {
                   />
                 </div>
               )}
+              <div className="vendor-lot-code-row">
+                <span className="vendor-lot-code-label">Lot Code</span>
+                <input
+                  type="text"
+                  className="vendor-lot-code-input"
+                  value={lotCodeDraft}
+                  maxLength={6}
+                  placeholder="e.g. T1"
+                  onChange={(e) => setLotCodeDraft(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  onBlur={saveLotCode}
+                  onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+                  title="Short code embedded in lot IDs for this vendor (e.g. T1, BS)"
+                />
+              </div>
               <span className="vendor-profile-stat">
                 {profileProducts.length} product{profileProducts.length !== 1 ? 's' : ''} on file
               </span>

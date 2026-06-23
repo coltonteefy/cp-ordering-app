@@ -1612,11 +1612,28 @@ const DraggableLabelCanvas = ({ design, onChange, mode, product, lotEntry, selec
   );
 };
 
+const toVendorCode = (name) => String(name || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const toCapLetter = (capColor) => {
+  const first = String(capColor || '').trim()[0];
+  return (first && /[A-Za-z]/.test(first)) ? first.toUpperCase() : '';
+};
+
 const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [products, setProducts] = useState([]);
   const [productData, setProductData] = useState({});
   const [vendors, setVendors] = useState([]);
-  const todayChunk = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  const todayChunk = (() => {
+    const now = new Date();
+    const yy = String(now.getUTCFullYear()).slice(-2);
+    const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
+    return `${yy}${String(dayOfYear).padStart(3, '0')}`;
+  })();
+  const assembleLotId = (prefix, vendorName, capColor, suffix) => {
+    const vendorRecord = vendors.find((v) => v.name === vendorName);
+    const vendorCode = vendorName ? (vendorRecord?.lotCode || toVendorCode(vendorName)) : '';
+    return `${prefix}${vendorCode}${toCapLetter(capColor)}${suffix}`;
+  };
   const [editingSections, setEditingSections] = useState({});
   const [lotEditMode, setLotEditMode] = useState({});
   const [copyFlash, setCopyFlash] = useState({});
@@ -1662,6 +1679,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
     lot: "",
+    _prefix: "",
+    _suffix: "",
     capColor: "",
     capShade: "",
     kits: "",
@@ -1795,7 +1814,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       (snapshot) => {
         const list = [];
         snapshot.forEach((snap) => {
-          list.push({ id: snap.id, name: snap.data().name || snap.id });
+          const d = snap.data();
+          list.push({ id: snap.id, name: d.name || snap.id, lotCode: d.lotCode || '' });
         });
         list.sort((a, b) => {
           if (a.name === "TSC") return -1;
@@ -2082,30 +2102,27 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     closeEditLotModal();
   };
 
-  const openLotModal = (key, nextLotId) => {
-    const capSeed =
-      productData[key]?.capColor ||
-      productData[key]?.currentCOA?.capColor ||
-      "";
-    const lastEntry = (productData[key]?.coaList || [])[0];
-    const vendorSeed = lastEntry?.vendor || "";
+  const openLotModal = (key, { prefix, suffix }) => {
     setLotModalConfig({
       productKey: key,
-      lot: nextLotId,
-      capColor: capSeed,
-      capShade: capSeed ? colorValueToHex(capSeed) : "",
+      lot: `${prefix}${suffix}`,
+      _prefix: prefix,
+      _suffix: suffix,
+      capColor: "",
+      capShade: "",
       kits: "",
-      vendor: vendorSeed,
+      vendor: "",
       note: "",
     });
   };
 
   const closeLotModal = () =>
-    setLotModalConfig({ productKey: null, lot: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
+    setLotModalConfig({ productKey: null, lot: "", _prefix: "", _suffix: "", capColor: "", capShade: "", kits: "", vendor: "", note: "" });
 
   const confirmLotModal = async () => {
     const { productKey, lot, capColor, capShade, kits, vendor, note } = lotModalConfig;
     if (!productKey || !lot) return;
+    if (!capColor.trim() || !vendor) return;
     const entry = productData[productKey] || {
       currentCOA: createEmptyCOA(),
       coaList: [],
@@ -2119,6 +2136,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
         kits: Number(kits) || 0,
         vendor: vendor || "",
         note: note || "",
+        createdAt: new Date().toISOString(),
       },
       ...(entry.coaList || []),
     ];
@@ -3079,10 +3097,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
               data.currentCOA.capColor ||
               "").trim();
           const capColorSwatch = resolveCapColorValue(capColorText);
-          const usedCount =
-            (data.coaList?.length || 0) + (data.currentCOA?.lot ? 1 : 0);
-          const nextSeq = String(usedCount + 1).padStart(2, "0");
-          const nextIdPreview = `CP${data.productID || p.id || "ID"}${todayChunk}${nextSeq}`;
+          const _lotPrefix = `CP${data.productID || p.id || "ID"}`;
+          const _lotSuffix = todayChunk;
           const activePreviewLot = (() => {
             const visibleLots = vendorFilter
               ? (data.coaList || []).filter((c) => (c.vendor || "") === vendorFilter)
@@ -3293,7 +3309,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                   {!isGuest && (
                     <button
                       className="lot-id-generate-btn"
-                      onClick={() => openLotModal(key, nextIdPreview)}
+                      onClick={() => openLotModal(key, { prefix: _lotPrefix, suffix: _lotSuffix })}
                     >
                       + Generate Lot ID
                     </button>
@@ -3335,23 +3351,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                               {coa.lot || <i>no lot id</i>}
                               <span className="lot-id-card-copy-icon">⎘</span>
                             </button>
-                            {(!isGuest || (vendorGuest && (coa.vendor || "") === vendorGuest)) && (
-                              <button
-                                className="lot-id-edit-toggle lot-id-card-edit-btn"
-                                onClick={() => openEditLotModal(key, realIndex, coa)}
-                              >
-                                Edit
-                              </button>
-                            )}
-                            {!isGuest && (
-                              <button
-                                type="button"
-                                className="lot-id-edit-toggle lot-id-card-label-btn"
-                                onClick={(e) => { e.stopPropagation(); openLotLabelEditor(key, realIndex, coa); }}
-                              >
-                                Edit Label
-                              </button>
-                            )}
                             {!isGuest && (
                               <button
                                 type="button"
@@ -3362,6 +3361,14 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                                 }}
                               >
                                 Send for Testing
+                              </button>
+                            )}
+                            {(!isGuest || (vendorGuest && (coa.vendor || "") === vendorGuest)) && (
+                              <button
+                                className="lot-id-edit-toggle lot-id-card-edit-btn"
+                                onClick={() => openEditLotModal(key, realIndex, coa)}
+                              >
+                                Edit
                               </button>
                             )}
                           </div>
@@ -3378,14 +3385,19 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                                 {coa.capColor || "No cap color"}
                               </span>
                             </span>
-                            {!isGuest && (
+                            {!isGuest && coa.kits > 0 && (
                               <span className="lot-id-meta-stat">
-                                {typeof coa.kits === "number" ? coa.kits : 0} kits
+                                {coa.kits} kits
                               </span>
                             )}
-                          {!isGuest && coa.vendor && (
-                            <span className="lot-id-vendor-badge">{coa.vendor}</span>
-                          )}
+                            {!isGuest && coa.vendor && (
+                              <span className="lot-id-vendor-badge">{coa.vendor}</span>
+                            )}
+                            {coa.createdAt && (
+                              <span className="lot-id-meta-stat lot-id-meta-date">
+                                {new Date(coa.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            )}
                           </div>
                           {coa.note && (
                             <div className="lot-id-note-display">{coa.note}</div>
@@ -3440,17 +3452,58 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           <div className="lot-modal-backdrop" onClick={closeLotModal}>
             <div className="lot-modal" onClick={(e) => e.stopPropagation()}>
               <h3>Generate New Lot</h3>
-              <p className="lot-modal-sub">Lot ID is auto-created. Add cap color and batch size.</p>
+              <p className="lot-modal-sub">Select a vendor and cap color to generate the lot ID.</p>
 
               <label className="lot-modal-label">Generated Lot ID</label>
-              <input
-                type="text"
-                value={lotModalConfig.lot}
-                readOnly
-                className="lot-modal-input"
-              />
+              {(() => {
+                const vendorRecord = vendors.find((v) => v.name === lotModalConfig.vendor);
+                const vendorPart = lotModalConfig.vendor ? (vendorRecord?.lotCode || toVendorCode(lotModalConfig.vendor)) : '';
+                const capPart = toCapLetter(lotModalConfig.capColor);
+                const capRaw = getCapRenderColor(lotModalConfig.capColor, lotModalConfig.capShade);
+                const capLetterColor = capRaw ? normalizeLabelAccentColor(capRaw) : null;
+                return (
+                  <div className="lot-id-display">
+                    <span>{lotModalConfig._prefix}</span>
+                    <span>{vendorPart}</span>
+                    {capPart
+                      ? <span style={{ color: capLetterColor }}>{capPart}</span>
+                      : null}
+                    <span>{lotModalConfig._suffix}</span>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const productPart = lotModalConfig._prefix.slice(2);
+                const vendorRecord = vendors.find((v) => v.name === lotModalConfig.vendor);
+                const vendorPart = lotModalConfig.vendor ? (vendorRecord?.lotCode || toVendorCode(lotModalConfig.vendor)) : '';
+                const capPart = toCapLetter(lotModalConfig.capColor);
+                const capRaw = getCapRenderColor(lotModalConfig.capColor, lotModalConfig.capShade);
+                const capBg = capRaw ? colorValueToHex(capRaw) : null;
+                const capText = capBg ? getReadableTextColor(capRaw) : null;
+                const segments = [
+                  { value: 'CP',                        label: 'Brand'   },
+                  { value: productPart,                 label: 'Product' },
+                  { value: vendorPart,                  label: 'Vendor'  },
+                  { value: capPart,                     label: 'Cap',    bg: capBg, color: capText },
+                  { value: lotModalConfig._suffix,      label: 'Date'    },
+                ];
+                return (
+                  <div className="lot-id-breakdown">
+                    {segments.map((seg, i) => (
+                      <div
+                        key={i}
+                        className={`lot-id-segment${!seg.value ? ' lot-id-segment-empty' : ''}`}
+                        style={seg.bg ? { backgroundColor: seg.bg, borderColor: seg.bg } : undefined}
+                      >
+                        <span className="lot-id-segment-value" style={seg.color ? { color: seg.color } : undefined}>{seg.value || '?'}</span>
+                        <span className="lot-id-segment-label" style={seg.color ? { color: seg.color, opacity: 0.75 } : undefined}>{seg.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
-              <label className="lot-modal-label">Cap Color</label>
+              <label className="lot-modal-label">Cap Color <span className="lot-modal-label-required">*</span></label>
               <div className="lot-modal-color-row">
                 <input
                   type="color"
@@ -3465,18 +3518,20 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                   type="text"
                   placeholder="e.g. Sand, #F5E9D8"
                   value={lotModalConfig.capColor}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const capColor = e.target.value;
                     setLotModalConfig((prev) => ({
                       ...prev,
-                      capColor: e.target.value,
-                      capShade: nextCapShadeFromText(e.target.value, prev.capShade),
-                    }))
-                  }
+                      capColor,
+                      capShade: nextCapShadeFromText(capColor, prev.capShade),
+                      lot: assembleLotId(prev._prefix, prev.vendor, capColor, prev._suffix),
+                    }));
+                  }}
                   className="lot-modal-input"
                 />
               </div>
 
-              <label className="lot-modal-label">Kits in Batch</label>
+              <label className="lot-modal-label">Kits in Batch <span className="lot-modal-label-optional">(optional)</span></label>
               <input
                 type="number"
                 min="0"
@@ -3491,21 +3546,18 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
 
               {!isGuest && (
                 <>
-                  <label className="lot-modal-label">Vendor</label>
+                  <label className="lot-modal-label">Vendor <span className="lot-modal-label-required">*</span></label>
                   <div className="lot-modal-vendor-pills">
-                    <button
-                      type="button"
-                      className={`lot-modal-vendor-pill${!lotModalConfig.vendor ? ' active' : ''}`}
-                      onClick={() => setLotModalConfig((prev) => ({ ...prev, vendor: '' }))}
-                    >
-                      None
-                    </button>
                     {vendors.map((v) => (
                       <button
                         key={v.id}
                         type="button"
                         className={`lot-modal-vendor-pill${lotModalConfig.vendor === v.name ? ' active' : ''}`}
-                        onClick={() => setLotModalConfig((prev) => ({ ...prev, vendor: v.name }))}
+                        onClick={() => setLotModalConfig((prev) => ({
+                          ...prev,
+                          vendor: v.name,
+                          lot: assembleLotId(prev._prefix, v.name, prev.capColor, prev._suffix),
+                        }))}
                       >
                         {v.name}
                       </button>
@@ -3525,14 +3577,27 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                 }
               />
 
-              <div className="lot-modal-actions">
-                <button type="button" className="lot-modal-btn secondary" onClick={closeLotModal}>
-                  Cancel
-                </button>
-                <button type="button" className="lot-modal-btn primary" onClick={confirmLotModal}>
-                  Save Lot
-                </button>
-              </div>
+              {(() => {
+                const missingCapColor = !lotModalConfig.capColor.trim();
+                const missingVendor = !isGuest && !lotModalConfig.vendor;
+                const canSave = !missingCapColor && !missingVendor;
+                return (
+                  <div className="lot-modal-actions">
+                    <button type="button" className="lot-modal-btn secondary" onClick={closeLotModal}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="lot-modal-btn primary"
+                      onClick={confirmLotModal}
+                      disabled={!canSave}
+                      title={!canSave ? `Required: ${[missingCapColor && 'cap color', missingVendor && 'vendor'].filter(Boolean).join(', ')}` : undefined}
+                    >
+                      Save Lot
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>,
           document.body
