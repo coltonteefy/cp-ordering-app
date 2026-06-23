@@ -254,8 +254,6 @@ body {
     padding-top 200ms ease;
 }
 
-.sidebar-dropdown:hover .sidebar-dropdown-menu,
-.sidebar-dropdown:focus-within .sidebar-dropdown-menu,
 .sidebar-dropdown.open .sidebar-dropdown-menu {
   max-height: 360px;
   opacity: 1;
@@ -264,8 +262,6 @@ body {
   pointer-events: auto;
 }
 
-.sidebar-dropdown:hover .tools-trigger::after,
-.sidebar-dropdown:focus-within .tools-trigger::after,
 .sidebar-dropdown.open .tools-trigger::after {
   transform: translateY(-1px) rotate(180deg);
   color: #b34e36;
@@ -918,18 +914,12 @@ body {
     pointer-events: none;
   }
 
-  .sidebar-dropdown.open .sidebar-dropdown-menu,
-  .sidebar-dropdown:focus-within .sidebar-dropdown-menu {
+  .sidebar-dropdown.open .sidebar-dropdown-menu {
     max-height: 360px;
     opacity: 1;
     transform: translateY(0);
     padding: 0.35rem;
     pointer-events: auto;
-  }
-
-  .sidebar-dropdown:hover .tools-trigger::after {
-    transform: translateY(-1px);
-    color: #8a7d70;
   }
 
   .app-main-area .main-card {

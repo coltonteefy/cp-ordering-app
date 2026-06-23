@@ -4504,9 +4504,26 @@
   color: #3a6a3a;
 }
 
-/* ── Tab panels ── */
+/* ── Panels ── */
 .odt-panel {
   padding: 1rem 1.25rem 1.25rem;
+  border-top: 1.5px solid #ede4d8;
+}
+
+.odt-panel:first-of-type {
+  border-top: none;
+}
+
+.odt-section-heading {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #b09070;
+  margin-bottom: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 /* ── Tracking Alerts Banner ── */

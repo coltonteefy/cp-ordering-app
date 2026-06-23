@@ -1660,7 +1660,12 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [allLotsOpen, setAllLotsOpen] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
-  const [testingQueue, setTestingQueue] = useState([]);
+  const [testingQueue, setTestingQueue] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp-testing-queue') || '[]'); } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('cp-testing-queue', JSON.stringify(testingQueue)); } catch {}
+  }, [testingQueue]);
   const [testingFormOpen, setTestingFormOpen] = useState(false);
   const TESTING_CONTACTS = [
     { name: "Colton Teefy",  phone: "404-630-0071" },
@@ -2958,15 +2963,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
         >
           All Lot IDs
         </button>
-        {!isGuest && (
-          <button
-            className="lot-id-all-lots-btn"
-            onClick={handlePrintAllVialLabels}
-            disabled={pdfGenerating}
-          >
-            {pdfGenerating ? 'Generating PDF…' : vendorFilter ? `Download ${vendorFilter} Vial Labels` : 'Download All Vial Labels'}
-          </button>
-        )}
         {!isGuest && !vendorGuest && (
           <button
             type="button"

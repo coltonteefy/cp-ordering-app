@@ -2547,26 +2547,10 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
           )}
         </div>
 
-        {/* ── Tab bar ── */}
-        <div className="order-detail-tabs">
-          {canViewItems && (
-            <button className={`odt-tab${activeTab === 'items' ? ' active' : ''}`} onClick={() => setOrderDetailTab('items')}>
-              Items
-            </button>
-          )}
-          <button className={`odt-tab${activeTab === 'tracking' ? ' active' : ''}`} onClick={() => setOrderDetailTab('tracking')}>
-            Tracking{trackingCount > 0 && <span className="odt-badge">{trackingCount}</span>}
-          </button>
-          {canViewPayments && (
-            <button className={`odt-tab${activeTab === 'payments' ? ' active' : ''}`} onClick={() => setOrderDetailTab('payments')}>
-              Payments{paymentCount > 0 && <span className="odt-badge odt-badge-paid">{paymentCount}</span>}
-            </button>
-          )}
-        </div>
-
-        {/* ── Items tab ── */}
-        {activeTab === 'items' && canViewItems && (
+        {/* ── Items ── */}
+        {canViewItems && (
           <div className="odt-panel">
+            <div className="odt-section-heading">Items</div>
             {!isVendor && <div className="order-copy-row">
               <button className={`btn-copy-order${copiedWithPrice ? ' copied' : ''}`} onClick={handleCopyOrderItems}>
                 {copiedWithPrice ? 'Copied!' : 'Copy w/ Price'}
@@ -2701,9 +2685,10 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
           </div>
         )}
 
-        {/* ── Tracking tab ── */}
-        {activeTab === 'tracking' && (
+        {/* ── Tracking ── */}
+        {(
           <div className="odt-panel">
+            <div className="odt-section-heading">Tracking{trackingCount > 0 && <span className="odt-badge">{trackingCount}</span>}</div>
             <div className="tracking-list-footer">
               {canEditTracking && <>
                 <button className="tracking-add" onClick={() => addTrackingEntry(order.id)}>+ Add Tracking</button>
@@ -2764,13 +2749,14 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
           </div>
         )}
 
-        {/* ── Payments tab ── */}
-        {activeTab === 'payments' && canViewPayments && (() => {
+        {/* ── Payments ── */}
+        {canViewPayments && (() => {
           const downPayments = order.downPayments || [];
           const totalPaid = totalDownPaid;
           const form = downPaymentForms[order.id] || {};
           return (
             <div className="odt-panel">
+              <div className="odt-section-heading">Payments{paymentCount > 0 && <span className="odt-badge odt-badge-paid">{paymentCount}</span>}</div>
               <div className="payment-panel">
                 {(() => {
                   const remainingBalance = Math.max(0, finalTotal - totalPaid);
