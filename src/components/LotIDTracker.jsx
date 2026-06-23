@@ -3138,21 +3138,19 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
             >
               <div className="lot-id-header">
                 <div className="lot-id-title">
-                  <div className="lot-id-preheader">{data.productID || p.id || "—"}</div>
-                  <div className="lot-id-name">{p.product}</div>
-                  <div className="lot-id-strength">{p.strength}</div>
+                  <span className="lot-id-product-id-badge">{data.productID || p.id || "—"}</span>
+                  <span className="lot-id-name">{p.product}</span>
+                  {p.strength && <span className="lot-id-strength">{p.strength}</span>}
                 </div>
-                <div className="lot-id-header-actions">
-                  {!isGuest && (
-                    <button
-                      type="button"
-                      className="lot-id-layout-btn"
-                      onClick={() => setEditProductModal({ open: true, docId: p.docId, id: p.id || "", product: p.product || "" })}
-                    >
-                      Edit
-                    </button>
-                  )}
-                </div>
+                {!isGuest && (
+                  <button
+                    type="button"
+                    className="lot-id-product-edit-btn"
+                    onClick={() => setEditProductModal({ open: true, docId: p.docId, id: p.id || "", product: p.product || "" })}
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
 
               <div className="lot-id-main-split">
@@ -3341,7 +3339,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                             }))
                           }
                         >
-                          <div className="lot-id-card-header">
+                          <div className="lot-id-card-row lot-id-card-row--top">
                             <button
                               className="lot-id-card-id"
                               type="button"
@@ -3351,50 +3349,50 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                               {coa.lot || <i>no lot id</i>}
                               <span className="lot-id-card-copy-icon">⎘</span>
                             </button>
-                            {!isGuest && (
-                              <button
-                                type="button"
-                                className="lot-id-edit-toggle lot-id-card-testing-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  addToTestingQueue(p, coa);
-                                }}
-                              >
-                                Send for Testing
-                              </button>
+                            {copyFlash[`${key}-lot-${i}`] && (
+                              <span className="lot-id-copied">Copied!</span>
                             )}
-                            {(!isGuest || (vendorGuest && (coa.vendor || "") === vendorGuest)) && (
-                              <button
-                                className="lot-id-edit-toggle lot-id-card-edit-btn"
-                                onClick={() => openEditLotModal(key, realIndex, coa)}
-                              >
-                                Edit
-                              </button>
-                            )}
+                            <div className="lot-id-card-actions">
+                              {!isGuest && (
+                                <button
+                                  type="button"
+                                  className="lot-id-card-testing-btn"
+                                  onClick={(e) => { e.stopPropagation(); addToTestingQueue(p, coa); }}
+                                >
+                                  Send for Testing
+                                </button>
+                              )}
+                              {(!isGuest || (vendorGuest && (coa.vendor || "") === vendorGuest)) && (
+                                <button
+                                  type="button"
+                                  className="lot-id-card-edit-btn"
+                                  onClick={(e) => { e.stopPropagation(); openEditLotModal(key, realIndex, coa); }}
+                                >
+                                  Edit
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {copyFlash[`${key}-lot-${i}`] && (
-                            <span className="lot-id-copied">Copied!</span>
-                          )}
-                          <div className="lot-id-card-meta">
-                            <span className={`lot-id-capchip${coa.capColor ? "" : " empty"}`}>
-                              <span
-                                className="lot-id-capchip-swatch"
-                                style={{ backgroundColor: getCapRenderColor(coa.capColor, coa.capShade) || "#e7dfd3" }}
-                              />
-                              <span className="lot-id-capchip-text">
-                                {coa.capColor || "No cap color"}
+                          <div className="lot-id-card-row lot-id-card-row--bottom">
+                            <div className="lot-id-card-meta">
+                              <span className={`lot-id-capchip${coa.capColor ? "" : " empty"}`}>
+                                <span
+                                  className="lot-id-capchip-swatch"
+                                  style={{ backgroundColor: getCapRenderColor(coa.capColor, coa.capShade) || "#e7dfd3" }}
+                                />
+                                <span className="lot-id-capchip-text">
+                                  {coa.capColor || "No cap color"}
+                                </span>
                               </span>
-                            </span>
-                            {!isGuest && coa.kits > 0 && (
-                              <span className="lot-id-meta-stat">
-                                {coa.kits} kits
-                              </span>
-                            )}
-                            {!isGuest && coa.vendor && (
-                              <span className="lot-id-vendor-badge">{coa.vendor}</span>
-                            )}
+                              {!isGuest && coa.vendor && (
+                                <span className="lot-id-vendor-badge">{coa.vendor}</span>
+                              )}
+                              {!isGuest && coa.kits > 0 && (
+                                <span className="lot-id-meta-stat">{coa.kits} kits</span>
+                              )}
+                            </div>
                             {coa.createdAt && (
-                              <span className="lot-id-meta-stat lot-id-meta-date">
+                              <span className="lot-id-card-date">
                                 {new Date(coa.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                               </span>
                             )}
