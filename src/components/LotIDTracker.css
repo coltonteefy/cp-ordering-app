@@ -2604,10 +2604,11 @@
 }
 
 .lot-id-main-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
+  display: block;
+}
+
+.lot-id-template {
+  display: none;
 }
 
 .lot-id-main-split .lot-id-section {
