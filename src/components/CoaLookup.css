@@ -93,6 +93,12 @@
   color: #5c3f1d;
 }
 
+.coa-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .coa-clear-btn {
   font-size: 0.8rem;
   font-weight: 600;
@@ -253,4 +259,132 @@
   color: #b03030;
   border: 1px solid #f0b0b0;
   cursor: help;
+}
+
+/* Saved COAs Section */
+.coa-saved-section {
+  margin-top: 2.5rem;
+}
+
+.coa-saved-header {
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.coa-saved-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.coa-saved-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2c1a0e;
+  margin: 0;
+}
+
+.coa-saved-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9e7a4a;
+  background: #f5ede1;
+  border: 1px solid #e8d9c5;
+  border-radius: 20px;
+  padding: 0.1rem 0.55rem;
+}
+
+.coa-search-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  border: 1px solid #d4b896;
+  border-radius: 8px;
+  background: #fff;
+  color: #2c1a0e;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.coa-search-input:focus {
+  border-color: #b07d4a;
+}
+
+.coa-search-input::placeholder {
+  color: #bba98e;
+}
+
+.coa-saved-empty {
+  font-size: 0.85rem;
+  color: #9e8571;
+  padding: 1.25rem 0;
+  margin: 0;
+}
+
+/* Save button (upload results) */
+.coa-save-btn {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid #b07d4a;
+  border-radius: 8px;
+  background: #f5ede1;
+  color: #7a4f2a;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.coa-save-btn:hover:not(:disabled) {
+  background: #ead9c0;
+  border-color: #8c5a22;
+}
+
+.coa-save-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Already saved badge */
+.coa-badge--saved {
+  background: #e4f5ea;
+  color: #2a7a45;
+  border: 1px solid #b2dfc0;
+}
+
+/* Delete button (saved list) */
+.coa-cell--action {
+  width: 40px;
+  text-align: center;
+  padding-left: 0.25rem;
+  padding-right: 0.5rem;
+}
+
+.coa-delete-btn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #f0b0b0;
+  border-radius: 6px;
+  background: #fff5f5;
+  color: #b03030;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.coa-delete-btn:hover:not(:disabled) {
+  background: #fde9e9;
+  border-color: #c04040;
+}
+
+.coa-delete-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

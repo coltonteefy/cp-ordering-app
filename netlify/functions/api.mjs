@@ -39,7 +39,8 @@ const WOO_FETCH_CONCURRENCY = Math.max(1, Number.parseInt(process.env.WOO_FETCH_
 const WOO_REQUEST_TIMEOUT_MS = Math.max(5000, Number.parseInt(process.env.WOO_REQUEST_TIMEOUT_MS || '30000', 10) || 30000);
 
 const SEARCH_CODE_RE = /Coff\d+/i;
-const LOT_RE = /CP[A-Z0-9]{6,}/;
+const LOT_RE = /C(?:&P|P)[A-Z0-9]{6,}/;
+const PRODUCT_RE = /Product:\s*(.+?)(?=\s{2,}|\s*Purity:|\s*Identity:|\s*Appearance:|\s*Net Content:|$)/i;
 const PURITY_RE = /\d{1,3}\.\d+%/;
 
 const parseMoney = (value) => {
@@ -327,16 +328,9 @@ const buildDailyWooReport = (orders, startDateKey, endDateKey, analyticsSummary 
 function parseFields(text, filename) {
   const searchCodeMatch = text.match(SEARCH_CODE_RE);
   const lotMatch = text.match(LOT_RE);
+  const productMatch = text.match(PRODUCT_RE);
 
-  let product = null;
-  if (lotMatch) {
-    const afterLot = text.slice(lotMatch.index + lotMatch[0].length);
-    const purityMatch = afterLot.match(PURITY_RE);
-    if (purityMatch) {
-      product = afterLot.slice(0, purityMatch.index).trim().replace(/\s+/g, ' ');
-    }
-  }
-
+  const product = productMatch ? productMatch[1].trim().replace(/\s+/g, ' ') : null;
   const coaLink = `${COA_BASE_URL}/${encodeURIComponent(filename)}`;
 
   return {
