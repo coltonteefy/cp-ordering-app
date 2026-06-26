@@ -40,7 +40,8 @@ const WOO_REQUEST_TIMEOUT_MS = Math.max(5000, Number.parseInt(process.env.WOO_RE
 
 const SEARCH_CODE_RE = /Coff\d+/i;
 const LOT_RE = /C(?:&P|P)[A-Z0-9]{6,}/;
-const PRODUCT_RE = /Product:\s*(.+?)(?=\s{2,}|\s*Purity:|\s*Identity:|\s*Appearance:|\s*Net Content:|$)/i;
+const PRODUCT_RE = /Product:\s*(.{1,60}?)(?=\s{2,}|\r?\n|\s*(?:Purity|Identity|Appearance|Net\s+(?:Peptide\s+)?Content|Lot)\b|$)/i;
+const OLD_FORMAT_PRODUCT_RE = /\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}\/\d{1,2}\/\d{4}\s+(.{2,50}?)(?=\s+(?:N\/A\b|C(?:&?P)[A-Z0-9]{4,})|\s*\r?\n|$)/i;
 const PURITY_RE = /\d{1,3}\.\d+%/;
 
 const parseMoney = (value) => {
@@ -327,15 +328,23 @@ const buildDailyWooReport = (orders, startDateKey, endDateKey, analyticsSummary 
 
 function parseFields(text, filename) {
   const searchCodeMatch = text.match(SEARCH_CODE_RE);
-  const lotMatch = text.match(LOT_RE);
-  const productMatch = text.match(PRODUCT_RE);
 
-  const product = productMatch ? productMatch[1].trim().replace(/\s+/g, ' ') : null;
+  const lot = (text.match(LOT_RE) || [])[0] || null;
+
+  let product = null;
+  if (/\bProduct\s+Lot\b/i.test(text)) {
+    const m = text.match(OLD_FORMAT_PRODUCT_RE);
+    if (m) product = m[1].trim();
+  } else {
+    const m = text.match(PRODUCT_RE);
+    if (m) product = m[1].trim().replace(/\s+/g, ' ');
+  }
+
   const coaLink = `${COA_BASE_URL}/${encodeURIComponent(filename)}`;
 
   return {
     searchCode: searchCodeMatch ? searchCodeMatch[0] : null,
-    lot: lotMatch ? lotMatch[0] : null,
+    lot: lot || null,
     product: product || null,
     coaLink,
   };
@@ -488,6 +497,61 @@ export const handler = async (event) => {
       );
 
       return jsonResponse(200, { results });
+    }
+
+    if (pathname.endsWith('/bulk-import-kovera') && event.httpMethod === 'POST') {
+      const { rows } = JSON.parse(event.body || '{}');
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return jsonResponse(400, { error: 'Provide a non-empty array of rows.' });
+      }
+      const filtered = rows.filter(r => r.searchCode && !savedCoaSet.has(r.searchCode));
+      if (filtered.length === 0) {
+        return jsonResponse(200, { token: null, total: 0, skipped: rows.length });
+      }
+      const results = filtered.map(r => ({
+        filename: r.searchCode,
+        searchCode: r.searchCode,
+        lot: r.lot || null,
+        product: r.product || null,
+        coaLink: r.coaLink || null,
+        error: null,
+      }));
+      const token = Math.random().toString(36).slice(2);
+      pendingImports.set(token, results);
+      setTimeout(() => pendingImports.delete(token), 5 * 60 * 1000);
+      return jsonResponse(200, { token, total: results.length, skipped: rows.length - filtered.length });
+    }
+
+    if (pathname.endsWith('/bulk-import-coas') && event.httpMethod === 'POST') {
+      const { codes } = JSON.parse(event.body || '{}');
+      if (!Array.isArray(codes) || codes.length === 0) {
+        return jsonResponse(400, { error: 'Provide a non-empty array of COA codes.' });
+      }
+
+      const CONCURRENCY = 5;
+      const results = [];
+      for (let i = 0; i < codes.length; i += CONCURRENCY) {
+        const batch = codes.slice(i, i + CONCURRENCY);
+        const batchResults = await Promise.all(batch.map(async (code) => {
+          const filename = `${code}.pdf`;
+          const pdfUrl = `${COA_BASE_URL}/${encodeURIComponent(filename)}`;
+          try {
+            const pdfRes = await fetch(pdfUrl, { signal: AbortSignal.timeout(15000) });
+            if (!pdfRes.ok) throw new Error(`HTTP ${pdfRes.status}`);
+            const buf = await pdfRes.arrayBuffer();
+            const fileBytes = new Uint8Array(buf);
+            const pdf = await extractText(fileBytes, { mergePages: true });
+            const text = Array.isArray(pdf.text) ? pdf.text.join('\n') : pdf.text ?? '';
+            const fields = parseFields(text, filename);
+            return { filename, ...fields, error: null };
+          } catch (err) {
+            return { filename, searchCode: code, lot: null, product: null, coaLink: pdfUrl, error: err.message };
+          }
+        }));
+        results.push(...batchResults);
+      }
+
+      return jsonResponse(200, { results, total: codes.length });
     }
 
     if (pathname.endsWith('/17track/sync') && event.httpMethod === 'POST') {

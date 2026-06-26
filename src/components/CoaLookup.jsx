@@ -5,6 +5,16 @@ import './CoaLookup.css';
 
 const COA_COLLECTION = 'c&pCOA';
 
+const PRODUCT_MAP = {
+  'retatrutide': 'CP-3 RT',
+  'tirzepatide': 'CP-2 TZ',
+};
+
+const normalizeProduct = (product) => {
+  if (!product) return product;
+  return PRODUCT_MAP[product.toLowerCase().trim()] ?? product;
+};
+
 const STATUS = {
   PROCESSING: 'processing',
   DONE: 'done',
@@ -47,6 +57,9 @@ export default function CoaLookup() {
   const [search, setSearch] = useState('');
   const [savingIds, setSavingIds] = useState(new Set());
   const [deletingIds, setDeletingIds] = useState(new Set());
+  const [importing, setImporting] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('product');
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -121,7 +134,7 @@ export default function CoaLookup() {
         filename: row.filename,
         searchCode: row.searchCode,
         lot: row.lot ?? null,
-        product: row.product ?? null,
+        product: normalizeProduct(row.product) ?? null,
         coaLink: row.coaLink ?? null,
         uploadedAt: serverTimestamp(),
       });
@@ -131,6 +144,81 @@ export default function CoaLookup() {
       setSavingIds((prev) => { const s = new Set(prev); s.delete(row.id); return s; });
     }
   };
+
+  const importCodes = async (codes) => {
+    setImporting(true);
+    try {
+      const res = await fetch('/api/bulk-import-coas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codes }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || `Import failed (${res.status})`);
+        return;
+      }
+      const data = await res.json();
+      const importedRows = (data.results || []).map((r) => ({
+        id: `import-${r.filename}-${Date.now()}-${Math.random()}`,
+        filename: r.filename,
+        searchCode: r.searchCode,
+        lot: r.lot,
+        product: r.product,
+        coaLink: r.coaLink,
+        status: r.error ? STATUS.ERROR : STATUS.DONE,
+        error: r.error || null,
+      }));
+      setRows((prev) => {
+        const existingCodes = new Set(prev.map((r) => r.searchCode).filter(Boolean));
+        return [...prev, ...importedRows.filter((r) => !existingCodes.has(r.searchCode))];
+      });
+    } catch (err) {
+      alert(err.message || 'Network error during import.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const loadImportToken = useCallback(async (token) => {
+    if (!token) { alert('Nothing new to import — all COAs are already saved.'); return; }
+    setImporting(true);
+    try {
+      const r = await fetch(`/api/bulk-import-results/${token}`);
+      const data = await r.json();
+      if (data.error) { alert(data.error); return; }
+      const importedRows = (data.results || []).map((r) => ({
+        id: `import-${r.filename}-${Math.random()}`,
+        filename: r.filename,
+        searchCode: r.searchCode,
+        lot: r.lot,
+        product: r.product,
+        coaLink: r.coaLink,
+        status: r.error ? STATUS.ERROR : STATUS.DONE,
+        error: r.error || null,
+      }));
+      setRows((prev) => {
+        const existingCodes = new Set(prev.map((r) => r.searchCode).filter(Boolean));
+        return [...prev, ...importedRows.filter((r) => !existingCodes.has(r.searchCode))];
+      });
+    } catch (err) {
+      alert(err.message || 'Failed to load import results.');
+    } finally {
+      setImporting(false);
+    }
+  }, []);
+
+  // Poll for a pending import token posted by the Freedom Diagnostics console script
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const r = await fetch('/api/import-ready');
+        const data = await r.json();
+        if (data.token !== null) loadImportToken(data.token);
+      } catch {}
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [loadImportToken]);
 
   const saveAll = async (savedCodes) => {
     const unsaved = rows.filter(
@@ -178,21 +266,69 @@ export default function CoaLookup() {
 
   const savedSearchCodes = new Set(savedCoas.map((c) => c.searchCode));
 
-  const filteredSaved = savedCoas.filter((c) => {
-    const q = search.toLowerCase();
-    return (
-      !q ||
-      c.searchCode?.toLowerCase().includes(q) ||
-      c.lot?.toLowerCase().includes(q) ||
-      c.product?.toLowerCase().includes(q) ||
-      c.filename?.toLowerCase().includes(q)
-    );
-  });
+  // Silently fix any records with un-normalized product names
+  useEffect(() => {
+    const stale = savedCoas.filter(c => c.product && normalizeProduct(c.product) !== c.product);
+    stale.forEach(c => {
+      setDoc(doc(db, COA_COLLECTION, c.id), { product: normalizeProduct(c.product) }, { merge: true })
+        .catch(() => {});
+    });
+  }, [savedCoas]);
+
+  // Keep local server in sync with saved codes so bulk-import can skip them automatically
+  useEffect(() => {
+    const codes = savedCoas.map((c) => c.searchCode).filter(Boolean);
+    fetch('/api/coa-saved-codes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codes }),
+    }).catch(() => {});
+  }, [savedCoas]);
+
+  const copyCsv = async (rows) => {
+    const headers = ['Search Code', 'Product', 'LOT', 'COA Link'];
+    const escape = (v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`;
+    const lines = [headers.join('\t'), ...rows.map(r => [r.searchCode, r.product, r.lot, r.coaLink].map(escape).join('\t'))];
+    await navigator.clipboard.writeText(lines.join('\n'));
+  };
+
+  const coffDate = (searchCode) => {
+    const m = searchCode?.match(/Coff(\d{2})(\d{2})(\d{2})/i);
+    return m ? parseInt(`20${m[1]}${m[2]}${m[3]}`, 10) : 0;
+  };
+
+  const filteredSaved = savedCoas
+    .filter((c) => {
+      if (sourceFilter === 'freedom' && !c.searchCode?.toLowerCase().startsWith('coff')) return false;
+      if (sourceFilter === 'kovera' && !c.searchCode?.toLowerCase().startsWith('kvr')) return false;
+      const q = search.toLowerCase();
+      return (
+        !q ||
+        c.searchCode?.toLowerCase().includes(q) ||
+        c.lot?.toLowerCase().includes(q) ||
+        c.product?.toLowerCase().includes(q) ||
+        c.filename?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      if (sortBy === 'date-desc') return coffDate(b.searchCode) - coffDate(a.searchCode);
+      if (sortBy === 'date-asc') return coffDate(a.searchCode) - coffDate(b.searchCode);
+      return (a.product ?? '').localeCompare(b.product ?? '');
+    });
 
   return (
     <div className="coa-lookup-container">
       <div className="coa-lookup-header">
-        <h2 className="coa-lookup-title">COA Lookup</h2>
+        <div className="coa-lookup-title-row">
+          <h2 className="coa-lookup-title">COA Lookup</h2>
+          <button
+            className="coa-import-btn"
+            onClick={() => window.open('https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/', '_blank')}
+          >
+            Open Freedom Diagnostics ↗
+          </button>
+          {importing && <span className="coa-importing-badge">Importing…</span>}
+        </div>
         <p className="coa-lookup-subtitle">
           Upload PDFs to extract Search Code, LOT, and Product details.
         </p>
@@ -224,10 +360,12 @@ export default function CoaLookup() {
         <p className="coa-drop-hint">Multiple files supported</p>
       </div>
 
-      {rows.length > 0 && (
+      {rows.some((r) => !savedSearchCodes.has(r.searchCode)) && (
         <div className="coa-results-section">
           <div className="coa-results-toolbar">
-            <span className="coa-results-count">{rows.length} file{rows.length !== 1 ? 's' : ''}</span>
+            <span className="coa-results-count">
+              {rows.filter((r) => !savedSearchCodes.has(r.searchCode)).length} file{rows.filter((r) => !savedSearchCodes.has(r.searchCode)).length !== 1 ? 's' : ''}
+            </span>
             <div className="coa-toolbar-actions">
               {rows.some((r) => r.status === STATUS.DONE && r.searchCode && !savedSearchCodes.has(r.searchCode)) && (
                 <button className="coa-save-btn" onClick={() => saveAll(savedSearchCodes)}>Save All</button>
@@ -248,7 +386,7 @@ export default function CoaLookup() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
+                {rows.filter((row) => !savedSearchCodes.has(row.searchCode)).map((row) => {
                   const alreadySaved = row.searchCode && savedSearchCodes.has(row.searchCode);
                   const isSaving = savingIds.has(row.id);
                   return (
@@ -300,7 +438,42 @@ export default function CoaLookup() {
         <div className="coa-saved-header">
           <div className="coa-saved-title-row">
             <h3 className="coa-saved-title">Saved COAs</h3>
-            <span className="coa-saved-count">{filteredSaved.length}{search ? ` of ${savedCoas.length}` : ''}</span>
+            <span className="coa-saved-count">{filteredSaved.length}{search || sourceFilter !== 'all' ? ` of ${savedCoas.length}` : ''}</span>
+            <button
+              className="coa-source-btn"
+              onClick={async (e) => {
+                await copyCsv(filteredSaved);
+                const btn = e.currentTarget;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = 'Copy CSV'; }, 1500);
+              }}
+            >
+              Copy CSV
+            </button>
+            <div className="coa-source-filter">
+              {['all', 'freedom', 'kovera'].map((s) => (
+                <button
+                  key={s}
+                  className={`coa-source-btn${sourceFilter === s ? ' active' : ''}`}
+                  onClick={() => { setSourceFilter(s); if (s !== 'freedom') setSortBy('product'); }}
+                >
+                  {s === 'all' ? 'All' : s === 'freedom' ? 'Freedom' : 'Kovera'}
+                </button>
+              ))}
+            </div>
+            {sourceFilter === 'freedom' && (
+              <div className="coa-source-filter">
+                {[['product', 'A–Z'], ['date-desc', 'Newest'], ['date-asc', 'Oldest']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    className={`coa-source-btn${sortBy === val ? ' active' : ''}`}
+                    onClick={() => setSortBy(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <input
             className="coa-search-input"

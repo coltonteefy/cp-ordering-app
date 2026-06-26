@@ -7,6 +7,46 @@
   margin-bottom: 1.5rem;
 }
 
+.coa-lookup-title-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.3rem;
+}
+
+.coa-importing-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #a07020;
+  background: #fef3de;
+  border: 1px solid #f0d890;
+  border-radius: 20px;
+  padding: 0.2rem 0.65rem;
+}
+
+.coa-import-btn {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid #b07d4a;
+  border-radius: 8px;
+  background: #f5ede1;
+  color: #7a4f2a;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.coa-import-btn:hover:not(:disabled) {
+  background: #ead9c0;
+  border-color: #8c5a22;
+}
+
+.coa-import-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .coa-lookup-title {
   font-size: 1.4rem;
   font-weight: 700;
@@ -277,6 +317,35 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
+}
+
+.coa-source-filter {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: 0.25rem;
+}
+
+.coa-source-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #d4b896;
+  border-radius: 20px;
+  background: #fff;
+  color: #7a4f2a;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.coa-source-btn:hover {
+  background: #fdf2e5;
+  border-color: #b07d4a;
+}
+
+.coa-source-btn.active {
+  background: #7a4f2a;
+  border-color: #7a4f2a;
+  color: #fff;
 }
 
 .coa-saved-title {
