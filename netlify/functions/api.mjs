@@ -44,6 +44,10 @@ const PRODUCT_RE = /Product:\s*(.{1,60}?)(?=\s{2,}|\r?\n|\s*(?:Purity|Identity|A
 const OLD_FORMAT_PRODUCT_RE = /\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}\/\d{1,2}\/\d{4}\s+(.{2,50}?)(?=\s+(?:N\/A\b|C(?:&?P)[A-Z0-9]{4,})|\s*\r?\n|$)/i;
 const PURITY_RE = /\d{1,3}\.\d+%/;
 
+const pendingImports = new Map();
+const savedCoaSet = new Set();
+let pendingToken = null;
+
 const parseMoney = (value) => {
   const parsed = Number.parseFloat(value ?? '0');
   return Number.isFinite(parsed) ? parsed : 0;
@@ -520,6 +524,28 @@ export const handler = async (event) => {
       pendingImports.set(token, results);
       setTimeout(() => pendingImports.delete(token), 5 * 60 * 1000);
       return jsonResponse(200, { token, total: results.length, skipped: rows.length - filtered.length });
+    }
+
+    if (pathname.endsWith('/bulk-import-results') && event.httpMethod === 'GET') {
+      const token = pathname.split('/').pop();
+      const results = token ? pendingImports.get(token) : null;
+      if (!results) {
+        return jsonResponse(404, { error: 'Import token not found or expired.' });
+      }
+      pendingImports.delete(token);
+      return jsonResponse(200, { results });
+    }
+
+    if (pathname.endsWith('/import-ready') && event.httpMethod === 'POST') {
+      const body = JSON.parse(event.body || '{}');
+      pendingToken = typeof body.token === 'string' && body.token.trim() ? body.token.trim() : null;
+      return jsonResponse(200, { ok: true });
+    }
+
+    if (pathname.endsWith('/import-ready') && event.httpMethod === 'GET') {
+      const token = pendingToken;
+      pendingToken = null;
+      return jsonResponse(200, { token });
     }
 
     if (pathname.endsWith('/bulk-import-coas') && event.httpMethod === 'POST') {

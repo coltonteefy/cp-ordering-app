@@ -180,13 +180,27 @@ export default function CoaLookup() {
     }
   };
 
-  const loadImportToken = useCallback(async (token) => {
-    if (!token) { alert('Nothing new to import — all COAs are already saved.'); return; }
+  const loadImportToken = useCallback(async (token, options = {}) => {
+    const { silent = false } = options;
+    if (typeof token !== 'string' || token.trim() === '') {
+      if (!silent) alert('Nothing new to import — all COAs are already saved.');
+      return;
+    }
     setImporting(true);
     try {
       const r = await fetch(`/api/bulk-import-results/${token}`);
+      if (!r.ok) {
+        if (!silent) {
+          const err = await r.json().catch(() => ({}));
+          alert(err.error || `Failed to load import results (${r.status}).`);
+        }
+        return;
+      }
       const data = await r.json();
-      if (data.error) { alert(data.error); return; }
+      if (data.error) {
+        if (!silent) alert(data.error);
+        return;
+      }
       const importedRows = (data.results || []).map((r) => ({
         id: `import-${r.filename}-${Math.random()}`,
         filename: r.filename,
@@ -202,7 +216,7 @@ export default function CoaLookup() {
         return [...prev, ...importedRows.filter((r) => !existingCodes.has(r.searchCode))];
       });
     } catch (err) {
-      alert(err.message || 'Failed to load import results.');
+      if (!silent) alert(err.message || 'Failed to load import results.');
     } finally {
       setImporting(false);
     }
@@ -213,8 +227,11 @@ export default function CoaLookup() {
     const interval = setInterval(async () => {
       try {
         const r = await fetch('/api/import-ready');
+        if (!r.ok) return;
         const data = await r.json();
-        if (data.token !== null) loadImportToken(data.token);
+        if (typeof data.token === 'string' && data.token.trim() !== '') {
+          loadImportToken(data.token, { silent: true });
+        }
       } catch {}
     }, 2000);
     return () => clearInterval(interval);

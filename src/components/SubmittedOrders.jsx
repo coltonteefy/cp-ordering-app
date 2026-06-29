@@ -403,7 +403,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
           
           const name = item.productName || item.product || '';
           const strength = item.productStrength || item.strength || '';
-          const key = `${name}__${strength}`;
+          const key = `${name}__${strength}`.replace(/\//g, '|');
           const qty = Number(item.quantity) || 0;
           if (!aggregates[key]) aggregates[key] = { name, strength, qty: 0 };
           aggregates[key].qty += qty;
