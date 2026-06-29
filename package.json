@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "deb": "vite",
     "server": "node server/index.mjs",
     "build": "vite build",
     "lint": "eslint .",

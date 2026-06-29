@@ -47,6 +47,7 @@ const PURITY_RE = /\d{1,3}\.\d+%/;
 const pendingImports = new Map();
 const savedCoaSet = new Set();
 let pendingToken = null;
+const normalizeCoaCode = (value) => String(value || '').trim().toLowerCase();
 
 const parseMoney = (value) => {
   const parsed = Number.parseFloat(value ?? '0');
@@ -508,7 +509,10 @@ export const handler = async (event) => {
       if (!Array.isArray(rows) || rows.length === 0) {
         return jsonResponse(400, { error: 'Provide a non-empty array of rows.' });
       }
-      const filtered = rows.filter(r => r.searchCode && !savedCoaSet.has(r.searchCode));
+      const filtered = rows.filter((r) => {
+        const code = normalizeCoaCode(r.searchCode);
+        return code && !savedCoaSet.has(code);
+      });
       if (filtered.length === 0) {
         return jsonResponse(200, { token: null, total: 0, skipped: rows.length });
       }
@@ -526,7 +530,21 @@ export const handler = async (event) => {
       return jsonResponse(200, { token, total: results.length, skipped: rows.length - filtered.length });
     }
 
-    if (pathname.endsWith('/bulk-import-results') && event.httpMethod === 'GET') {
+    if (pathname.endsWith('/coa-saved-codes') && event.httpMethod === 'POST') {
+      const { codes } = JSON.parse(event.body || '{}');
+      savedCoaSet.clear();
+      (Array.isArray(codes) ? codes : [])
+        .map(normalizeCoaCode)
+        .filter(Boolean)
+        .forEach((code) => savedCoaSet.add(code));
+      return jsonResponse(200, { ok: true, count: savedCoaSet.size });
+    }
+
+    if (pathname.endsWith('/coa-saved-codes') && event.httpMethod === 'GET') {
+      return jsonResponse(200, { ok: true, count: savedCoaSet.size, codes: Array.from(savedCoaSet) });
+    }
+
+    if (pathname.includes('/bulk-import-results/') && event.httpMethod === 'GET') {
       const token = pathname.split('/').pop();
       const results = token ? pendingImports.get(token) : null;
       if (!results) {
@@ -549,9 +567,17 @@ export const handler = async (event) => {
     }
 
     if (pathname.endsWith('/bulk-import-coas') && event.httpMethod === 'POST') {
-      const { codes } = JSON.parse(event.body || '{}');
-      if (!Array.isArray(codes) || codes.length === 0) {
+      const { codes: rawCodes } = JSON.parse(event.body || '{}');
+      if (!Array.isArray(rawCodes) || rawCodes.length === 0) {
         return jsonResponse(400, { error: 'Provide a non-empty array of COA codes.' });
+      }
+
+      const codes = rawCodes.filter((code) => {
+        const normalized = normalizeCoaCode(code);
+        return normalized && !savedCoaSet.has(normalized);
+      });
+      if (codes.length === 0) {
+        return jsonResponse(200, { token: null, total: 0, skipped: rawCodes.length });
       }
 
       const CONCURRENCY = 5;
@@ -577,7 +603,15 @@ export const handler = async (event) => {
         results.push(...batchResults);
       }
 
-      return jsonResponse(200, { results, total: codes.length });
+      const token = Math.random().toString(36).slice(2);
+      pendingImports.set(token, results);
+      setTimeout(() => pendingImports.delete(token), 5 * 60 * 1000);
+
+      return jsonResponse(200, {
+        token,
+        total: results.length,
+        skipped: rawCodes.length - codes.length,
+      });
     }
 
     if (pathname.endsWith('/17track/sync') && event.httpMethod === 'POST') {

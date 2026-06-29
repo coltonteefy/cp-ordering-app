@@ -60,7 +60,14 @@ export default function CoaLookup() {
   const [importing, setImporting] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('all');
   const [sortBy, setSortBy] = useState('product');
+  const [savedCodeSync, setSavedCodeSync] = useState({
+    status: 'idle',
+    count: 0,
+    lastSyncedAt: null,
+    error: '',
+  });
   const fileInputRef = useRef(null);
+  const importInFlightRef = useRef(false);
 
   useEffect(() => {
     const q = query(collection(db, COA_COLLECTION), orderBy('uploadedAt', 'desc'));
@@ -182,10 +189,12 @@ export default function CoaLookup() {
 
   const loadImportToken = useCallback(async (token, options = {}) => {
     const { silent = false } = options;
+    if (importInFlightRef.current) return;
     if (typeof token !== 'string' || token.trim() === '') {
       if (!silent) alert('Nothing new to import — all COAs are already saved.');
       return;
     }
+    importInFlightRef.current = true;
     setImporting(true);
     try {
       const r = await fetch(`/api/bulk-import-results/${token}`);
@@ -219,12 +228,14 @@ export default function CoaLookup() {
       if (!silent) alert(err.message || 'Failed to load import results.');
     } finally {
       setImporting(false);
+      importInFlightRef.current = false;
     }
   }, []);
 
   // Poll for a pending import token posted by the Freedom Diagnostics console script
   useEffect(() => {
     const interval = setInterval(async () => {
+      if (importInFlightRef.current) return;
       try {
         const r = await fetch('/api/import-ready');
         if (!r.ok) return;
@@ -295,11 +306,53 @@ export default function CoaLookup() {
   // Keep local server in sync with saved codes so bulk-import can skip them automatically
   useEffect(() => {
     const codes = savedCoas.map((c) => c.searchCode).filter(Boolean);
-    fetch('/api/coa-saved-codes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ codes }),
-    }).catch(() => {});
+    let cancelled = false;
+    let retryTimer = null;
+
+    const syncCodes = async (attempt = 0) => {
+      if (cancelled) return;
+      if (attempt === 0) {
+        setSavedCodeSync((prev) => ({ ...prev, status: 'syncing', error: '' }));
+      }
+      try {
+        const response = await fetch('/api/coa-saved-codes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codes }),
+        });
+        if (!response.ok) {
+          throw new Error(`Sync failed (${response.status})`);
+        }
+        const data = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        setSavedCodeSync({
+          status: 'ok',
+          count: Number(data.count ?? codes.length) || 0,
+          lastSyncedAt: Date.now(),
+          error: '',
+        });
+      } catch (err) {
+        if (cancelled) return;
+        if (attempt < 2) {
+          retryTimer = setTimeout(() => {
+            syncCodes(attempt + 1);
+          }, 800 * (attempt + 1));
+          return;
+        }
+        setSavedCodeSync((prev) => ({
+          ...prev,
+          status: 'error',
+          error: err?.message || 'Failed to sync saved COA codes.',
+        }));
+      }
+    };
+
+    syncCodes();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [savedCoas]);
 
   const copyCsv = async (rows) => {
@@ -349,6 +402,20 @@ export default function CoaLookup() {
         <p className="coa-lookup-subtitle">
           Upload PDFs to extract Search Code, LOT, and Product details.
         </p>
+        <div className="coa-sync-status-row">
+          <span className={`coa-sync-badge coa-sync-badge--${savedCodeSync.status}`}>
+            Saved-code sync: {savedCodeSync.status === 'ok' ? 'Ready' : savedCodeSync.status === 'error' ? 'Error' : savedCodeSync.status === 'syncing' ? 'Syncing…' : 'Idle'}
+          </span>
+          <span className="coa-sync-meta">Tracked saved COAs: {savedCodeSync.count}</span>
+          {savedCodeSync.lastSyncedAt && (
+            <span className="coa-sync-meta">
+              Last sync: {new Date(savedCodeSync.lastSyncedAt).toLocaleTimeString()}
+            </span>
+          )}
+          {savedCodeSync.status === 'error' && savedCodeSync.error && (
+            <span className="coa-sync-error">{savedCodeSync.error}</span>
+          )}
+        </div>
       </div>
 
       <div
@@ -544,6 +611,7 @@ export default function CoaLookup() {
           </div>
         )}
       </div>
+
     </div>
   );
 }

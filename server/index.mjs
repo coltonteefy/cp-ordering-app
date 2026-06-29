@@ -574,12 +574,21 @@ app.post('/api/parse-pdf', upload.array('files'), async (req, res) => {
 // Temporary in-memory store for bulk import results (keyed by token)
 const pendingImports = new Map();
 let savedCoaSet = new Set();
+const normalizeCoaCode = (value) => String(value || '').trim().toLowerCase();
 
 // Called by the COA Lookup page whenever its Firestore saved list changes
 app.post('/api/coa-saved-codes', (req, res) => {
   const { codes } = req.body || {};
-  savedCoaSet = new Set(Array.isArray(codes) ? codes : []);
+  savedCoaSet = new Set(
+    (Array.isArray(codes) ? codes : [])
+      .map(normalizeCoaCode)
+      .filter(Boolean)
+  );
   res.json({ ok: true, count: savedCoaSet.size });
+});
+
+app.get('/api/coa-saved-codes', (_req, res) => {
+  res.json({ ok: true, count: savedCoaSet.size, codes: Array.from(savedCoaSet) });
 });
 
 // Kovera Labs import — data comes pre-parsed from the DOM, no PDF fetching needed
@@ -588,7 +597,10 @@ app.post('/api/bulk-import-kovera', (req, res) => {
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'Provide a non-empty array of rows.' });
   }
-  const filtered = rows.filter(r => r.searchCode && !savedCoaSet.has(r.searchCode));
+  const filtered = rows.filter((r) => {
+    const code = normalizeCoaCode(r.searchCode);
+    return code && !savedCoaSet.has(code);
+  });
   if (filtered.length === 0) {
     return res.json({ token: null, total: 0, skipped: rows.length });
   }
@@ -611,7 +623,10 @@ app.post('/api/bulk-import-coas', async (req, res) => {
   if (!Array.isArray(rawCodes) || rawCodes.length === 0) {
     return res.status(400).json({ error: 'Provide a non-empty array of COA codes.' });
   }
-  const codes = rawCodes.filter(c => !savedCoaSet.has(c));
+  const codes = rawCodes.filter((c) => {
+    const code = normalizeCoaCode(c);
+    return code && !savedCoaSet.has(code);
+  });
   if (codes.length === 0) {
     return res.json({ token: null, total: 0, skipped: rawCodes.length });
   }

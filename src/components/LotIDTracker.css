@@ -408,6 +408,122 @@
   margin: 0 0 1.25rem 0;
 }
 
+.lot-testing-list-card {
+  width: min(1600px, 100%);
+  margin: 0 auto 1rem;
+  background: #fffdf8;
+  border: 1px solid #e9d8bf;
+  border-radius: 14px;
+  padding: 0.95rem 1rem;
+  box-shadow: 0 4px 14px rgba(60, 30, 0, 0.06);
+}
+
+.lot-testing-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.lot-testing-list-title {
+  margin: 0;
+  font-size: 1rem;
+  color: #3d2a1b;
+}
+
+.lot-testing-list-subtitle {
+  margin: 0.2rem 0 0;
+  color: #75614c;
+  font-size: 0.83rem;
+}
+
+.lot-testing-list-metrics {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.lot-testing-list-pill {
+  font-size: 0.76rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.2rem 0.58rem;
+  border: 1px solid transparent;
+}
+
+.lot-testing-list-pill.waiting {
+  background: #fff4de;
+  color: #8a5a16;
+  border-color: #efcf98;
+}
+
+.lot-testing-list-pill.received {
+  background: #e9f7ee;
+  color: #256940;
+  border-color: #b8dfc6;
+}
+
+.lot-testing-list-empty {
+  font-size: 0.84rem;
+  color: #856f58;
+  padding: 0.5rem 0.1rem;
+}
+
+.lot-testing-list-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #ecdcc6;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.lot-testing-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.lot-testing-list-table th,
+.lot-testing-list-table td {
+  border-bottom: 1px solid #f1e6d8;
+  padding: 0.5rem 0.55rem;
+  text-align: left;
+  font-size: 0.8rem;
+  color: #3e2e21;
+}
+
+.lot-testing-list-table th {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7b5f43;
+  background: #f8efe2;
+}
+
+.lot-testing-list-select,
+.lot-testing-list-input {
+  width: 100%;
+  font-size: 0.78rem;
+  border: 1px solid #e1cfb7;
+  border-radius: 7px;
+  padding: 0.28rem 0.42rem;
+  background: #fff;
+  color: #352619;
+}
+
+.lot-testing-list-select:focus,
+.lot-testing-list-input:focus {
+  outline: none;
+  border-color: #bf935f;
+}
+
+@media (max-width: 900px) {
+  .lot-testing-list-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .lot-id-product-pill {
   padding: 0.35rem 0.85rem;
   border-radius: 999px;

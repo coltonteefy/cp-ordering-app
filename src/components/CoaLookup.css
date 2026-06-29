@@ -60,6 +60,51 @@
   margin: 0;
 }
 
+.coa-sync-status-row {
+  margin-top: 0.55rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.coa-sync-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.18rem 0.6rem;
+  border: 1px solid transparent;
+}
+
+.coa-sync-badge--idle,
+.coa-sync-badge--syncing {
+  background: #fef3de;
+  color: #8a661d;
+  border-color: #f0d890;
+}
+
+.coa-sync-badge--ok {
+  background: #e4f5ea;
+  color: #2a7a45;
+  border-color: #b2dfc0;
+}
+
+.coa-sync-badge--error {
+  background: #fde9e9;
+  color: #b03030;
+  border-color: #f0b0b0;
+}
+
+.coa-sync-meta {
+  font-size: 0.73rem;
+  color: #7b6652;
+}
+
+.coa-sync-error {
+  font-size: 0.73rem;
+  color: #b03030;
+}
+
 /* Drop Zone */
 .coa-drop-zone {
   display: flex;

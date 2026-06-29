@@ -41,6 +41,8 @@ const buildLabelProductHtml = (value) =>
 const TEST_LABEL_VARIANTS = ["TEST 1", "TEST 2", "TEST 3", "TEST 4", "TEST 5"];
 const TESTING_TABLE_ROW_COUNT = 12;
 const PRINT_TESTING_TABLE_ROW_COUNT = 13;
+const TESTING_QUEUE_STORAGE_KEY = "cp-testing-queue";
+const COA_TESTING_TRACKER_STORAGE_KEY = "coaTestingTracker_v1";
 const nextCapShadeFromText = (value, fallback = "") => {
   const resolved = resolveCapColorValue(value);
   return resolved ? colorValueToHex(resolved, fallback || "#c9c1b7") : fallback;
@@ -380,6 +382,14 @@ const buildKitLabelDesignStyles = (design) => ({
   fade: {
     height: `${design.bottomFadeHeight}px`,
   },
+});
+
+const normalizeTestingQueueItem = (entry) => ({
+  ...entry,
+  sentAt: entry?.sentAt || "",
+  trackingStatus: entry?.trackingStatus || "waiting",
+  testResult: entry?.testResult || "",
+  receivedAt: entry?.receivedAt || "",
 });
 const buildTestLabelDesignStyles = (design) => ({
   logoWrap: {
@@ -1661,10 +1671,48 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [allLotsOpen, setAllLotsOpen] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [testingQueue, setTestingQueue] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('cp-testing-queue') || '[]'); } catch { return []; }
+    try {
+      const baseQueue = JSON.parse(localStorage.getItem(TESTING_QUEUE_STORAGE_KEY) || "[]");
+      const normalizedBase = Array.isArray(baseQueue)
+        ? baseQueue.map(normalizeTestingQueueItem)
+        : [];
+
+      const coaTrackerRaw = localStorage.getItem(COA_TESTING_TRACKER_STORAGE_KEY);
+      if (!coaTrackerRaw) return normalizedBase;
+
+      const parsed = JSON.parse(coaTrackerRaw);
+      const sentItems = Array.isArray(parsed?.sentItems) ? parsed.sentItems : [];
+      if (!sentItems.length) return normalizedBase;
+
+      const existingIds = new Set(normalizedBase.map((entry) => entry.id));
+      const migrated = sentItems
+        .map((item) => ({
+          id: item.id || `coa-migrated-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          sampleName: item.productName || "",
+          expectedMg: item.qty || "",
+          lotNumber: item.lotOrCoaCode || "",
+          sentAt: item.sentAt || "",
+          trackingStatus: item.trackingStatus || "waiting",
+          testResult: item.testResult || "",
+          receivedAt: item.receivedAt || "",
+          purityId: true,
+          netPeptide: true,
+          endotoxins: true,
+          sterility: true,
+          conformityTest: true,
+          vialPhoto: true,
+          fentanyl: true,
+          selectAll: true,
+        }))
+        .filter((entry) => !existingIds.has(entry.id));
+
+      return [...migrated, ...normalizedBase].map(normalizeTestingQueueItem);
+    } catch {
+      return [];
+    }
   });
   useEffect(() => {
-    try { localStorage.setItem('cp-testing-queue', JSON.stringify(testingQueue)); } catch {}
+    try { localStorage.setItem(TESTING_QUEUE_STORAGE_KEY, JSON.stringify(testingQueue)); } catch {}
   }, [testingQueue]);
   const [testingFormOpen, setTestingFormOpen] = useState(false);
   const TESTING_CONTACTS = [
@@ -1694,6 +1742,38 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   });
   const productRefs = useRef({});
   const [visibleProductId, setVisibleProductId] = useState(null);
+
+  const capByLot = useMemo(() => {
+    const map = new Map();
+    Object.values(productData || {}).forEach((data) => {
+      (data?.coaList || []).forEach((coa) => {
+        const lot = String(coa?.lot || '').trim();
+        if (!lot || map.has(lot)) return;
+        map.set(lot, {
+          capColor: coa?.capColor || '',
+          capShade: coa?.capShade || '',
+        });
+      });
+    });
+    return map;
+  }, [productData]);
+
+  useEffect(() => {
+    if (!testingQueue.length || !capByLot.size) return;
+    let changed = false;
+    const next = testingQueue.map((entry) => {
+      if (entry.capColor) return entry;
+      const fallback = capByLot.get(String(entry.lotNumber || '').trim());
+      if (!fallback?.capColor) return entry;
+      changed = true;
+      return {
+        ...entry,
+        capColor: fallback.capColor,
+        capShade: fallback.capShade || '',
+      };
+    });
+    if (changed) setTestingQueue(next);
+  }, [testingQueue, capByLot]);
 
   const sidebarGroups = useMemo(() => {
     // Dedup by group label (keep first representative), alphabetize within Other
@@ -2201,6 +2281,12 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           sampleName: product.product || "",
           expectedMg: product.strength || "",
           lotNumber: coa.lot || "",
+          capColor: coa.capColor || "",
+          capShade: coa.capShade || "",
+          sentAt: "",
+          trackingStatus: "waiting",
+          testResult: "",
+          receivedAt: "",
           selectAll: all,
           ...testingGlobalTests,
         },
@@ -2238,12 +2324,28 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           updated.selectAll =
             updated.purityId && updated.netPeptide && updated.endotoxins && updated.sterility && updated.conformityTest && updated.vialPhoto;
         }
+        if (field === "trackingStatus") {
+          if (value === "received" && !updated.receivedAt) {
+            updated.receivedAt = new Date().toISOString().slice(0, 10);
+          }
+          if (value === "waiting") {
+            updated.receivedAt = "";
+          }
+        }
         return updated;
       })
     );
   };
 
+  const markQueueAsSent = () => {
+    const now = new Date().toISOString();
+    setTestingQueue((prev) =>
+      prev.map((entry) => (entry.sentAt ? entry : { ...entry, sentAt: now, trackingStatus: entry.trackingStatus || "waiting" }))
+    );
+  };
+
   const printTestingForm = () => {
+    markQueueAsSent();
     const esc = (value) =>
       String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -2417,6 +2519,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   };
 
   const printTestingFormLetter = () => {
+    markQueueAsSent();
     const esc = (value) =>
       String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -3003,6 +3106,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           })}
         </div>
       )}
+
       <div className="lot-id-pill-bar">
         {false && import.meta.env.DEV && (
           <>
@@ -3410,6 +3514,85 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           );
         })}
       </div>
+
+      {!isGuest && !vendorGuest && (
+        <div className="lot-testing-list-card">
+          <div className="lot-testing-list-header">
+            <div>
+              <h3 className="lot-testing-list-title">Products Being Tested</h3>
+              <p className="lot-testing-list-subtitle">Track everything currently waiting on test results.</p>
+            </div>
+            <div className="lot-testing-list-metrics">
+              <span className="lot-testing-list-pill waiting">
+                Waiting: {testingQueue.filter((entry) => (entry.trackingStatus || "waiting") !== "received").length}
+              </span>
+              <span className="lot-testing-list-pill received">
+                Received: {testingQueue.filter((entry) => (entry.trackingStatus || "waiting") === "received").length}
+              </span>
+            </div>
+          </div>
+
+          {testingQueue.length === 0 ? (
+            <div className="lot-testing-list-empty">No products in testing queue yet. Use Send for Testing on any lot card.</div>
+          ) : (
+            <div className="lot-testing-list-table-wrap">
+              <table className="lot-testing-list-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Lot</th>
+                    <th>Cap Color</th>
+                    <th>mg</th>
+                    <th>Status</th>
+                    <th>Received</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {testingQueue.map((entry) => (
+                    <tr key={entry.id}>
+                      {(() => {
+                        const fallback = capByLot.get(String(entry.lotNumber || '').trim());
+                        const capColorValue = entry.capColor || fallback?.capColor || '';
+                        const capShadeValue = entry.capShade || fallback?.capShade || '';
+                        return (
+                          <>
+                      <td>{entry.sampleName || "-"}</td>
+                      <td>{entry.lotNumber || "-"}</td>
+                      <td>
+                        {capColorValue ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                            <span
+                              className="all-lots-cap-swatch"
+                              style={{ backgroundColor: getCapRenderColor(capColorValue, capShadeValue) || "#e7dfd3" }}
+                              title={capColorValue}
+                            />
+                            <span>{capColorValue}</span>
+                          </span>
+                        ) : "-"}
+                      </td>
+                      <td>{entry.expectedMg || "-"}</td>
+                      <td>
+                        <select
+                          className="lot-testing-list-select"
+                          value={entry.trackingStatus || "waiting"}
+                          onChange={(e) => updateTestingQueueItem(entry.id, "trackingStatus", e.target.value)}
+                        >
+                          <option value="waiting">Waiting</option>
+                          <option value="received">Received</option>
+                        </select>
+                      </td>
+                      <td>{entry.receivedAt || "-"}</td>
+                          </>
+                        );
+                      })()}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {editProductModal.open &&
         createPortal(
@@ -4550,6 +4733,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                 );
               })}
             </div>
+
           </div>
         </div>,
         document.body
