@@ -2701,31 +2701,23 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                 className={`tracking-add tracking-copy-all${copiedOrderId === order.id && copiedOrderType === 'tracking' ? ' copied' : ''}`}
                 onClick={() => {
                   const entries = getEffectiveTrackingEntries(order);
-                  const blocks = entries.flatMap((e) => {
+                  const pendingLines = [];
+                  const deliveredLines = [];
+                  entries.forEach((e) => {
                     const nums = getTrackingNumbers(e.number);
-                    if (!nums.length) return [];
+                    if (!nums.length) return;
                     const pnd = e.perNumberData || {};
                     const delivered = new Set(e.deliveredNumbers || []);
-                    const carrier = e.carrier || '';
-                    const items = (Array.isArray(e.itemIds) ? e.itemIds : []).map((id) => order.items.find((i) => i.itemId === id)).filter(Boolean);
-                    const label = items.length ? items.map(formatTrackingItemLabel).join(', ') : (e.note || '');
-                    const numLines = nums.map((num) => {
+                    nums.forEach((num) => {
                       const d = pnd[num] || {};
-                      const isDelivered = delivered.has(num);
-                      const status = isDelivered ? 'Delivered ✓' : (d.trackStatus || 'Pending');
-                      const parts = [`  ${num}`];
-                      if (carrier) parts.push(`[${carrier}]`);
-                      if (d.qty) parts.push(`${d.qty} kits`);
-                      if (d.cost) parts.push(`$${Number(d.cost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-                      parts.push(status);
-                      if (!isDelivered && d.destination) parts.push(`→ ${d.destination}`);
-                      if (!isDelivered && d.lastUpdated) parts.push(`(updated ${new Date(d.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`);
-                      return parts.join('  ');
+                      const isDelivered = delivered.has(num) || /delivered/i.test(String(d.trackStatus || ''));
+                      if (isDelivered) deliveredLines.push(`${num} -- delivered`);
+                      else pendingLines.push(num);
                     });
-                    return label ? [`${label}:`, ...numLines, ''] : [...numLines, ''];
                   });
-                  if (!blocks.length) return;
-                  navigator.clipboard.writeText(blocks.join('\n').trim());
+                  const orderedLines = [...pendingLines, ...deliveredLines];
+                  if (!orderedLines.length) return;
+                  navigator.clipboard.writeText(orderedLines.join('\n'));
                   setCopiedOrderId(order.id); setCopiedOrderType('tracking');
                   setTimeout(() => { setCopiedOrderId(null); setCopiedOrderType(null); }, 2000);
                 }}
