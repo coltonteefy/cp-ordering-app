@@ -410,7 +410,7 @@
 
 .lot-testing-list-card {
   width: min(1600px, 100%);
-  margin: 0 auto 1rem;
+  margin: 1.35rem auto 1rem;
   background: #fffdf8;
   border: 1px solid #e9d8bf;
   border-radius: 14px;
@@ -515,6 +515,30 @@
 .lot-testing-list-input:focus {
   outline: none;
   border-color: #bf935f;
+}
+
+.lot-testing-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 6.2rem;
+  border-radius: 999px;
+  padding: 0.22rem 0.56rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.lot-testing-status-pill.waiting {
+  background: #fff4de;
+  color: #8a5a16;
+  border-color: #efcf98;
+}
+
+.lot-testing-status-pill.received {
+  background: #e9f7ee;
+  color: #256940;
+  border-color: #b8dfc6;
 }
 
 @media (max-width: 900px) {
@@ -1416,6 +1440,33 @@
   border-color: #8fcea8;
 }
 
+.lot-id-card-testing-btn--secondary {
+  color: #7a5c3a;
+  background: #fffaf3;
+  border-color: #dcc9ae;
+}
+
+.lot-id-card-testing-btn--secondary:hover {
+  background: #f5ede0;
+  border-color: #c9a87a;
+}
+
+.lot-id-card-coa-link {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #2f6f53;
+  text-decoration: none;
+  background: #edf7f1;
+  border: 1px solid #b8dfc9;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+}
+
+.lot-id-card-coa-link:hover {
+  background: #d6f0e0;
+  border-color: #8fcea8;
+}
+
 .lot-id-card-edit-btn {
   font-size: 0.75rem;
   font-weight: 700;
@@ -1431,6 +1482,21 @@
 .lot-id-card-edit-btn:hover {
   background: #f5ede0;
   border-color: #c9a87a;
+}
+
+.lot-id-coa-link-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #2a7a45;
+  text-decoration: none;
+  background: #e4f5ea;
+  border: 1px solid #b2dfc0;
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+}
+
+.lot-id-coa-link-pill:hover {
+  background: #d3f0dd;
 }
 
 .lot-testing-modal {

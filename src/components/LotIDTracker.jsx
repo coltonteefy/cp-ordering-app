@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { collection, onSnapshot, updateDoc, doc, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, updateDoc, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import "./LotIDTracker.css";
 
@@ -43,6 +43,7 @@ const TESTING_TABLE_ROW_COUNT = 12;
 const PRINT_TESTING_TABLE_ROW_COUNT = 13;
 const TESTING_QUEUE_STORAGE_KEY = "cp-testing-queue";
 const COA_TESTING_TRACKER_STORAGE_KEY = "coaTestingTracker_v1";
+const TESTING_QUEUE_COLLECTION = "c&pTestingQueue";
 const nextCapShadeFromText = (value, fallback = "") => {
   const resolved = resolveCapColorValue(value);
   return resolved ? colorValueToHex(resolved, fallback || "#c9c1b7") : fallback;
@@ -386,11 +387,16 @@ const buildKitLabelDesignStyles = (design) => ({
 
 const normalizeTestingQueueItem = (entry) => ({
   ...entry,
+  capColor: entry?.capColor || "",
+  capShade: entry?.capShade || "",
+  createdAt: Number(entry?.createdAt) || Date.now(),
+  updatedAt: Number(entry?.updatedAt) || Date.now(),
   sentAt: entry?.sentAt || "",
   trackingStatus: entry?.trackingStatus || "waiting",
   testResult: entry?.testResult || "",
   receivedAt: entry?.receivedAt || "",
 });
+const normalizeLotKey = (value) => String(value || "").trim().toUpperCase();
 const buildTestLabelDesignStyles = (design) => ({
   logoWrap: {
     left: `${design.logoLeftPercent}%`,
@@ -1670,50 +1676,9 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [allLotsOpen, setAllLotsOpen] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
-  const [testingQueue, setTestingQueue] = useState(() => {
-    try {
-      const baseQueue = JSON.parse(localStorage.getItem(TESTING_QUEUE_STORAGE_KEY) || "[]");
-      const normalizedBase = Array.isArray(baseQueue)
-        ? baseQueue.map(normalizeTestingQueueItem)
-        : [];
-
-      const coaTrackerRaw = localStorage.getItem(COA_TESTING_TRACKER_STORAGE_KEY);
-      if (!coaTrackerRaw) return normalizedBase;
-
-      const parsed = JSON.parse(coaTrackerRaw);
-      const sentItems = Array.isArray(parsed?.sentItems) ? parsed.sentItems : [];
-      if (!sentItems.length) return normalizedBase;
-
-      const existingIds = new Set(normalizedBase.map((entry) => entry.id));
-      const migrated = sentItems
-        .map((item) => ({
-          id: item.id || `coa-migrated-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          sampleName: item.productName || "",
-          expectedMg: item.qty || "",
-          lotNumber: item.lotOrCoaCode || "",
-          sentAt: item.sentAt || "",
-          trackingStatus: item.trackingStatus || "waiting",
-          testResult: item.testResult || "",
-          receivedAt: item.receivedAt || "",
-          purityId: true,
-          netPeptide: true,
-          endotoxins: true,
-          sterility: true,
-          conformityTest: true,
-          vialPhoto: true,
-          fentanyl: true,
-          selectAll: true,
-        }))
-        .filter((entry) => !existingIds.has(entry.id));
-
-      return [...migrated, ...normalizedBase].map(normalizeTestingQueueItem);
-    } catch {
-      return [];
-    }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(TESTING_QUEUE_STORAGE_KEY, JSON.stringify(testingQueue)); } catch {}
-  }, [testingQueue]);
+  const [testingQueue, setTestingQueue] = useState([]);
+  const [testingQueueLoaded, setTestingQueueLoaded] = useState(false);
+  const migratedTestingQueueRef = useRef(false);
   const [testingFormOpen, setTestingFormOpen] = useState(false);
   const TESTING_CONTACTS = [
     { name: "Colton Teefy",  phone: "404-630-0071" },
@@ -1728,6 +1693,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   });
   const [testingFormOptions, setTestingFormOptions] = useState({ combineCoa: true, comments: "" });
   const [testingGlobalTests, setTestingGlobalTests] = useState({ purityId: true, netPeptide: true, endotoxins: true, sterility: true, conformityTest: true, vialPhoto: true, fentanyl: true });
+  const [savedCoaLotKeys, setSavedCoaLotKeys] = useState(new Set());
+  const [savedCoasByLot, setSavedCoasByLot] = useState(new Map());
   const [vendorFilter, setVendorFilter] = useState(() => vendorGuest || "");
   const [lotModalConfig, setLotModalConfig] = useState({
     productKey: null,
@@ -1772,8 +1739,175 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
         capShade: fallback.capShade || '',
       };
     });
-    if (changed) setTestingQueue(next);
+    if (!changed) return;
+    Promise.all(
+      next
+        .filter((entry, index) => entry.capColor !== testingQueue[index]?.capColor || entry.capShade !== testingQueue[index]?.capShade)
+        .map((entry) =>
+          setDoc(
+            doc(db, TESTING_QUEUE_COLLECTION, entry.id),
+            { capColor: entry.capColor || '', capShade: entry.capShade || '', updatedAt: Date.now() },
+            { merge: true }
+          )
+        )
+    ).catch((err) => {
+      console.error("Failed to backfill cap color for testing queue", err);
+    });
   }, [testingQueue, capByLot]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "c&pCOA"),
+      (snapshot) => {
+        const lots = new Set();
+        const byLot = new Map();
+        snapshot.forEach((snap) => {
+          const data = snap.data() || {};
+          const lot = normalizeLotKey(data?.lot);
+          if (lot) lots.add(lot);
+          if (lot && !byLot.has(lot)) {
+            byLot.set(lot, {
+              id: snap.id,
+              lot: data.lot || "",
+              coaLink: data.coaLink || "",
+              product: data.product || "",
+            });
+          }
+        });
+        setSavedCoaLotKeys(lots);
+        setSavedCoasByLot(byLot);
+      },
+      (error) => {
+        console.error("Error loading saved COA lots:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!savedCoaLotKeys.size || !testingQueue.length) return;
+    const toMarkReceived = testingQueue.filter((entry) => {
+      const lotKey = normalizeLotKey(entry.lotNumber);
+      if (!lotKey || !savedCoaLotKeys.has(lotKey)) return false;
+      return (entry.trackingStatus || "waiting") !== "received";
+    });
+
+    if (!toMarkReceived.length) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    Promise.all(
+      toMarkReceived.map((entry) =>
+        setDoc(
+          doc(db, TESTING_QUEUE_COLLECTION, entry.id),
+          {
+            trackingStatus: "received",
+            receivedAt: entry.receivedAt || today,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        )
+      )
+    ).catch((err) => {
+      console.error("Failed to auto-mark testing queue items as received", err);
+    });
+  }, [savedCoaLotKeys, testingQueue]);
+
+  useEffect(() => {
+    if (isGuest || vendorGuest) {
+      setTestingQueue([]);
+      setTestingQueueLoaded(true);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      collection(db, TESTING_QUEUE_COLLECTION),
+      (snapshot) => {
+        const entries = snapshot.docs
+          .map((snap) => normalizeTestingQueueItem({ id: snap.id, ...snap.data() }))
+          .sort((a, b) => (Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0)));
+        setTestingQueue(entries);
+        setTestingQueueLoaded(true);
+      },
+      (error) => {
+        console.error("Error loading testing queue:", error);
+        setTestingQueueLoaded(true);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isGuest, vendorGuest]);
+
+  useEffect(() => {
+    if (isGuest || vendorGuest || !testingQueueLoaded || migratedTestingQueueRef.current) return;
+    if (testingQueue.length > 0) {
+      migratedTestingQueueRef.current = true;
+      return;
+    }
+
+    let legacyEntries = [];
+    try {
+      const baseQueue = JSON.parse(localStorage.getItem(TESTING_QUEUE_STORAGE_KEY) || "[]");
+      const base = Array.isArray(baseQueue) ? baseQueue : [];
+      legacyEntries.push(...base);
+    } catch {}
+
+    try {
+      const parsed = JSON.parse(localStorage.getItem(COA_TESTING_TRACKER_STORAGE_KEY) || "{}");
+      const sentItems = Array.isArray(parsed?.sentItems) ? parsed.sentItems : [];
+      const mapped = sentItems.map((item) => ({
+        id: item.id || `coa-migrated-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        sampleName: item.productName || "",
+        expectedMg: item.qty || "",
+        lotNumber: item.lotOrCoaCode || "",
+        capColor: item.capColor || "",
+        capShade: item.capShade || "",
+        sentAt: item.sentAt || "",
+        trackingStatus: item.trackingStatus || "waiting",
+        testResult: item.testResult || "",
+        receivedAt: item.receivedAt || "",
+        purityId: true,
+        netPeptide: true,
+        endotoxins: true,
+        sterility: true,
+        conformityTest: true,
+        vialPhoto: true,
+        fentanyl: true,
+        selectAll: true,
+      }));
+      legacyEntries.push(...mapped);
+    } catch {}
+
+    const deduped = [];
+    const seen = new Set();
+    legacyEntries.forEach((entry) => {
+      const normalized = normalizeTestingQueueItem(entry);
+      if (!normalized.id || seen.has(normalized.id)) return;
+      seen.add(normalized.id);
+      deduped.push(normalized);
+    });
+
+    if (!deduped.length) {
+      migratedTestingQueueRef.current = true;
+      return;
+    }
+
+    Promise.all(
+      deduped.map((entry) =>
+        setDoc(doc(db, TESTING_QUEUE_COLLECTION, entry.id), {
+          ...entry,
+          updatedAt: Date.now(),
+          createdAt: entry.createdAt || Date.now(),
+        }, { merge: true })
+      )
+    )
+      .then(() => {
+        migratedTestingQueueRef.current = true;
+      })
+      .catch((err) => {
+        console.error("Failed to migrate local testing queue to Firestore", err);
+      });
+  }, [isGuest, vendorGuest, testingQueueLoaded, testingQueue.length]);
 
   const sidebarGroups = useMemo(() => {
     // Dedup by group label (keep first representative), alphabetize within Other
@@ -2269,79 +2403,158 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     printWindow.document.close();
   };
 
-  const addToTestingQueue = (product, coa) => {
+  const addToTestingQueue = async (product, coa) => {
     const entryId = `${product.docId}-${coa.lot}`;
-    setTestingQueue((prev) => {
-      if (prev.some((entry) => entry.id === entryId)) return prev;
-      const all = Object.values(testingGlobalTests).every(Boolean);
-      return [
-        ...prev,
-        {
-          id: entryId,
-          sampleName: product.product || "",
-          expectedMg: product.strength || "",
-          lotNumber: coa.lot || "",
-          capColor: coa.capColor || "",
-          capShade: coa.capShade || "",
-          sentAt: "",
-          trackingStatus: "waiting",
-          testResult: "",
-          receivedAt: "",
-          selectAll: all,
-          ...testingGlobalTests,
-        },
-      ];
+    if (testingQueue.some((entry) => entry.id === entryId)) {
+      setTestingFormOpen(true);
+      return;
+    }
+    const all = Object.values(testingGlobalTests).every(Boolean);
+    const payload = normalizeTestingQueueItem({
+      id: entryId,
+      sampleName: product.product || "",
+      expectedMg: product.strength || "",
+      lotNumber: coa.lot || "",
+      capColor: coa.capColor || "",
+      capShade: coa.capShade || "",
+      sentAt: "",
+      trackingStatus: "waiting",
+      testResult: "",
+      receivedAt: "",
+      selectAll: all,
+      ...testingGlobalTests,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
+    try {
+      await setDoc(doc(db, TESTING_QUEUE_COLLECTION, entryId), payload, { merge: true });
+    } catch (err) {
+      console.error("Failed to add testing queue item", err);
+    }
     setTestingFormOpen(true);
   };
 
-  const updateGlobalTest = (field, value) => {
+  const addToTestingQueueOnly = async (product, coa) => {
+    const entryId = `${product.docId}-${coa.lot}`;
+    if (testingQueue.some((entry) => entry.id === entryId)) {
+      return;
+    }
+    const all = Object.values(testingGlobalTests).every(Boolean);
+    const payload = normalizeTestingQueueItem({
+      id: entryId,
+      sampleName: product.product || "",
+      expectedMg: product.strength || "",
+      lotNumber: coa.lot || "",
+      capColor: coa.capColor || "",
+      capShade: coa.capShade || "",
+      sentAt: "",
+      trackingStatus: "waiting",
+      testResult: "",
+      receivedAt: "",
+      selectAll: all,
+      ...testingGlobalTests,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    try {
+      await setDoc(doc(db, TESTING_QUEUE_COLLECTION, entryId), payload, { merge: true });
+    } catch (err) {
+      console.error("Failed to add testing queue item", err);
+    }
+  };
+
+  const updateGlobalTest = async (field, value) => {
     setTestingGlobalTests((prev) => {
       const next = { ...prev, [field]: value };
-      const all = Object.values(next).every(Boolean);
-      setTestingQueue((q) => q.map((entry) => ({ ...entry, [field]: value, selectAll: all })));
       return next;
     });
+
+    const nextTests = { ...testingGlobalTests, [field]: value };
+    const all = Object.values(nextTests).every(Boolean);
+    try {
+      await Promise.all(
+        testingQueue.map((entry) =>
+          setDoc(
+            doc(db, TESTING_QUEUE_COLLECTION, entry.id),
+            { [field]: value, selectAll: all, updatedAt: Date.now() },
+            { merge: true }
+          )
+        )
+      );
+    } catch (err) {
+      console.error("Failed to update global test selection", err);
+    }
   };
 
-  const removeTestingQueueItem = (entryId) => {
-    setTestingQueue((prev) => prev.filter((entry) => entry.id !== entryId));
+  const removeTestingQueueItem = async (entryId) => {
+    try {
+      await deleteDoc(doc(db, TESTING_QUEUE_COLLECTION, entryId));
+    } catch (err) {
+      console.error("Failed to remove testing queue item", err);
+    }
   };
 
-  const updateTestingQueueItem = (entryId, field, value) => {
-    setTestingQueue((prev) =>
-      prev.map((entry) => {
-        if (entry.id !== entryId) return entry;
-        const updated = { ...entry, [field]: value };
-        if (field === "selectAll") {
-          updated.purityId = value;
-          updated.netPeptide = value;
-          updated.endotoxins = value;
-          updated.sterility = value;
-          updated.conformityTest = value;
-          updated.vialPhoto = value;
-        } else if (["purityId", "netPeptide", "endotoxins", "sterility", "conformityTest", "vialPhoto"].includes(field)) {
-          updated.selectAll =
-            updated.purityId && updated.netPeptide && updated.endotoxins && updated.sterility && updated.conformityTest && updated.vialPhoto;
-        }
-        if (field === "trackingStatus") {
-          if (value === "received" && !updated.receivedAt) {
-            updated.receivedAt = new Date().toISOString().slice(0, 10);
-          }
-          if (value === "waiting") {
-            updated.receivedAt = "";
-          }
-        }
-        return updated;
-      })
-    );
+  const updateTestingQueueItem = async (entryId, field, value) => {
+    const existing = testingQueue.find((entry) => entry.id === entryId);
+    if (!existing) return;
+
+    const patch = { [field]: value, updatedAt: Date.now() };
+    if (field === "selectAll") {
+      patch.purityId = value;
+      patch.netPeptide = value;
+      patch.endotoxins = value;
+      patch.sterility = value;
+      patch.conformityTest = value;
+      patch.vialPhoto = value;
+      patch.fentanyl = value;
+    } else if (["purityId", "netPeptide", "endotoxins", "sterility", "conformityTest", "vialPhoto", "fentanyl"].includes(field)) {
+      const next = { ...existing, [field]: value };
+      patch.selectAll =
+        !!next.purityId && !!next.netPeptide && !!next.endotoxins && !!next.sterility && !!next.conformityTest && !!next.vialPhoto && !!next.fentanyl;
+    }
+
+    if (field === "trackingStatus") {
+      if (value === "received" && !existing.receivedAt) {
+        patch.receivedAt = new Date().toISOString().slice(0, 10);
+      }
+      if (value === "waiting") {
+        patch.receivedAt = "";
+      }
+    }
+
+    try {
+      await setDoc(doc(db, TESTING_QUEUE_COLLECTION, entryId), patch, { merge: true });
+    } catch (err) {
+      console.error("Failed to update testing queue item", err);
+    }
   };
 
-  const markQueueAsSent = () => {
+  const markQueueAsSent = async () => {
     const now = new Date().toISOString();
-    setTestingQueue((prev) =>
-      prev.map((entry) => (entry.sentAt ? entry : { ...entry, sentAt: now, trackingStatus: entry.trackingStatus || "waiting" }))
-    );
+    const unsent = testingQueue.filter((entry) => !entry.sentAt);
+    if (!unsent.length) return;
+    try {
+      await Promise.all(
+        unsent.map((entry) =>
+          setDoc(
+            doc(db, TESTING_QUEUE_COLLECTION, entry.id),
+            { sentAt: now, trackingStatus: entry.trackingStatus || "waiting", updatedAt: Date.now() },
+            { merge: true }
+          )
+        )
+      );
+    } catch (err) {
+      console.error("Failed to mark testing queue items as sent", err);
+    }
+  };
+
+  const clearTestingQueue = async () => {
+    if (!testingQueue.length) return;
+    try {
+      await Promise.all(testingQueue.map((entry) => deleteDoc(doc(db, TESTING_QUEUE_COLLECTION, entry.id))));
+    } catch (err) {
+      console.error("Failed to clear testing queue", err);
+    }
   };
 
   const printTestingForm = () => {
@@ -3424,6 +3637,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                           const realIndex = fullList.indexOf(coa);
                           const isActive = activePreviewLot?.lot === coa.lot;
                           const capAccent = isActive ? normalizeLabelAccentColor(getCapRenderColor(coa.capColor, coa.capShade)) : null;
+                          const savedCoa = savedCoasByLot.get(normalizeLotKey(coa.lot)) || null;
+                          const hasSavedCoa = Boolean(savedCoa?.coaLink);
                           return (
                         <li
                           key={i}
@@ -3453,14 +3668,33 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                               <span className="lot-id-copied">Copied!</span>
                             )}
                             <div className="lot-id-card-actions">
-                              {!isGuest && (
-                                <button
-                                  type="button"
-                                  className="lot-id-card-testing-btn"
-                                  onClick={(e) => { e.stopPropagation(); addToTestingQueue(p, coa); }}
+                              {hasSavedCoa ? (
+                                <a
+                                  href={savedCoa.coaLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="lot-id-card-coa-link"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  Send for Testing
-                                </button>
+                                  View COA ↗
+                                </a>
+                              ) : !isGuest && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="lot-id-card-testing-btn"
+                                    onClick={(e) => { e.stopPropagation(); addToTestingQueue(p, coa); }}
+                                  >
+                                    Send for Testing
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="lot-id-card-testing-btn lot-id-card-testing-btn--secondary"
+                                    onClick={(e) => { e.stopPropagation(); addToTestingQueueOnly(p, coa); }}
+                                  >
+                                    Add to Testing List
+                                  </button>
+                                </>
                               )}
                               {(!isGuest || (vendorGuest && (coa.vendor || "") === vendorGuest)) && (
                                 <button
@@ -3484,6 +3718,17 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                                   {coa.capColor || "No cap color"}
                                 </span>
                               </span>
+                              {hasSavedCoa && (
+                                <a
+                                  href={savedCoa.coaLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="lot-id-coa-link-pill"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  COA Ready
+                                </a>
+                              )}
                               {!isGuest && coa.vendor && (
                                 <span className="lot-id-vendor-badge">{coa.vendor}</span>
                               )}
@@ -3533,7 +3778,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
           </div>
 
           {testingQueue.length === 0 ? (
-            <div className="lot-testing-list-empty">No products in testing queue yet. Use Send for Testing on any lot card.</div>
+            <div className="lot-testing-list-empty">No products in testing queue yet. Use Add to Testing List or Send for Testing on any lot card.</div>
           ) : (
             <div className="lot-testing-list-table-wrap">
               <table className="lot-testing-list-table">
@@ -3545,6 +3790,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                     <th>mg</th>
                     <th>Status</th>
                     <th>Received</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3554,6 +3800,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                         const fallback = capByLot.get(String(entry.lotNumber || '').trim());
                         const capColorValue = entry.capColor || fallback?.capColor || '';
                         const capShadeValue = entry.capShade || fallback?.capShade || '';
+                        const status = (entry.trackingStatus || "waiting") === "received" ? "received" : "waiting";
                         return (
                           <>
                       <td>{entry.sampleName || "-"}</td>
@@ -3572,16 +3819,21 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                       </td>
                       <td>{entry.expectedMg || "-"}</td>
                       <td>
-                        <select
-                          className="lot-testing-list-select"
-                          value={entry.trackingStatus || "waiting"}
-                          onChange={(e) => updateTestingQueueItem(entry.id, "trackingStatus", e.target.value)}
-                        >
-                          <option value="waiting">Waiting</option>
-                          <option value="received">Received</option>
-                        </select>
+                        <span className={`lot-testing-status-pill ${status}`}>
+                          {status === "received" ? "Received" : "Waiting"}
+                        </span>
                       </td>
                       <td>{entry.receivedAt || "-"}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="lot-testing-remove-inline"
+                          onClick={() => removeTestingQueueItem(entry.id)}
+                          title="Remove from testing list"
+                        >
+                          ✕
+                        </button>
+                      </td>
                           </>
                         );
                       })()}
@@ -4196,7 +4448,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
 
               <div className="lot-modal-actions">
                 <button type="button" className="lot-modal-btn secondary" onClick={() => setTestingFormOpen(false)}>Close</button>
-                <button type="button" className="lot-modal-btn danger" onClick={() => setTestingQueue([])}>Clear Queue</button>
+                <button type="button" className="lot-modal-btn danger" onClick={clearTestingQueue}>Clear Queue</button>
                 <button type="button" className="lot-modal-btn secondary" onClick={printTestingFormLetter} disabled={!testingQueue.length}>Print (Letter)</button>
                 <button type="button" className="lot-modal-btn primary" onClick={printTestingForm} disabled={!testingQueue.length}>Print (Label)</button>
               </div>

@@ -388,7 +388,18 @@ function parseFields(text, filename) {
     if (m) product = m[1].trim();
   } else {
     const m = text.match(PRODUCT_RE);
-    if (m) product = m[1].trim().replace(/\s+/g, ' ');
+    if (m) {
+      const candidate = m[1].trim().replace(/\s+/g, ' ');
+      // Discard if we captured a field label instead of a value (unpdf column-order extraction)
+      if (candidate && !candidate.endsWith(':')) product = candidate;
+    }
+    // Fallback: new PDF format (Freedom Diagnostics) extracts all labels first then all values.
+    // Product always appears between the lot code and the purity percentage in the text.
+    if (!product && lot) {
+      const lotEscaped = lot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const m2 = text.match(new RegExp(lotEscaped + '\\s+([\\s\\S]{2,60}?)\\s*\\d{2,3}\\.\\d+%', 'i'));
+      if (m2) product = m2[1].trim().replace(/\s+/g, ' ');
+    }
   }
 
   const coaLink = `${COA_BASE_URL}/${encodeURIComponent(filename)}`;
