@@ -501,3 +501,127 @@
   color: #999;
   font-size: 0.9rem;
 }
+
+/* Payout sections */
+.payout-section {
+  background: #fafaf8;
+  border: 1px solid #f0e8dc;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.payout-section.cash-section {
+  border-color: #d4edda;
+  background: #f1f8f5;
+}
+
+.payout-section.credit-section {
+  border-color: #fff3cd;
+  background: #fffbf0;
+}
+
+.payout-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.payout-section-header h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.payout-section.cash-section .payout-section-header h4 {
+  color: #1a5c3a;
+}
+
+.payout-section.credit-section .payout-section-header h4 {
+  color: #8b6f00;
+}
+
+.payout-section-total {
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.payout-section.cash-section .payout-section-total {
+  background: #e6f7f0;
+  color: #1a5c3a;
+}
+
+.payout-section.credit-section .payout-section-total {
+  background: #fff8e1;
+  color: #8b6f00;
+}
+
+/* Row styling */
+.commission-table tr.cash-payout:hover td {
+  background: #eef7f2;
+}
+
+.commission-table tr.store-credit:hover td {
+  background: #fffbf0;
+}
+
+.credit-note {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8b6f00;
+  background: #fff8e1;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Summary card */
+.payout-summary-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  background: linear-gradient(135deg, #f9f7f5, #fafaf8);
+  border: 1px solid #e0ddd5;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.summary-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+}
+
+.summary-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.summary-value.cash {
+  color: #1a5c3a;
+}
+
+.summary-value.credit {
+  color: #8b6f00;
+}

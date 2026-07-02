@@ -78,6 +78,9 @@ const CostAnalytics = () => {
       dateStart: data.dateStart || '',
       dateEnd: data.dateEnd || '',
       reportNetSales: Number(data.reportNetSales) || 0,
+      inputSource: data.inputSource || 'csv',
+      wooCouponUsage: Array.isArray(data.wooCouponUsage) ? data.wooCouponUsage : [],
+      wooPullInfo: data.wooPullInfo || null,
       uploadedBy: data.uploadedBy || 'Unknown',
       uploadedAt: data.uploadedAt?.toDate ? data.uploadedAt.toDate() : null,
       uploadedAtIso: data.uploadedAtIso || '',
@@ -346,6 +349,7 @@ const CostAnalytics = () => {
   const applyReportFromCsvText = (csvText, sourceName) => {
     setInputSource('csv');
     const parsedRows = parseCsvText(csvText);
+    const couponUsageFromCsv = extractCouponUsageFromRows(parsedRows);
     const reportTotalNetSales = extractReportNetSales(parsedRows);
     const csvDateRange = extractDateRangeFromRows(parsedRows);
     const filenameDates = extractDatesFromFilename(sourceName || '');
@@ -355,6 +359,17 @@ const CostAnalytics = () => {
 
     setDateStart(resolvedDateStart);
     setDateEnd(resolvedDateEnd);
+    setWooCouponUsage(couponUsageFromCsv);
+    setWooPullInfo({
+      startDate: resolvedDateStart,
+      endDate: resolvedDateEnd,
+      orderCount: parsedRows.length,
+      paidOrderCount: parsedRows.length,
+      metricsSource: 'csv-orders-export',
+      pulledStatuses: [],
+      orderStatusCounts: {},
+      pulledAt: new Date().toISOString(),
+    });
 
     const data = normalizeSalesData(parsedRows);
 
@@ -746,6 +761,61 @@ const CostAnalytics = () => {
     return '';
   };
 
+  const extractCouponUsageFromRows = (rows) => {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    const couponHeaders = ['coupon(s)', 'coupons', 'coupon', 'coupon code', 'coupon codes'];
+    const orderHeaders = ['order #', 'order id', 'order number', 'order'];
+    const netHeaders = ['net sales', 'net sales (formatted)', 'n. revenue', 'n. revenue (formatted)', 'revenue'];
+    const couponMap = new Map();
+
+    rows.forEach((row, idx) => {
+      const rawCoupons = findRowValueCaseInsensitive(row, couponHeaders);
+      if (!rawCoupons) return;
+
+      const codes = Array.from(
+        new Set(
+          String(rawCoupons)
+            .split(',')
+            .map((value) => value.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      );
+      if (!codes.length) return;
+
+      const orderId = String(findRowValueCaseInsensitive(row, orderHeaders) || `row-${idx + 1}`);
+      const netSales = parseNumber(findRowValueCaseInsensitive(row, netHeaders));
+
+      codes.forEach((code) => {
+        if (!couponMap.has(code)) {
+          couponMap.set(code, {
+            code,
+            _orderIds: new Set(),
+            _orderTotals: new Map(),
+          });
+        }
+        const entry = couponMap.get(code);
+        entry._orderIds.add(orderId);
+        if (!entry._orderTotals.has(orderId)) {
+          entry._orderTotals.set(orderId, netSales);
+        }
+      });
+    });
+
+    return Array.from(couponMap.values())
+      .map((coupon) => ({
+        code: coupon.code,
+        orderCount: coupon._orderIds.size,
+        totalDiscount: 0,
+        netSales: Number(
+          Array.from(coupon._orderTotals.values())
+            .reduce((sum, value) => sum + value, 0)
+            .toFixed(2)
+        ),
+      }))
+      .sort((a, b) => b.netSales - a.netSales);
+  };
+
   const extractDateRangeFromRows = (rows) => {
     if (!rows.length) return null;
 
@@ -944,6 +1014,10 @@ const CostAnalytics = () => {
     reader.onload = (event) => {
       try {
         applyReportFromCsvText(event.target.result, file.name);
+        // Reset file input after successful upload to allow re-uploading same file
+        if (productFileInputRef.current) {
+          productFileInputRef.current.value = '';
+        }
       } catch (error) {
         alert('Error parsing CSV: ' + error.message);
       }
@@ -1013,6 +1087,9 @@ const CostAnalytics = () => {
         dateStart,
         dateEnd,
         reportNetSales: reportNetSales ?? 0,
+        inputSource,
+        wooCouponUsage: Array.isArray(wooCouponUsage) ? wooCouponUsage : [],
+        wooPullInfo: wooPullInfo || null,
         rowCount: salesData.length,
         uploadedBy,
         uploadedAt: serverTimestamp(),
@@ -1030,22 +1107,29 @@ const CostAnalytics = () => {
   };
 
   const loadSharedReport = async (report) => {
-    if (!report?.downloadURL && !report?.storagePath && !report?.csvText) return;
+    if (!report?.downloadURL && !report?.storagePath && !report?.csvText) {
+      alert('This shared report cannot be loaded. No data is available. Try re-saving the report.');
+      return;
+    }
+    console.log('📥 Loading shared report:', report.fileName);
     setIsLoadingSharedReportId(report.id);
 
     try {
       let csvText = '';
 
       if (report.csvText) {
+        console.log('✅ Using inline csvText');
         csvText = report.csvText;
       }
 
       // Prefer Storage SDK path-based read for authenticated users.
       if (!csvText && report.storagePath) {
         try {
+          console.log('📦 Reading from Firebase Storage:', report.storagePath);
           const storageRef = ref(storage, report.storagePath);
           const bytes = await getBytes(storageRef);
           csvText = new TextDecoder('utf-8').decode(bytes);
+          console.log('✅ Successfully read from Storage');
         } catch (storageReadError) {
           console.warn('Path-based storage read failed, falling back to download URL.', storageReadError);
         }
@@ -1056,13 +1140,16 @@ const CostAnalytics = () => {
           throw new Error('No download URL found for this shared report.');
         }
 
+        console.log('🔗 Fetching from download URL');
         const response = await fetch(report.downloadURL);
         if (!response.ok) {
           throw new Error(`Failed to fetch report (${response.status})`);
         }
         csvText = await response.text();
+        console.log('✅ Successfully fetched CSV, length:', csvText.length);
       }
 
+      console.log('📝 Applying CSV data to analysis');
       setUploadedProductFile(null);
       setFileName(report.fileName || 'Shared Report');
       setProductReportFileName(report.fileName || 'Shared Report');
@@ -1070,8 +1157,17 @@ const CostAnalytics = () => {
         productFileInputRef.current.value = '';
       }
       applyReportFromCsvText(csvText, report.fileName || 'Shared Report');
+      console.log('✅ Report loaded successfully');
+      // Shared reports may store a normalized product CSV without Coupon(s) columns.
+      // Re-apply persisted coupon usage after CSV load so Affiliate/Coupons tab stays populated.
+      if (Array.isArray(report.wooCouponUsage) && report.wooCouponUsage.length > 0) {
+        setWooCouponUsage(report.wooCouponUsage);
+      }
+      if (report.wooPullInfo) {
+        setWooPullInfo(report.wooPullInfo);
+      }
     } catch (error) {
-      console.error('Unable to load shared report:', error);
+      console.error('❌ Unable to load shared report:', error);
       alert(`Unable to load this shared report right now. ${error?.message || ''} If this is an older shared file, re-save it once so it includes inline CSV fallback.`.trim());
     } finally {
       setIsLoadingSharedReportId('');
@@ -1296,118 +1392,241 @@ const CostAnalytics = () => {
     });
   };
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.add('dragging');
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove('dragging');
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove('dragging');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      if (files.length > 1) {
+        alert('Please drop only one CSV file at a time');
+        return;
+      }
+      const file = files[0];
+      if (file.name.endsWith('.csv')) {
+        handleProductReportUpload({ target: { files } });
+      } else {
+        alert('Please drop a CSV file');
+      }
+    }
+  };
+
   return (
     <div className="cost-analytics-page">
       <h1>Cost Analytics</h1>
       <p className="subtitle">Analyze product sales costs (Singles only)</p>
 
-      {/* Upload Section */}
-      <div className="upload-section">
-        <div className="upload-inputs">
-          <div className="input-source-toggle" role="tablist" aria-label="Input source selector">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={inputSource === 'woo'}
-              className={`input-source-btn ${inputSource === 'woo' ? 'active' : ''}`}
-              onClick={() => setInputSource('woo')}
-            >
-              Pull Woo Data
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={inputSource === 'csv'}
-              className={`input-source-btn ${inputSource === 'csv' ? 'active' : ''}`}
-              onClick={() => setInputSource('csv')}
-            >
-              Load Product CSV
-            </button>
-          </div>
-          <div className="input-group">
-            {inputSource === 'csv' ? (
+      {/* Persistent CSV Upload Zone */}
+      <div className="persistent-upload-zone">
+        <div
+          className="drag-drop-area"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <div className="drag-drop-content">
+            {productReportFileName ? (
               <>
-                <label htmlFor="product-upload" className="upload-label">
-                  Product Report CSV:
-                </label>
-                <input
-                  id="product-upload"
-                  ref={productFileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleProductReportUpload}
-                  className="file-input"
-                />
-                {productReportFileName && <span className="file-name">Loaded: {productReportFileName}</span>}
-                {productReportFileName && (
-                  <button
-                    type="button"
-                    className="remove-upload-btn"
-                    onClick={clearProductReportUpload}
-                  >
-                    Remove File
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <span className="upload-label">Woo Daily Orders:</span>
-                <div className="woo-date-range-inputs">
-                  <label className="woo-date-field">
-                    From
-                    <input
-                      type="date"
-                      value={wooPullStartDate}
-                      onChange={(event) => setWooPullStartDate(event.target.value)}
-                      className="date-input"
-                    />
-                  </label>
-                  <label className="woo-date-field">
-                    To
-                    <input
-                      type="date"
-                      value={wooPullEndDate}
-                      onChange={(event) => setWooPullEndDate(event.target.value)}
-                      className="date-input"
-                    />
-                  </label>
+                <div className="current-file-info">
+                  <div className="file-icon">📄</div>
+                  <div className="file-details">
+                    <div className="file-label">Current CSV File</div>
+                    <div className="file-name">{productReportFileName}</div>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  className="woo-pull-btn"
-                  onClick={() => pullWooDailyReport({ startDate: wooPullStartDate, endDate: wooPullEndDate })}
-                  disabled={isPullingWoo}
+                  className="change-file-btn"
+                  onClick={() => productFileInputRef.current?.click()}
                 >
-                  {isPullingWoo ? 'Pulling Woo (this may take a few minutes)...' : 'Pull Woo Data'}
+                  Change File
                 </button>
-                <label className="woo-auto-toggle">
-                  <input
-                    type="checkbox"
-                    checked={wooAutoPullEnabled}
-                    onChange={(event) => setWooAutoPullEnabled(event.target.checked)}
-                  />
-                  Auto-pull every 1 min
-                </label>
-                {wooPullInfo && (
-                  <span className="file-name">
-                    Last pull: {wooPullInfo.startDate === wooPullInfo.endDate
-                      ? wooPullInfo.startDate
-                      : `${wooPullInfo.startDate} to ${wooPullInfo.endDate}`}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  className="remove-file-btn"
+                  onClick={clearProductReportUpload}
+                >
+                  Remove
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="drag-icon">📥</div>
+                <div className="drag-text">
+                  Drag CSV file here or <button type="button" className="select-file-link" onClick={() => productFileInputRef.current?.click()}>select file</button>
+                </div>
+                <div className="drag-hint">File will be used across all reports</div>
               </>
             )}
-            <button
-              type="button"
-              className="save-shared-btn"
-              onClick={saveReportToSharedDb}
-              disabled={(!uploadedProductFile && !salesData.length) || isSavingSharedReport}
-            >
-              {isSavingSharedReport ? 'Saving...' : 'Save To Shared DB'}
-            </button>
           </div>
-          <button onClick={saveAnalysis} className="save-analysis-btn">💾 Save Analysis</button>
+          <input
+            ref={productFileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleProductReportUpload}
+            className="hidden-file-input"
+          />
         </div>
+      </div>
+
+      {/* Input Source Toggle */}
+      <div className="input-source-toggle-zone">
+        <button
+          type="button"
+          className={`source-toggle-btn ${inputSource === 'woo' ? 'active' : ''}`}
+          onClick={() => setInputSource('woo')}
+        >
+          📊 Pull Woo Data
+        </button>
+        <button
+          type="button"
+          className={`source-toggle-btn ${inputSource === 'csv' ? 'active' : ''}`}
+          onClick={() => setInputSource('csv')}
+        >
+          📁 Shared Reports
+        </button>
+      </div>
+
+      {/* Woo Daily Orders Section */}
+      {inputSource === 'woo' && (
+      <div className="woo-pull-zone">
+        <div className="woo-pull-card">
+          <div className="woo-card-header">
+            <div className="woo-title-group">
+              <h3 className="woo-title">📊 Pull Woo Daily Orders</h3>
+              {wooPullInfo && (
+                <span className="woo-status-badge">
+                  Last: {wooPullInfo.startDate === wooPullInfo.endDate
+                    ? wooPullInfo.startDate
+                    : `${wooPullInfo.startDate}–${wooPullInfo.endDate}`}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="woo-pull-content">
+            <div className="woo-date-inputs">
+              <label className="woo-date-field">
+                <span className="date-label-text">From</span>
+                <input
+                  type="date"
+                  value={wooPullStartDate}
+                  onChange={(event) => setWooPullStartDate(event.target.value)}
+                  className="date-input"
+                />
+              </label>
+              <label className="woo-date-field">
+                <span className="date-label-text">To</span>
+                <input
+                  type="date"
+                  value={wooPullEndDate}
+                  onChange={(event) => setWooPullEndDate(event.target.value)}
+                  className="date-input"
+                />
+              </label>
+            </div>
+
+            <div className="woo-actions">
+              <button
+                type="button"
+                className="woo-pull-btn"
+                onClick={() => pullWooDailyReport({ startDate: wooPullStartDate, endDate: wooPullEndDate })}
+                disabled={isPullingWoo}
+              >
+                {isPullingWoo ? '⏳ Pulling (this may take a few minutes)...' : '▶ Pull Woo Data'}
+              </button>
+              <label className="woo-auto-toggle">
+                <input
+                  type="checkbox"
+                  checked={wooAutoPullEnabled}
+                  onChange={(event) => setWooAutoPullEnabled(event.target.checked)}
+                />
+                <span>Auto-pull every 1 min</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      )}
+
+      {/* Shared Reports Section */}
+      {inputSource === 'csv' && (
+      <div className="shared-reports-zone">
+        <div className="shared-reports-card">
+          <div className="shared-reports-header">
+            <h3 className="shared-reports-title">Shared Reports (All Users)</h3>
+            {sharedReports.length > 0 && (
+              <span className="shared-reports-count">{sharedReports.length} reports</span>
+            )}
+          </div>
+          {sharedReports.length === 0 ? (
+            <p className="shared-reports-empty">No shared reports yet. Upload a CSV to create one.</p>
+          ) : (
+            <div className="shared-reports-list">
+              {sharedReports.map((report) => (
+                <div key={report.id} className="shared-report-item">
+                  <div className="report-info">
+                    <div className="report-name">{report.fileName}</div>
+                    <div className="report-meta">
+                      {report.dateStart && report.dateEnd
+                        ? `${report.dateStart} → ${report.dateEnd}`
+                        : 'Date not detected'}
+                    </div>
+                    <div className="report-details">
+                      <span className="detail">${(report.reportNetSales || 0).toFixed(2)}</span>
+                      <span className="detail">{report.uploadedBy || 'Unknown'}</span>
+                    </div>
+                  </div>
+                  <div className="report-actions">
+                    <button
+                      type="button"
+                      className="load-report-btn"
+                      onClick={() => loadSharedReport(report)}
+                      disabled={isLoadingSharedReportId === report.id || isDeletingSharedReportId === report.id}
+                    >
+                      {isLoadingSharedReportId === report.id ? 'Loading...' : 'Load'}
+                    </button>
+                    <button
+                      type="button"
+                      className="delete-report-btn"
+                      onClick={() => deleteSharedReport(report)}
+                      disabled={isDeletingSharedReportId === report.id || isLoadingSharedReportId === report.id}
+                    >
+                      {isDeletingSharedReportId === report.id ? '...' : '✕'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      )}
+
+      {/* Action Buttons Section */}
+      <div className="action-buttons-section">
+        <button
+          type="button"
+          className="save-shared-btn"
+          onClick={saveReportToSharedDb}
+          disabled={(!uploadedProductFile && !salesData.length) || isSavingSharedReport}
+        >
+          {isSavingSharedReport ? 'Saving...' : '💾 Save To Shared DB'}
+        </button>
+        <button onClick={saveAnalysis} className="save-analysis-btn">💾 Save Analysis</button>
       </div>
 
       {inputSource === 'csv' && (

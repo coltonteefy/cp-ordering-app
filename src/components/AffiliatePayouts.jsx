@@ -291,7 +291,12 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
     }
   };
 
+  const MINIMUM_PAYOUT = 250;
   const totalOwed = commissions?.rows?.reduce((s, r) => s + r.commission, 0) ?? 0;
+  const cashPayouts = commissions?.rows?.filter((r) => r.commission >= MINIMUM_PAYOUT) ?? [];
+  const storeCredits = commissions?.rows?.filter((r) => r.commission > 0 && r.commission < MINIMUM_PAYOUT) ?? [];
+  const totalCash = cashPayouts.reduce((s, r) => s + r.commission, 0);
+  const totalStoreCredit = storeCredits.reduce((s, r) => s + r.commission, 0);
 
   return (
     <section className="affiliate-payouts">
@@ -350,59 +355,140 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
                 <button
                   className="btn-paypal"
                   onClick={handleSendPayouts}
-                  disabled={payingOut || totalOwed <= 0}
+                  disabled={payingOut || totalCash <= 0}
                 >
-                  {payingOut ? 'Sending…' : 'Send All via PayPal'}
+                  {payingOut ? 'Sending…' : `Send Payouts ($${formatCurrency(totalCash)})`}
                 </button>
               </div>
 
               {commissions.rows.length === 0 ? (
                 <div className="affiliate-empty">No active affiliates found.</div>
               ) : (
-                <div className="commission-scroll">
-                  <table className="commission-table">
-                    <thead>
-                      <tr>
-                        <th>Affiliate</th>
-                        <th>Coupon Codes</th>
-                        <th>Orders</th>
-                        <th>Net Sales</th>
-                        <th>Rate</th>
-                        <th>Commission</th>
-                        <th>PayPal Email</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {commissions.rows.map((row) => (
-                        <tr key={row.affiliate.id} className={row.commission > 0 ? 'has-commission' : 'no-commission'}>
-                          <td className="commission-name">{row.affiliate.name}</td>
-                          <td>
-                            {(row.affiliate.couponCodes || []).map((c) => (
-                              <span
-                                key={c}
-                                className={`coupon-badge ${row.matchedCodes.includes(c) ? 'used' : 'unused'}`}
-                              >
-                                {c}
-                              </span>
+                <>
+                  {/* Cash Payouts Section */}
+                  {cashPayouts.length > 0 && (
+                    <div className="payout-section cash-section">
+                      <div className="payout-section-header">
+                        <h4>💰 PayPal Payouts (≥ ${MINIMUM_PAYOUT})</h4>
+                        <span className="payout-section-total">Total: ${formatCurrency(totalCash)}</span>
+                      </div>
+                      <div className="commission-scroll">
+                        <table className="commission-table">
+                          <thead>
+                            <tr>
+                              <th>Affiliate</th>
+                              <th>Coupon Codes</th>
+                              <th>Orders</th>
+                              <th>Net Sales</th>
+                              <th>Rate</th>
+                              <th>Commission</th>
+                              <th>Email</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cashPayouts.map((row) => (
+                              <tr key={row.affiliate.id} className="has-commission cash-payout">
+                                <td className="commission-name">{row.affiliate.name}</td>
+                                <td>
+                                  {(row.affiliate.couponCodes || []).map((c) => (
+                                    <span
+                                      key={c}
+                                      className={`coupon-badge ${row.matchedCodes.includes(c) ? 'used' : 'unused'}`}
+                                    >
+                                      {c}
+                                    </span>
+                                  ))}
+                                </td>
+                                <td>{row.totalOrders}</td>
+                                <td>${formatCurrency(row.totalNetSales)}</td>
+                                <td>{row.affiliate.commissionRate}%</td>
+                                <td className="commission-amount">${formatCurrency(row.commission)}</td>
+                                <td className="commission-paypal">{row.affiliate.paypalEmail}</td>
+                              </tr>
                             ))}
-                          </td>
-                          <td>{row.totalOrders}</td>
-                          <td>${formatCurrency(row.totalNetSales)}</td>
-                          <td>{row.affiliate.commissionRate}%</td>
-                          <td className="commission-amount">${formatCurrency(row.commission)}</td>
-                          <td className="commission-paypal">{row.affiliate.paypalEmail}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={5} className="commission-total-label">Total</td>
-                        <td className="commission-total-value">${formatCurrency(totalOwed)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                          </tbody>
+                          <tfoot>
+                            <tr>
+                              <td colSpan={5} className="commission-total-label">Subtotal</td>
+                              <td className="commission-total-value">${formatCurrency(totalCash)}</td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Store Credit Section */}
+                  {storeCredits.length > 0 && (
+                    <div className="payout-section credit-section">
+                      <div className="payout-section-header">
+                        <h4>🎟️ Store Credit (< ${MINIMUM_PAYOUT})</h4>
+                        <span className="payout-section-total">Total: ${formatCurrency(totalStoreCredit)}</span>
+                      </div>
+                      <div className="commission-scroll">
+                        <table className="commission-table">
+                          <thead>
+                            <tr>
+                              <th>Affiliate</th>
+                              <th>Coupon Codes</th>
+                              <th>Orders</th>
+                              <th>Net Sales</th>
+                              <th>Rate</th>
+                              <th>Commission</th>
+                              <th>Note</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {storeCredits.map((row) => (
+                              <tr key={row.affiliate.id} className="has-commission store-credit">
+                                <td className="commission-name">{row.affiliate.name}</td>
+                                <td>
+                                  {(row.affiliate.couponCodes || []).map((c) => (
+                                    <span
+                                      key={c}
+                                      className={`coupon-badge ${row.matchedCodes.includes(c) ? 'used' : 'unused'}`}
+                                    >
+                                      {c}
+                                    </span>
+                                  ))}
+                                </td>
+                                <td>{row.totalOrders}</td>
+                                <td>${formatCurrency(row.totalNetSales)}</td>
+                                <td>{row.affiliate.commissionRate}%</td>
+                                <td className="commission-amount">${formatCurrency(row.commission)}</td>
+                                <td className="credit-note">Store credit instead of cash</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr>
+                              <td colSpan={5} className="commission-total-label">Subtotal</td>
+                              <td className="commission-total-value">${formatCurrency(totalStoreCredit)}</td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary Card */}
+                  <div className="payout-summary-card">
+                    <div className="summary-item">
+                      <span className="summary-label">Total Owed</span>
+                      <span className="summary-value">${formatCurrency(totalOwed)}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">PayPal Payouts</span>
+                      <span className="summary-value cash">${formatCurrency(totalCash)}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Store Credit</span>
+                      <span className="summary-value credit">${formatCurrency(totalStoreCredit)}</span>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -469,7 +555,7 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
                       <th style={{ width: '2rem' }} />
                       <th>Coupon Code</th>
                       <th>Name</th>
-                      <th>PayPal Email</th>
+                      <th>Email</th>
                       <th>Woo Discount</th>
                       <th>Rate (%)</th>
                       <th>Status</th>
@@ -581,7 +667,7 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
                   />
                 </label>
                 <label>
-                  PayPal Email
+                  Email
                   <input
                     type="email"
                     value={form.paypalEmail}
@@ -645,7 +731,7 @@ const AffiliatePayouts = ({ onSuccess, onError }) => {
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>PayPal Email</th>
+                    <th>Email</th>
                     <th>Coupon Codes</th>
                     <th>Rate</th>
                     <th>Status</th>

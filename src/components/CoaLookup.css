@@ -462,6 +462,65 @@
   cursor: default;
 }
 
+/* Edit and Cancel buttons */
+.coa-edit-btn,
+.coa-cancel-btn {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid #8b7355;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #555;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.coa-edit-btn:hover:not(:disabled) {
+  background: #efefef;
+  border-color: #666;
+}
+
+.coa-cancel-btn:hover:not(:disabled) {
+  background: #fff5f5;
+  border-color: #c07070;
+  color: #c07070;
+}
+
+/* Edit input fields */
+.coa-edit-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d4a574;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  background: #fefbf7;
+  color: #333;
+}
+
+.coa-edit-input:focus {
+  outline: none;
+  border-color: #8b6f47;
+  background: #fffbf5;
+}
+
+/* Button actions container */
+.coa-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* Editing row styling */
+.coa-row--editing {
+  background: #fffbf5 !important;
+}
+
+.coa-row--editing td {
+  padding: 0.75rem;
+}
+
 /* Already saved badge */
 .coa-badge--saved {
   background: #e4f5ea;

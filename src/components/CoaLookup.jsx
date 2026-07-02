@@ -66,6 +66,8 @@ export default function CoaLookup() {
     lastSyncedAt: null,
     error: '',
   });
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({});
   const fileInputRef = useRef(null);
   const importInFlightRef = useRef(false);
 
@@ -132,6 +134,37 @@ export default function CoaLookup() {
       );
     }
   }, []);
+
+  const startEdit = (row) => {
+    setEditingId(row.id);
+    setEditValues({
+      searchCode: row.searchCode ?? '',
+      lot: row.lot ?? '',
+      product: row.product ?? '',
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({});
+  };
+
+  const saveEdit = (row) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === row.id
+          ? {
+              ...r,
+              searchCode: editValues.searchCode || r.searchCode,
+              lot: editValues.lot || r.lot,
+              product: editValues.product || r.product,
+            }
+          : r
+      )
+    );
+    setEditingId(null);
+    setEditValues({});
+  };
 
   const saveRow = async (row) => {
     if (!row.searchCode) return;
@@ -473,17 +506,54 @@ export default function CoaLookup() {
                 {rows.filter((row) => !savedSearchCodes.has(row.searchCode)).map((row) => {
                   const alreadySaved = row.searchCode && savedSearchCodes.has(row.searchCode);
                   const isSaving = savingIds.has(row.id);
+                  const isEditing = editingId === row.id;
                   return (
-                    <tr key={row.id} className={`coa-row coa-row--${row.status}`}>
+                    <tr key={row.id} className={`coa-row coa-row--${row.status}${isEditing ? ' coa-row--editing' : ''}`}>
                       <td className="coa-cell coa-cell--filename" title={row.filename}>{row.filename}</td>
                       <td className="coa-cell">
-                        {row.status === STATUS.PROCESSING ? <span className="coa-processing">Processing…</span> : (row.searchCode ?? <span className="coa-empty">—</span>)}
+                        {row.status === STATUS.PROCESSING ? (
+                          <span className="coa-processing">Processing…</span>
+                        ) : isEditing ? (
+                          <input
+                            type="text"
+                            value={editValues.searchCode}
+                            onChange={(e) => setEditValues({ ...editValues, searchCode: e.target.value })}
+                            placeholder="Search code"
+                            className="coa-edit-input"
+                          />
+                        ) : (
+                          row.searchCode ?? <span className="coa-empty">—</span>
+                        )}
                       </td>
                       <td className="coa-cell">
-                        {row.status === STATUS.PROCESSING ? <span className="coa-processing">Processing…</span> : (row.lot ?? <span className="coa-empty">—</span>)}
+                        {row.status === STATUS.PROCESSING ? (
+                          <span className="coa-processing">Processing…</span>
+                        ) : isEditing ? (
+                          <input
+                            type="text"
+                            value={editValues.lot}
+                            onChange={(e) => setEditValues({ ...editValues, lot: e.target.value })}
+                            placeholder="LOT"
+                            className="coa-edit-input"
+                          />
+                        ) : (
+                          row.lot ?? <span className="coa-empty">—</span>
+                        )}
                       </td>
                       <td className="coa-cell coa-cell--product">
-                        {row.status === STATUS.PROCESSING ? <span className="coa-processing">Processing…</span> : (row.product ?? <span className="coa-empty">—</span>)}
+                        {row.status === STATUS.PROCESSING ? (
+                          <span className="coa-processing">Processing…</span>
+                        ) : isEditing ? (
+                          <input
+                            type="text"
+                            value={editValues.product}
+                            onChange={(e) => setEditValues({ ...editValues, product: e.target.value })}
+                            placeholder="Product"
+                            className="coa-edit-input"
+                          />
+                        ) : (
+                          row.product ?? <span className="coa-empty">—</span>
+                        )}
                       </td>
                       <td className="coa-cell">
                         {row.status === STATUS.PROCESSING ? (
@@ -498,15 +568,46 @@ export default function CoaLookup() {
                         {row.status === STATUS.DONE && alreadySaved && (
                           <span className="coa-badge coa-badge--saved">Already Saved</span>
                         )}
-                        {row.status === STATUS.DONE && !alreadySaved && (
-                          <button
-                            type="button"
-                            className="coa-save-btn"
-                            disabled={isSaving}
-                            onClick={() => saveRow(row)}
-                          >
-                            {isSaving ? 'Saving…' : 'Save'}
-                          </button>
+                        {row.status === STATUS.DONE && !alreadySaved && !isEditing && (
+                          <div className="coa-actions">
+                            <button
+                              type="button"
+                              className="coa-save-btn"
+                              disabled={isSaving}
+                              onClick={() => saveRow(row)}
+                            >
+                              {isSaving ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              className="coa-edit-btn"
+                              onClick={() => startEdit(row)}
+                              title="Edit manually"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        )}
+                        {row.status === STATUS.DONE && !alreadySaved && isEditing && (
+                          <div className="coa-actions">
+                            <button
+                              type="button"
+                              className="coa-save-btn"
+                              onClick={() => {
+                                saveEdit(row);
+                                saveRow(row);
+                              }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="coa-cancel-btn"
+                              onClick={cancelEdit}
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
