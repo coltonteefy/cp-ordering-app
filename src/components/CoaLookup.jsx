@@ -21,6 +21,52 @@ const STATUS = {
   ERROR: 'error',
 };
 
+const BULK_IMPORT_SCRIPT = `(async () => {
+  const API_BASE = window.IMPORT_API_BASE || "http://localhost:3031/api";
+  const normalize = (v) => String(v || "").trim().toLowerCase();
+
+  const found = [...new Set((document.body.innerText.match(/coff\\d+/gi) || []))]
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  let savedSet = new Set();
+  try {
+    const resp = await fetch(API_BASE + "/coa-saved-codes");
+    const text = await resp.text();
+    const data = JSON.parse(text);
+    savedSet = new Set((data.codes || []).map(normalize));
+  } catch (e) {
+    console.warn("Could not load saved codes; continuing with full list.", e);
+  }
+
+  const newCodes = found.filter((c) => !savedSet.has(normalize(c)));
+  console.log("Found:", found.length, "New:", newCodes.length);
+
+  if (!newCodes.length) return console.log("Nothing new to import.");
+
+  const chunkSize = 10;
+  for (let i = 0; i < newCodes.length; i += chunkSize) {
+    const chunk = newCodes.slice(i, i + chunkSize);
+    const r = await fetch(API_BASE + "/bulk-import-coas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codes: chunk }),
+    });
+    const data = await r.json();
+    console.log("Chunk response:", data);
+
+    if (data.token) {
+      await fetch(API_BASE + "/import-ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: data.token }),
+      });
+    }
+  }
+
+  console.log("Done.");
+})();`;
+
 function buildInitialRows(files) {
   return Array.from(files).map((file) => ({
     id: `${file.name}-${file.lastModified}`,
@@ -68,8 +114,17 @@ export default function CoaLookup() {
   });
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({});
+  const [showCodeSnippets, setShowCodeSnippets] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState(null);
   const fileInputRef = useRef(null);
   const importInFlightRef = useRef(false);
+  const snippetTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (snippetTimeoutRef.current) clearTimeout(snippetTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, COA_COLLECTION), orderBy('uploadedAt', 'desc'));
@@ -419,22 +474,91 @@ export default function CoaLookup() {
       return (a.product ?? '').localeCompare(b.product ?? '');
     });
 
+  const copyCodeSnippet = (snippetId) => {
+    const snippets = {
+      bulkImport: BULK_IMPORT_SCRIPT,
+    };
+
+    const code = snippets[snippetId];
+    if (!code) return;
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(code).then(() => {
+        setCopiedSnippet(snippetId);
+        if (snippetTimeoutRef.current) clearTimeout(snippetTimeoutRef.current);
+        snippetTimeoutRef.current = setTimeout(() => setCopiedSnippet(null), 2000);
+      }).catch(() => {
+        alert('Failed to copy to clipboard');
+      });
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = code;
+      try {
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        setCopiedSnippet(snippetId);
+        if (snippetTimeoutRef.current) clearTimeout(snippetTimeoutRef.current);
+        snippetTimeoutRef.current = setTimeout(() => setCopiedSnippet(null), 2000);
+      } catch {
+        alert('Failed to copy');
+      } finally {
+        if (textarea?.parentNode) {
+          document.body.removeChild(textarea);
+        }
+      }
+    }
+  };
+
   return (
     <div className="coa-lookup-container">
       <div className="coa-lookup-header">
         <div className="coa-lookup-title-row">
           <h2 className="coa-lookup-title">COA Lookup</h2>
-          <button
-            className="coa-import-btn"
-            onClick={() => window.open('https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/', '_blank')}
-          >
-            Open Freedom Diagnostics ↗
-          </button>
+          <div className="coa-header-actions">
+            <button
+              className="coa-import-btn"
+              onClick={() => window.open('https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/', '_blank')}
+            >
+              Open Freedom Diagnostics ↗
+            </button>
+            <button
+              type="button"
+              className="coa-snippets-header-btn"
+              onClick={() => setShowCodeSnippets(!showCodeSnippets)}
+              title="Show/hide code snippets for bulk COA import"
+            >
+              {showCodeSnippets ? '▼ Code' : '▶ Code'}
+            </button>
+          </div>
           {importing && <span className="coa-importing-badge">Importing…</span>}
         </div>
         <p className="coa-lookup-subtitle">
           Upload PDFs to extract Search Code, LOT, and Product details.
         </p>
+
+        {/* Code Snippets Section */}
+        {showCodeSnippets && (
+          <div className="coa-snippets-section">
+            <div className="coa-snippets-container">
+              <div className="coa-snippet-item">
+                <div className="coa-snippet-header">
+                  <h4 className="coa-snippet-title">Bulk Import COAs</h4>
+                  <button
+                    type="button"
+                    className={`coa-snippet-copy-btn ${copiedSnippet === 'bulkImport' ? 'copied' : ''}`}
+                    onClick={() => copyCodeSnippet('bulkImport')}
+                  >
+                    {copiedSnippet === 'bulkImport' ? '✓ Copied!' : '📋 Copy'}
+                  </button>
+                </div>
+                <p className="coa-snippet-desc">Run this in the browser console to bulk import COAs from the page</p>
+                <pre className="coa-snippet-code">{BULK_IMPORT_SCRIPT}</pre>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="coa-sync-status-row">
           <span className={`coa-sync-badge coa-sync-badge--${savedCodeSync.status}`}>
             Saved-code sync: {savedCodeSync.status === 'ok' ? 'Ready' : savedCodeSync.status === 'error' ? 'Error' : savedCodeSync.status === 'syncing' ? 'Syncing…' : 'Idle'}

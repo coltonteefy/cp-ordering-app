@@ -561,3 +561,109 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* Code Snippets Header Button */
+.coa-header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.coa-snippets-header-btn {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid #b07d4a;
+  border-radius: 8px;
+  background: #f5ede1;
+  color: #7a4f2a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.coa-snippets-header-btn:hover {
+  background: #ead9c0;
+  border-color: #8c5a22;
+}
+
+/* Code Snippets Section */
+.coa-snippets-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e8d9c5;
+}
+
+.coa-snippets-container {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.coa-snippet-item {
+  background: #fafaf8;
+  border: 1px solid #e8d9c5;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.coa-snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.coa-snippet-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2c1a0e;
+  margin: 0;
+}
+
+.coa-snippet-copy-btn {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #d4b896;
+  background: #fff;
+  color: #7a4f2a;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.coa-snippet-copy-btn:hover {
+  background: #f4e4cf;
+  border-color: #b07d4a;
+}
+
+.coa-snippet-copy-btn.copied {
+  background: #e4f5ea;
+  color: #2a7a45;
+  border-color: #b2dfc0;
+}
+
+.coa-snippet-desc {
+  font-size: 0.8rem;
+  color: #7b6652;
+  margin: 0 0 0.75rem 0;
+}
+
+.coa-snippet-code {
+  background: #fff;
+  border: 1px solid #d4b896;
+  border-radius: 4px;
+  padding: 1rem;
+  margin: 0;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #2c1a0e;
+  font-family: 'Courier New', monospace;
+  max-height: 400px;
+}

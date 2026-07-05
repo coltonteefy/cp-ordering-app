@@ -111,6 +111,12 @@ const NavIcon = ({ type }) => {
 };
 
 function App() {
+  if (typeof window !== 'undefined' && !window.IMPORT_API_BASE) {
+    window.IMPORT_API_BASE = window.location.hostname === 'localhost'
+      ? 'http://localhost:3031/api'
+      : `${window.location.origin}/api`;
+  }
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('Initializing...');
