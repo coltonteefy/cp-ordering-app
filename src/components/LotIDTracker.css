@@ -3779,3 +3779,40 @@
   border-color: #c0392b;
   color: #c0392b;
 }
+
+/* Spreadsheet table in All Lots modal */
+.all-lots-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.9rem;
+  user-select: text;
+}
+
+.all-lots-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  background: #fff;
+  color: #2b1a0f;
+}
+
+.all-lots-table-product-header td {
+  background: #f5f0e8;
+  font-weight: bold;
+  border-bottom: 2px solid #d0c4b4;
+  color: #3a2817;
+}
+
+.all-lots-table-row:hover td {
+  background: #fafaf8;
+}
+
+.all-lots-table a {
+  color: #0066cc;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.all-lots-table a:hover {
+  text-decoration: underline;
+}

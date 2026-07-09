@@ -4903,23 +4903,54 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                 <button
                   className="lot-modal-btn secondary"
                   onClick={() => {
-                    const rows = [["Product ID", "Product Name", "Lot ID", "Cap Color", "Vendor"]];
+                    const csvLines = ["Product\tLot ID\tColor\tVendor\tCOA Link"];
                     products
                       .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
                       .forEach((p) => {
                         const lots = (productData[p.docId]?.coaList || [])
                           .filter((c) => !vendorGuest || (c.vendor || "") === vendorGuest);
-                        lots.forEach((coa) => {
-                          rows.push([
-                            p.id || "",
-                            p.product || "",
-                            coa.lot || "",
-                            coa.capColor || "",
-                            coa.vendor || "",
-                          ]);
-                        });
+                        if (lots.length > 0) {
+                          const productLabel = p.strength ? `${p.product || ""} ${p.strength}` : (p.product || "");
+                          csvLines.push(productLabel);
+                          lots.forEach((coa) => {
+                            const savedCoa = savedCoasByLot.get(normalizeLotKey(coa.lot)) || null;
+                            const coaUrl = (savedCoa?.coaLink && savedCoa.coaLink !== buildCoaUrl("")) ? savedCoa.coaLink : (coa.url && coa.url !== buildCoaUrl(coa.lot) ? coa.url : "");
+                            const vendor = coa.vendor || "";
+                            csvLines.push(`\t${coa.lot || ""}\t${coa.capColor || ""}\t${vendor}\t${coaUrl}`);
+                          });
+                          csvLines.push("");
+                        }
                       });
-                    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+                    const text = csvLines.join("\n");
+                    navigator.clipboard.writeText(text).then(() => {
+                      copyToClipboard(text, 'all-lots', 'copy-btn');
+                    });
+                  }}
+                >
+                  📋 Copy to Clipboard
+                </button>
+                <button
+                  className="lot-modal-btn secondary"
+                  onClick={() => {
+                    const csvLines = ["Product\tLot ID\tColor\tVendor\tCOA Link"];
+                    products
+                      .filter((p) => !/^test$/i.test((p.id || p.product || "").trim()))
+                      .forEach((p) => {
+                        const lots = (productData[p.docId]?.coaList || [])
+                          .filter((c) => !vendorGuest || (c.vendor || "") === vendorGuest);
+                        if (lots.length > 0) {
+                          const productLabel = p.strength ? `${p.product || ""} ${p.strength}` : (p.product || "");
+                          csvLines.push(productLabel);
+                          lots.forEach((coa) => {
+                            const savedCoa = savedCoasByLot.get(normalizeLotKey(coa.lot)) || null;
+                            const coaUrl = (savedCoa?.coaLink && savedCoa.coaLink !== buildCoaUrl("")) ? savedCoa.coaLink : (coa.url && coa.url !== buildCoaUrl(coa.lot) ? coa.url : "");
+                            const vendor = coa.vendor || "";
+                            csvLines.push(`\t${coa.lot || ""}\t${coa.capColor || ""}\t${vendor}\t${coaUrl}`);
+                          });
+                          csvLines.push("");
+                        }
+                      });
+                    const csv = csvLines.join("\n");
                     const blob = new Blob([csv], { type: "text/csv" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
@@ -4930,13 +4961,6 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                   }}
                 >
                   ↓ Download CSV
-                </button>
-                <button
-                  className="lot-modal-btn secondary"
-                  onClick={() => handlePrintAllVialLabels()}
-                  disabled={pdfGenerating}
-                >
-                  {pdfGenerating ? '⏳ Generating…' : '↓ Download Label PDF'}
                 </button>
                 <button className="lot-modal-btn secondary" onClick={() => setAllLotsOpen(false)}>Close</button>
               </div>
