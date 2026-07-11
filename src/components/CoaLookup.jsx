@@ -30,8 +30,8 @@ const BULK_IMPORT_SCRIPT = `(async () => {
     .filter(Boolean);
 
   const proxyBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? "http://localhost:3031/.netlify/functions/cors-proxy"
-    : "https://coffepeppersorders.netlify.app/.netlify/functions/cors-proxy";
+    ? "http://localhost:3031/.netlify/edge-functions/cors-proxy"
+    : "https://coffepeppersorders.netlify.app/.netlify/edge-functions/cors-proxy";
 
   const fetchViaProxy = async (targetUrl, opts = {}) => {
     const res = await fetch(proxyBase, {
