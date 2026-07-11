@@ -22,7 +22,7 @@ const STATUS = {
 };
 
 const BULK_IMPORT_SCRIPT = `(async () => {
-  const API_BASE = window.IMPORT_API_BASE || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? "http://localhost:3031/api" : "https://coffepeppersorders.netlify.app/.netlify/functions/api");
+  const API_BASE = window.IMPORT_API_BASE || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? "http://localhost:3031/api" : "https://coffepeppersorders.netlify.app/api");
   const normalize = (v) => String(v || "").trim().toLowerCase();
 
   const found = [...new Set((document.body.innerText.match(/coff\\d+/gi) || []))]
