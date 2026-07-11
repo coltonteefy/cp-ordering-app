@@ -13,6 +13,13 @@
   force = true
 
 [[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+[[headers]]
   for = "/.netlify/functions/api/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
