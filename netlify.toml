@@ -10,11 +10,4 @@
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
-
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Headers = "Content-Type, Authorization"
-    Access-Control-Allow-Methods = "GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS"
-    Access-Control-Expose-Headers = "*"
+  force = false
