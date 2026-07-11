@@ -29,11 +29,19 @@ const BULK_IMPORT_SCRIPT = `(async () => {
     .map((c) => c.trim())
     .filter(Boolean);
 
+  const proxy = (url) => \`https://api.allorigins.win/get?url=\${encodeURIComponent(url)}\`;
+  const fetchProxy = async (url, opts) => {
+    const proxyUrl = proxy(url);
+    const res = await fetch(proxyUrl);
+    const data = await res.json();
+    if (!data.contents) throw new Error("Proxy failed: " + data.status);
+    return { ok: res.ok, text: () => Promise.resolve(data.contents), json: () => Promise.resolve(JSON.parse(data.contents)) };
+  };
+
   let savedSet = new Set();
   try {
-    const resp = await fetch(API_BASE + "/coa-saved-codes");
-    const text = await resp.text();
-    const data = JSON.parse(text);
+    const resp = await fetchProxy(API_BASE + "/coa-saved-codes");
+    const data = await resp.json();
     savedSet = new Set((data.codes || []).map(normalize));
   } catch (e) {
     console.warn("Could not load saved codes; continuing with full list.", e);
@@ -47,16 +55,19 @@ const BULK_IMPORT_SCRIPT = `(async () => {
   const chunkSize = 10;
   for (let i = 0; i < newCodes.length; i += chunkSize) {
     const chunk = newCodes.slice(i, i + chunkSize);
-    const r = await fetch(API_BASE + "/bulk-import-coas", {
+    const proxyUrl = proxy(API_BASE + "/bulk-import-coas");
+    const r = await fetch(proxyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ codes: chunk }),
     });
-    const data = await r.json();
+    const proxyData = await r.json();
+    const data = JSON.parse(proxyData.contents);
     console.log("Chunk response:", data);
 
     if (data.token) {
-      await fetch(API_BASE + "/import-ready", {
+      const readyUrl = proxy(API_BASE + "/import-ready");
+      await fetch(readyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: data.token }),
