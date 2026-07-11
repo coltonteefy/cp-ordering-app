@@ -30,9 +30,14 @@ const BULK_IMPORT_SCRIPT = `(async () => {
     .filter(Boolean);
 
   const fetchViaProxy = async (targetUrl, opts = {}) => {
-    const proxyUrl = "https://cors-proxy.fringe.zone/?" + encodeURIComponent(targetUrl);
+    const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(targetUrl);
     const res = await fetch(proxyUrl, opts);
-    return res;
+    const text = await res.text();
+    return {
+      ok: res.ok,
+      text: () => Promise.resolve(text),
+      json: () => Promise.resolve(JSON.parse(text)),
+    };
   };
 
   let savedSet = new Set();
