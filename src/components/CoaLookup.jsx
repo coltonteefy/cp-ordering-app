@@ -29,18 +29,27 @@ const BULK_IMPORT_SCRIPT = `(async () => {
     .map((c) => c.trim())
     .filter(Boolean);
 
-  const proxy = (url) => \`https://api.allorigins.win/get?url=\${encodeURIComponent(url)}\`;
-  const fetchProxy = async (url, opts) => {
-    const proxyUrl = proxy(url);
-    const res = await fetch(proxyUrl);
+  const proxyBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? "http://localhost:3031/.netlify/functions/cors-proxy"
+    : "https://coffepeppersorders.netlify.app/.netlify/functions/cors-proxy";
+
+  const fetchViaProxy = async (targetUrl, opts = {}) => {
+    const res = await fetch(proxyBase, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetUrl, method: opts.method || "GET", body: opts.body }),
+    });
     const data = await res.json();
-    if (!data.contents) throw new Error("Proxy failed: " + data.status);
-    return { ok: res.ok, text: () => Promise.resolve(data.contents), json: () => Promise.resolve(JSON.parse(data.contents)) };
+    return {
+      ok: data.status < 400,
+      text: () => Promise.resolve(data.contents),
+      json: () => Promise.resolve(JSON.parse(data.contents)),
+    };
   };
 
   let savedSet = new Set();
   try {
-    const resp = await fetchProxy(API_BASE + "/coa-saved-codes");
+    const resp = await fetchViaProxy(API_BASE + "/coa-saved-codes");
     const data = await resp.json();
     savedSet = new Set((data.codes || []).map(normalize));
   } catch (e) {
@@ -55,21 +64,16 @@ const BULK_IMPORT_SCRIPT = `(async () => {
   const chunkSize = 10;
   for (let i = 0; i < newCodes.length; i += chunkSize) {
     const chunk = newCodes.slice(i, i + chunkSize);
-    const proxyUrl = proxy(API_BASE + "/bulk-import-coas");
-    const r = await fetch(proxyUrl, {
+    const r = await fetchViaProxy(API_BASE + "/bulk-import-coas", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ codes: chunk }),
     });
-    const proxyData = await r.json();
-    const data = JSON.parse(proxyData.contents);
+    const data = await r.json();
     console.log("Chunk response:", data);
 
     if (data.token) {
-      const readyUrl = proxy(API_BASE + "/import-ready");
-      await fetch(readyUrl, {
+      await fetchViaProxy(API_BASE + "/import-ready", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: data.token }),
       });
     }
