@@ -29,22 +29,10 @@ const BULK_IMPORT_SCRIPT = `(async () => {
     .map((c) => c.trim())
     .filter(Boolean);
 
-  const proxyBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? "http://localhost:3031/.netlify/edge-functions/cors-proxy"
-    : "https://coffepeppersorders.netlify.app/.netlify/edge-functions/cors-proxy";
-
   const fetchViaProxy = async (targetUrl, opts = {}) => {
-    const res = await fetch(proxyBase, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetUrl, method: opts.method || "GET", body: opts.body }),
-    });
-    const data = await res.json();
-    return {
-      ok: data.status < 400,
-      text: () => Promise.resolve(data.contents),
-      json: () => Promise.resolve(JSON.parse(data.contents)),
-    };
+    const proxyUrl = "https://cors-proxy.fringe.zone/?" + encodeURIComponent(targetUrl);
+    const res = await fetch(proxyUrl, opts);
+    return res;
   };
 
   let savedSet = new Set();
