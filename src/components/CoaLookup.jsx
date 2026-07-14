@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './CoaLookup.css';
@@ -80,7 +81,7 @@ function buildInitialRows(files) {
   }));
 }
 
-function CoaLinkCell({ coaLink, rowId, copiedRowId, onCopy }) {
+function CoaLinkCell({ coaLink, rowId, onCopy }) {
   if (!coaLink) return <span className="coa-empty">—</span>;
   return (
     <div className="coa-link-actions">
@@ -90,7 +91,6 @@ function CoaLinkCell({ coaLink, rowId, copiedRowId, onCopy }) {
       <button type="button" className="coa-copy-btn" onClick={() => onCopy(coaLink, rowId)}>
         Copy Link
       </button>
-      {copiedRowId === rowId && <span className="coa-copy-feedback">Copied</span>}
     </div>
   );
 }
@@ -98,7 +98,7 @@ function CoaLinkCell({ coaLink, rowId, copiedRowId, onCopy }) {
 export default function CoaLookup() {
   const [rows, setRows] = useState([]);
   const [dragging, setDragging] = useState(false);
-  const [copiedRowId, setCopiedRowId] = useState(null);
+  const [copyToast, setCopyToast] = useState('');
   const [savedCoas, setSavedCoas] = useState([]);
   const [search, setSearch] = useState('');
   const [savingIds, setSavingIds] = useState(new Set());
@@ -119,10 +119,12 @@ export default function CoaLookup() {
   const fileInputRef = useRef(null);
   const importInFlightRef = useRef(false);
   const snippetTimeoutRef = useRef(null);
+  const copyToastTimeoutRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (snippetTimeoutRef.current) clearTimeout(snippetTimeoutRef.current);
+      if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
     };
   }, []);
 
@@ -373,10 +375,16 @@ export default function CoaLookup() {
         document.execCommand('copy');
         document.body.removeChild(temp);
       }
-      setCopiedRowId(rowId);
-      window.setTimeout(() => setCopiedRowId((c) => (c === rowId ? null : c)), 1500);
+      const message = typeof rowId === 'string' && rowId.endsWith('-lot')
+        ? 'LOT copied to clipboard'
+        : 'Link copied to clipboard';
+      setCopyToast(message);
+      if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
+      copyToastTimeoutRef.current = window.setTimeout(() => setCopyToast(''), 1500);
     } catch {
-      setCopiedRowId(null);
+      setCopyToast('Unable to copy to clipboard');
+      if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
+      copyToastTimeoutRef.current = window.setTimeout(() => setCopyToast(''), 1800);
     }
   };
 
@@ -611,7 +619,7 @@ export default function CoaLookup() {
               {rows.some((r) => r.status === STATUS.DONE && r.searchCode && !savedSearchCodes.has(r.searchCode)) && (
                 <button className="coa-save-btn" onClick={() => saveAll(savedSearchCodes)}>Save All</button>
               )}
-              <button className="coa-clear-btn" onClick={() => { setRows([]); setCopiedRowId(null); }}>Clear</button>
+              <button className="coa-clear-btn" onClick={() => { setRows([]); setCopyToast(''); }}>Clear</button>
             </div>
           </div>
           <div className="coa-table-wrapper">
@@ -620,8 +628,8 @@ export default function CoaLookup() {
                 <tr>
                   <th>File</th>
                   <th>Search Code</th>
-                  <th>LOT</th>
                   <th>Product</th>
+                  <th>LOT</th>
                   <th>COA Link</th>
                   <th>Save</th>
                 </tr>
@@ -649,21 +657,6 @@ export default function CoaLookup() {
                           row.searchCode ?? <span className="coa-empty">—</span>
                         )}
                       </td>
-                      <td className="coa-cell">
-                        {row.status === STATUS.PROCESSING ? (
-                          <span className="coa-processing">Processing…</span>
-                        ) : isEditing ? (
-                          <input
-                            type="text"
-                            value={editValues.lot}
-                            onChange={(e) => setEditValues({ ...editValues, lot: e.target.value })}
-                            placeholder="LOT"
-                            className="coa-edit-input"
-                          />
-                        ) : (
-                          row.lot ?? <span className="coa-empty">—</span>
-                        )}
-                      </td>
                       <td className="coa-cell coa-cell--product">
                         {row.status === STATUS.PROCESSING ? (
                           <span className="coa-processing">Processing…</span>
@@ -682,8 +675,32 @@ export default function CoaLookup() {
                       <td className="coa-cell">
                         {row.status === STATUS.PROCESSING ? (
                           <span className="coa-processing">Processing…</span>
+                        ) : isEditing ? (
+                          <input
+                            type="text"
+                            value={editValues.lot}
+                            onChange={(e) => setEditValues({ ...editValues, lot: e.target.value })}
+                            placeholder="LOT"
+                            className="coa-edit-input"
+                          />
                         ) : (
-                          <CoaLinkCell coaLink={row.coaLink} rowId={row.id} copiedRowId={copiedRowId} onCopy={copyToClipboard} />
+                          row.lot ? (
+                            <button
+                              type="button"
+                              className="coa-lot-copy-btn"
+                              onClick={() => copyToClipboard(row.lot, `${row.id}-lot`)}
+                              title="Click to copy LOT"
+                            >
+                              {row.lot}
+                            </button>
+                          ) : <span className="coa-empty">—</span>
+                        )}
+                      </td>
+                      <td className="coa-cell">
+                        {row.status === STATUS.PROCESSING ? (
+                          <span className="coa-processing">Processing…</span>
+                        ) : (
+                          <CoaLinkCell coaLink={row.coaLink} rowId={row.id} onCopy={copyToClipboard} />
                         )}
                       </td>
                       <td className="coa-cell">
@@ -803,8 +820,8 @@ export default function CoaLookup() {
               <thead>
                 <tr>
                   <th>Search Code</th>
-                  <th>LOT</th>
                   <th>Product</th>
+                  <th>LOT</th>
                   <th>COA Link</th>
                   <th></th>
                 </tr>
@@ -813,10 +830,21 @@ export default function CoaLookup() {
                 {filteredSaved.map((coa) => (
                   <tr key={coa.id} className="coa-row">
                     <td className="coa-cell">{coa.searchCode ?? <span className="coa-empty">—</span>}</td>
-                    <td className="coa-cell">{coa.lot ?? <span className="coa-empty">—</span>}</td>
                     <td className="coa-cell coa-cell--product">{coa.product ?? <span className="coa-empty">—</span>}</td>
                     <td className="coa-cell">
-                      <CoaLinkCell coaLink={coa.coaLink} rowId={coa.id} copiedRowId={copiedRowId} onCopy={copyToClipboard} />
+                      {coa.lot ? (
+                        <button
+                          type="button"
+                          className="coa-lot-copy-btn"
+                          onClick={() => copyToClipboard(coa.lot, `${coa.id}-lot`)}
+                          title="Click to copy LOT"
+                        >
+                          {coa.lot}
+                        </button>
+                      ) : <span className="coa-empty">—</span>}
+                    </td>
+                    <td className="coa-cell">
+                      <CoaLinkCell coaLink={coa.coaLink} rowId={coa.id} onCopy={copyToClipboard} />
                     </td>
                     <td className="coa-cell coa-cell--action">
                       <button
@@ -836,6 +864,13 @@ export default function CoaLookup() {
           </div>
         )}
       </div>
+
+      {copyToast && createPortal(
+        <div className="coa-copy-toast" role="status" aria-live="polite">
+          {copyToast}
+        </div>,
+        document.body
+      )}
 
     </div>
   );

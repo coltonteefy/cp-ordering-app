@@ -316,6 +316,37 @@
   color: #2a7a45;
 }
 
+.coa-copy-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  background: #2a7a45;
+  color: #fff;
+  border: 1px solid #1f5d35;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.coa-lot-copy-btn {
+  border: none;
+  background: transparent;
+  color: #6d431d;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.coa-lot-copy-btn:hover {
+  color: #5c3a12;
+}
+
 /* Status Badges */
 .coa-badge {
   display: inline-block;
