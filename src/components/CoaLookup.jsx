@@ -116,6 +116,9 @@ export default function CoaLookup() {
   const [editValues, setEditValues] = useState({});
   const [showCodeSnippets, setShowCodeSnippets] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(null);
+  const [savedEditingId, setSavedEditingId] = useState(null);
+  const [savedEditValues, setSavedEditValues] = useState({});
+  const [savingSavedIds, setSavingSavedIds] = useState(new Set());
   const fileInputRef = useRef(null);
   const importInFlightRef = useRef(false);
   const snippetTimeoutRef = useRef(null);
@@ -353,6 +356,50 @@ export default function CoaLookup() {
       console.error('COA delete failed:', err);
     } finally {
       setDeletingIds((prev) => { const s = new Set(prev); s.delete(coaId); return s; });
+    }
+  };
+
+  const startSavedEdit = (coa) => {
+    setSavedEditingId(coa.id);
+    setSavedEditValues({
+      searchCode: coa.searchCode ?? '',
+      product: coa.product ?? '',
+      lot: coa.lot ?? '',
+      coaLink: coa.coaLink ?? '',
+    });
+  };
+
+  const cancelSavedEdit = () => {
+    setSavedEditingId(null);
+    setSavedEditValues({});
+  };
+
+  const saveSavedEdit = async (coa) => {
+    setSavingSavedIds((prev) => new Set(prev).add(coa.id));
+    try {
+      const nextSearchCode = String(savedEditValues.searchCode ?? '').trim();
+      const nextProduct = String(savedEditValues.product ?? '').trim();
+      const nextLot = String(savedEditValues.lot ?? '').trim();
+      const nextCoaLink = String(savedEditValues.coaLink ?? '').trim();
+
+      await setDoc(doc(db, COA_COLLECTION, coa.id), {
+        searchCode: nextSearchCode || null,
+        product: normalizeProduct(nextProduct) || null,
+        lot: nextLot || null,
+        coaLink: nextCoaLink || null,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      setSavedEditingId(null);
+      setSavedEditValues({});
+    } catch (err) {
+      console.error('COA saved-row edit failed:', err);
+    } finally {
+      setSavingSavedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(coa.id);
+        return next;
+      });
     }
   };
 
@@ -827,38 +874,111 @@ export default function CoaLookup() {
                 </tr>
               </thead>
               <tbody>
-                {filteredSaved.map((coa) => (
-                  <tr key={coa.id} className="coa-row">
-                    <td className="coa-cell">{coa.searchCode ?? <span className="coa-empty">—</span>}</td>
-                    <td className="coa-cell coa-cell--product">{coa.product ?? <span className="coa-empty">—</span>}</td>
-                    <td className="coa-cell">
-                      {coa.lot ? (
-                        <button
-                          type="button"
-                          className="coa-lot-copy-btn"
-                          onClick={() => copyToClipboard(coa.lot, `${coa.id}-lot`)}
-                          title="Click to copy LOT"
-                        >
-                          {coa.lot}
-                        </button>
-                      ) : <span className="coa-empty">—</span>}
-                    </td>
-                    <td className="coa-cell">
-                      <CoaLinkCell coaLink={coa.coaLink} rowId={coa.id} onCopy={copyToClipboard} />
-                    </td>
-                    <td className="coa-cell coa-cell--action">
-                      <button
-                        type="button"
-                        className="coa-delete-btn"
-                        disabled={deletingIds.has(coa.id)}
-                        onClick={() => deleteSaved(coa.id)}
-                        title="Delete"
-                      >
-                        {deletingIds.has(coa.id) ? '…' : '✕'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredSaved.map((coa) => {
+                  const isSavedEditing = savedEditingId === coa.id;
+                  const isSavingSaved = savingSavedIds.has(coa.id);
+                  return (
+                    <tr key={coa.id} className={`coa-row${isSavedEditing ? ' coa-row--editing' : ''}`}>
+                      <td className="coa-cell">
+                        {isSavedEditing ? (
+                          <input
+                            type="text"
+                            value={savedEditValues.searchCode ?? ''}
+                            onChange={(e) => setSavedEditValues({ ...savedEditValues, searchCode: e.target.value })}
+                            placeholder="Search code"
+                            className="coa-edit-input"
+                          />
+                        ) : (coa.searchCode ?? <span className="coa-empty">—</span>)}
+                      </td>
+                      <td className="coa-cell coa-cell--product">
+                        {isSavedEditing ? (
+                          <input
+                            type="text"
+                            value={savedEditValues.product ?? ''}
+                            onChange={(e) => setSavedEditValues({ ...savedEditValues, product: e.target.value })}
+                            placeholder="Product"
+                            className="coa-edit-input"
+                          />
+                        ) : (coa.product ?? <span className="coa-empty">—</span>)}
+                      </td>
+                      <td className="coa-cell">
+                        {isSavedEditing ? (
+                          <input
+                            type="text"
+                            value={savedEditValues.lot ?? ''}
+                            onChange={(e) => setSavedEditValues({ ...savedEditValues, lot: e.target.value })}
+                            placeholder="LOT"
+                            className="coa-edit-input"
+                          />
+                        ) : coa.lot ? (
+                          <button
+                            type="button"
+                            className="coa-lot-copy-btn"
+                            onClick={() => copyToClipboard(coa.lot, `${coa.id}-lot`)}
+                            title="Click to copy LOT"
+                          >
+                            {coa.lot}
+                          </button>
+                        ) : <span className="coa-empty">—</span>}
+                      </td>
+                      <td className="coa-cell">
+                        {isSavedEditing ? (
+                          <input
+                            type="text"
+                            value={savedEditValues.coaLink ?? ''}
+                            onChange={(e) => setSavedEditValues({ ...savedEditValues, coaLink: e.target.value })}
+                            placeholder="COA Link"
+                            className="coa-edit-input"
+                          />
+                        ) : (
+                          <CoaLinkCell coaLink={coa.coaLink} rowId={coa.id} onCopy={copyToClipboard} />
+                        )}
+                      </td>
+                      <td className="coa-cell coa-cell--action">
+                        {!isSavedEditing ? (
+                          <div className="coa-actions">
+                            <button
+                              type="button"
+                              className="coa-edit-btn"
+                              onClick={() => startSavedEdit(coa)}
+                              title="Edit"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="coa-delete-btn"
+                              disabled={deletingIds.has(coa.id)}
+                              onClick={() => deleteSaved(coa.id)}
+                              title="Delete"
+                            >
+                              {deletingIds.has(coa.id) ? '…' : '✕'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="coa-actions">
+                            <button
+                              type="button"
+                              className="coa-save-btn"
+                              disabled={isSavingSaved}
+                              onClick={() => saveSavedEdit(coa)}
+                            >
+                              {isSavingSaved ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              className="coa-cancel-btn"
+                              disabled={isSavingSaved}
+                              onClick={cancelSavedEdit}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
