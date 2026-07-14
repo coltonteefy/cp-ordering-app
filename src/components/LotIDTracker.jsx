@@ -1678,6 +1678,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [testingQueue, setTestingQueue] = useState([]);
   const [testingQueueLoaded, setTestingQueueLoaded] = useState(false);
+  const [testingStagingItems, setTestingStagingItems] = useState([]);
   const migratedTestingQueueRef = useRef(false);
   const [testingFormOpen, setTestingFormOpen] = useState(false);
   const TESTING_CONTACTS = [
@@ -2405,7 +2406,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
 
   const addToTestingQueue = async (product, coa) => {
     const entryId = `${product.docId}-${coa.lot}`;
-    if (testingQueue.some((entry) => entry.id === entryId)) {
+    if (testingStagingItems.some((entry) => entry.id === entryId)) {
       setTestingFormOpen(true);
       return;
     }
@@ -2426,11 +2427,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
-    try {
-      await setDoc(doc(db, TESTING_QUEUE_COLLECTION, entryId), payload, { merge: true });
-    } catch (err) {
-      console.error("Failed to add testing queue item", err);
-    }
+    setTestingStagingItems((prev) => [...prev, payload]);
     setTestingFormOpen(true);
   };
 
@@ -2471,6 +2468,16 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
 
     const nextTests = { ...testingGlobalTests, [field]: value };
     const all = Object.values(nextTests).every(Boolean);
+
+    setTestingStagingItems((prev) =>
+      prev.map((entry) => ({
+        ...entry,
+        [field]: value,
+        selectAll: all,
+        updatedAt: Date.now(),
+      }))
+    );
+
     try {
       await Promise.all(
         testingQueue.map((entry) =>
@@ -2484,6 +2491,29 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     } catch (err) {
       console.error("Failed to update global test selection", err);
     }
+  };
+
+  const removeStagingItem = (entryId) => {
+    setTestingStagingItems((prev) => prev.filter((entry) => entry.id !== entryId));
+  };
+
+  const updateStagingItem = (entryId, field, value) => {
+    setTestingStagingItems((prev) =>
+      prev.map((entry) => {
+        if (entry.id !== entryId) return entry;
+        const updated = { ...entry, [field]: value, updatedAt: Date.now() };
+        if (field === "selectAll") {
+          updated.purityId = value;
+          updated.netPeptide = value;
+          updated.endotoxins = value;
+          updated.sterility = value;
+          updated.conformityTest = value;
+          updated.vialPhoto = value;
+          updated.fentanyl = value;
+        }
+        return updated;
+      })
+    );
   };
 
   const removeTestingQueueItem = async (entryId) => {
@@ -2529,6 +2559,25 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     }
   };
 
+  const submitStagingItemsToQueue = async (items = testingStagingItems) => {
+    if (!items.length) return;
+    const now = new Date().toISOString();
+    try {
+      await Promise.all(
+        items.map((entry) =>
+          setDoc(
+            doc(db, TESTING_QUEUE_COLLECTION, entry.id),
+            { ...entry, sentAt: now, trackingStatus: entry.trackingStatus || "waiting", updatedAt: Date.now() },
+            { merge: true }
+          )
+        )
+      );
+      setTestingStagingItems([]);
+    } catch (err) {
+      console.error("Failed to submit staging items to queue", err);
+    }
+  };
+
   const markQueueAsSent = async () => {
     const now = new Date().toISOString();
     const unsent = testingQueue.filter((entry) => !entry.sentAt);
@@ -2557,8 +2606,9 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     }
   };
 
-  const printTestingForm = () => {
-    markQueueAsSent();
+  const printTestingForm = async () => {
+    const itemsToSubmit = [...testingStagingItems];
+    await submitStagingItemsToQueue(itemsToSubmit);
     const esc = (value) =>
       String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -2586,7 +2636,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       </div>
     `).join("");
 
-    const sampleRows = testingQueue.map((entry, i) => `
+    const sampleRows = itemsToSubmit.map((entry, i) => `
       <tr>
         <td class="tp-num">${i + 1}</td>
         <td class="tp-info">${esc(entry.sampleName)}</td>
@@ -2731,8 +2781,9 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     }, 250);
   };
 
-  const printTestingFormLetter = () => {
-    markQueueAsSent();
+  const printTestingFormLetter = async () => {
+    const itemsToSubmit = [...testingStagingItems];
+    await submitStagingItemsToQueue(itemsToSubmit);
     const esc = (value) =>
       String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -2759,7 +2810,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       </div>
     `).join("");
 
-    const sampleRows = testingQueue.map((entry, i) => `
+    const sampleRows = itemsToSubmit.map((entry, i) => `
       <tr>
         <td class="tp-num">${i + 1}</td>
         <td class="tp-info">${esc(entry.sampleName)}</td>
@@ -3285,9 +3336,9 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
             className="lot-id-testing-queue-btn"
             onClick={() => setTestingFormOpen(true)}
           >
-            Testing Queue
-            {testingQueue.length > 0 && (
-              <span className="lot-id-testing-queue-badge">{testingQueue.length}</span>
+            Testing Form
+            {testingStagingItems.length > 0 && (
+              <span className="lot-id-testing-queue-badge">{testingStagingItems.length}</span>
             )}
           </button>
         )}
@@ -3678,24 +3729,30 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                                 >
                                   View COA ↗
                                 </a>
-                              ) : !isGuest && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="lot-id-card-testing-btn"
-                                    onClick={(e) => { e.stopPropagation(); addToTestingQueue(p, coa); }}
-                                  >
-                                    Send for Testing
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="lot-id-card-testing-btn lot-id-card-testing-btn--secondary"
-                                    onClick={(e) => { e.stopPropagation(); addToTestingQueueOnly(p, coa); }}
-                                  >
-                                    Add to Testing List
-                                  </button>
-                                </>
-                              )}
+                              ) : !isGuest && (() => {
+                                const entryId = `${p.docId}-${coa.lot}`;
+                                const isInQueue = testingQueue.some((entry) => entry.id === entryId);
+                                return isInQueue ? (
+                                  <span className="lot-id-card-status-badge">Lot in Testing Queue</span>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="lot-id-card-testing-btn"
+                                      onClick={(e) => { e.stopPropagation(); addToTestingQueue(p, coa); }}
+                                    >
+                                      Send for Testing
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="lot-id-card-testing-btn lot-id-card-testing-btn--secondary"
+                                      onClick={(e) => { e.stopPropagation(); addToTestingQueueOnly(p, coa); }}
+                                    >
+                                      Add to Testing List
+                                    </button>
+                                  </>
+                                );
+                              })()}
                               {(!isGuest || (vendorGuest && (coa.vendor || "") === vendorGuest)) && (
                                 <button
                                   type="button"
@@ -4379,9 +4436,9 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                 <div className="lot-testing-samples-section">
                   <div className="lot-testing-samples-header">
                     <span>Sample Details</span>
-                    <span className="lot-testing-samples-count">{testingQueue.length} in queue</span>
+                    <span className="lot-testing-samples-count">{testingStagingItems.length} in queue</span>
                   </div>
-                  {testingQueue.length === 0 ? (
+                  {testingStagingItems.length === 0 ? (
                     <div className="lot-testing-empty">No samples yet — use &ldquo;Send for Testing&rdquo; on any lot card.</div>
                   ) : (
                     <table className="lot-testing-samples-table">
@@ -4395,17 +4452,17 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                         </tr>
                       </thead>
                       <tbody>
-                        {testingQueue.map((entry, i) => (
+                        {testingStagingItems.map((entry, i) => (
                           <tr key={entry.id}>
                             <td className="lot-testing-check-col">{i + 1}</td>
                             <td className="lot-testing-sample-col">{entry.sampleName}</td>
                             <td className="lot-testing-sample-col">
                               <input type="text" className="lot-testing-cell-input" value={entry.expectedMg}
-                                onChange={(e) => updateTestingQueueItem(entry.id, "expectedMg", e.target.value)} />
+                                onChange={(e) => updateStagingItem(entry.id, "expectedMg", e.target.value)} />
                             </td>
                             <td className={`lot-testing-sample-col ${getLotCellClassName(entry.lotNumber)}`}>{entry.lotNumber}</td>
                             <td className="lot-testing-check-col">
-                              <button type="button" className="lot-testing-remove-inline" onClick={() => removeTestingQueueItem(entry.id)}>✕</button>
+                              <button type="button" className="lot-testing-remove-inline" onClick={() => removeStagingItem(entry.id)}>✕</button>
                             </td>
                           </tr>
                         ))}
@@ -4448,9 +4505,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
 
               <div className="lot-modal-actions">
                 <button type="button" className="lot-modal-btn secondary" onClick={() => setTestingFormOpen(false)}>Close</button>
-                <button type="button" className="lot-modal-btn danger" onClick={clearTestingQueue}>Clear Queue</button>
-                <button type="button" className="lot-modal-btn secondary" onClick={printTestingFormLetter} disabled={!testingQueue.length}>Print (Letter)</button>
-                <button type="button" className="lot-modal-btn primary" onClick={printTestingForm} disabled={!testingQueue.length}>Print (Label)</button>
+                <button type="button" className="lot-modal-btn secondary" onClick={() => printTestingFormLetter()} disabled={!testingStagingItems.length}>Print (Letter)</button>
+                <button type="button" className="lot-modal-btn primary" onClick={() => printTestingForm()} disabled={!testingStagingItems.length}>Print (Label)</button>
               </div>
             </div>
           </div>,
