@@ -28,6 +28,7 @@ function cleanName(name) {
 export default function WooProducts() {
   const [products, setProducts] = useState([]);
   const [overrides, setOverrides] = useState({});
+  const [lastPulledNewIds, setLastPulledNewIds] = useState([]);
   const [lastSync, setLastSync] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -48,6 +49,7 @@ export default function WooProducts() {
           const data = snap.data();
           setProducts(data.products || []);
           setOverrides(data.overrides || {});
+          setLastPulledNewIds(Array.isArray(data.lastPulledNewIds) ? data.lastPulledNewIds.map((id) => String(id)) : []);
           setLastSync(data.lastSync?.toDate?.() || null);
         }
       })
@@ -63,20 +65,37 @@ export default function WooProducts() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const { products: data } = await r.json();
       const now = new Date();
+
+      // Keep saved products as-is and append only truly new Woo items.
+      const existingIds = new Set(products.map((p) => String(p.id)));
+      const incoming = Array.isArray(data) ? data : [];
+      const newProducts = incoming.filter((p) => !existingIds.has(String(p.id)));
+      const mergedProducts = newProducts.length ? [...products, ...newProducts] : products;
+      const newIds = newProducts.map((p) => String(p.id));
+      const mergedNewIds = Array.from(new Set([...lastPulledNewIds, ...newIds]));
+
       // merge: true preserves overrides across syncs
-      await setDoc(CACHE_DOC, { products: data, lastSync: now }, { merge: true });
-      setProducts(data || []);
+      await setDoc(CACHE_DOC, { products: mergedProducts, lastPulledNewIds: mergedNewIds, lastSync: now }, { merge: true });
+      setProducts(mergedProducts);
+      setLastPulledNewIds(mergedNewIds);
       setLastSync(now);
     } catch (e) {
       setError(e.message);
     } finally {
       setSyncing(false);
     }
+  }, [products, lastPulledNewIds]);
+
+  const clearHighlights = useCallback(async () => {
+    setLastPulledNewIds([]);
+    await setDoc(CACHE_DOC, { lastPulledNewIds: [] }, { merge: true });
   }, []);
 
   const getVal = useCallback((p, field) => {
     const ov = overrides[p.id];
     if (ov && ov[field] !== undefined) return ov[field];
+    if (field === 'name') return cleanName(p.name || '');
+    if (field === 'regularPrice') return p.regularPrice || '';
     if (field === 'mass') return extractMass(p.name, p.categories);
     if (field === 'category') return p.categories.join(', ');
     return '';
@@ -105,22 +124,27 @@ export default function WooProducts() {
   const categories = useMemo(() => {
     const set = new Set();
     products.forEach((p) => p.categories.forEach((c) => set.add(c)));
+    Object.values(overrides).forEach((ov) => {
+      if (ov?.category) set.add(String(ov.category).trim());
+    });
     return ['', ...Array.from(set).sort()];
-  }, [products]);
+  }, [products, overrides]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return products.filter((p) => {
-      const matchSearch = !q || p.name.toLowerCase().includes(q);
-      const matchCat = !categoryFilter || p.categories.includes(categoryFilter);
+      const effectiveName = String(getVal(p, 'name') || '').toLowerCase();
+      const effectiveCategory = String(getVal(p, 'category') || '');
+      const matchSearch = !q || effectiveName.includes(q);
+      const matchCat = !categoryFilter || effectiveCategory === categoryFilter || p.categories.includes(categoryFilter);
       return matchSearch && matchCat;
     });
-  }, [products, search, categoryFilter]);
+  }, [products, search, categoryFilter, getVal]);
 
   const grouped = useMemo(() => {
     const sortFn = (a, b) => {
-      let av = a[sortKey] ?? '';
-      let bv = b[sortKey] ?? '';
+      let av = getVal(a, sortKey);
+      let bv = getVal(b, sortKey);
       if (sortKey === 'regularPrice') {
         av = parseFloat(av) || 0;
         bv = parseFloat(bv) || 0;
@@ -132,14 +156,14 @@ export default function WooProducts() {
     };
     const map = new Map();
     filtered.forEach((p) => {
-      const cat = (overrides[p.id]?.category ?? p.categories[0]) || 'Uncategorized';
+      const cat = getVal(p, 'category') || p.categories[0] || 'Uncategorized';
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat).push(p);
     });
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([cat, items]) => [cat, [...items].sort(sortFn)]);
-  }, [filtered, sortKey, sortDir, overrides]);
+  }, [filtered, sortKey, sortDir, getVal]);
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -158,10 +182,10 @@ export default function WooProducts() {
     const header = ['Name', 'Mass', 'Category', 'Price', 'URL'].join('\t');
     const rows = grouped.flatMap(([, items]) =>
       items.map((p) => [
-        cleanName(p.name),
+        getVal(p, 'name'),
         getVal(p, 'mass'),
         getVal(p, 'category'),
-        fmtPrice(p.regularPrice),
+        fmtPrice(getVal(p, 'regularPrice')),
         p.permalink || '',
       ].join('\t'))
     );
@@ -236,6 +260,9 @@ export default function WooProducts() {
           {products.length > 0 && (
             <span className="woo-products-count">{filtered.length} of {products.length}</span>
           )}
+          {lastPulledNewIds.length > 0 && (
+            <span className="woo-new-count">{lastPulledNewIds.length} new</span>
+          )}
         </div>
         <div className="woo-products-filters">
           {products.length > 0 && (
@@ -261,8 +288,13 @@ export default function WooProducts() {
               </button>
             </>
           )}
+          {lastPulledNewIds.length > 0 && (
+            <button className="woo-clear-new-btn" onClick={clearHighlights}>
+              Clear Highlights
+            </button>
+          )}
           <button className="woo-sync-btn" onClick={handleSync} disabled={syncing}>
-            {syncing ? 'Syncing…' : 'Sync from WooCommerce'}
+            {syncing ? 'Syncing…' : 'Pull New from WooCommerce'}
           </button>
         </div>
       </div>
@@ -304,11 +336,11 @@ export default function WooProducts() {
                     <td colSpan={5} className="woo-group-label">{cat}</td>
                   </tr>
                   {items.map((p) => (
-                    <tr key={p.id} className="woo-row">
-                      <td className="woo-td-name">{cleanName(p.name)}</td>
+                    <tr key={p.id} className={`woo-row${lastPulledNewIds.includes(String(p.id)) ? ' woo-row-new' : ''}`}>
+                      {renderEditableCell(p, 'name', 'woo-td-name')}
                       {renderEditableCell(p, 'mass', 'woo-td-mass')}
                       {renderEditableCell(p, 'category', 'woo-td-cat', categories.filter(Boolean))}
-                      <td className="woo-td-price">{fmtPrice(p.regularPrice)}</td>
+                      {renderEditableCell(p, 'regularPrice', 'woo-td-price')}
                       <td className="woo-td-link">
                         {p.permalink && (
                           <a href={p.permalink} target="_blank" rel="noreferrer" className="woo-permalink">
