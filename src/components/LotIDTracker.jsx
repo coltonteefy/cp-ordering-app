@@ -397,6 +397,11 @@ const normalizeTestingQueueItem = (entry) => ({
   receivedAt: entry?.receivedAt || "",
 });
 const normalizeLotKey = (value) => String(value || "").trim().toUpperCase();
+const compareNaturalIds = (a, b) =>
+  String(a || "").localeCompare(String(b || ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 const buildTestLabelDesignStyles = (design) => ({
   logoWrap: {
     left: `${design.logoLeftPercent}%`,
@@ -3435,6 +3440,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
             !vendorFilter ||
             (productData[p.docId]?.coaList || []).some((c) => (c.vendor || "") === vendorFilter)
           )
+          .sort((a, b) => compareNaturalIds(a.id || a.product, b.id || b.product))
           .map((p) => (
           <button
             key={p.docId}
