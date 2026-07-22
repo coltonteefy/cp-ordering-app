@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import './SubmittedOrders.css';
+import AllDeliveriesModal from './AllDeliveriesModal';
 
 const VENDOR_COLORS = {
   TSC: '#8B6914',
@@ -249,6 +250,7 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
   const [selectedDeliveredOrderId, setSelectedDeliveredOrderId] = useState(null);
   const [orderDetailTab, setOrderDetailTab] = useState(vendorProfile ? 'tracking' : 'items');
   const [showUndeliveredModal, setShowUndeliveredModal] = useState(false);
+  const [showAllDeliveriesModal, setShowAllDeliveriesModal] = useState(false);
   const [expandedPaymentPanels, setExpandedPaymentPanels] = useState(new Set());
   const [downPaymentForms, setDownPaymentForms] = useState({});
   const [trackingFillQtys, setTrackingFillQtys] = useState({});
@@ -3076,6 +3078,13 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
                 </div>
               )}
             </div>
+            <button
+              className="show-all-deliveries-btn"
+              onClick={() => setShowAllDeliveriesModal(true)}
+              title="View all pending orders with tracking information"
+            >
+              📦 All Tracking
+            </button>
             {effectiveVendorFilter !== 'all' && (() => {
               const vs = vendorSummaryStats.find(v => v.vendor === effectiveVendorFilter);
               if (!vs) return null;
@@ -3300,6 +3309,13 @@ const SubmittedOrders = ({ onSuccess, onError, deliveredOnly = false, vendorProf
           </div>
         </>
       , document.body)}
+
+      <AllDeliveriesModal
+        isOpen={showAllDeliveriesModal}
+        onClose={() => setShowAllDeliveriesModal(false)}
+        pendingOrders={orders}
+        vendorColorMap={vendorColorMap}
+      />
     </div>
   );
 };

@@ -1,0 +1,239 @@
+.all-deliveries-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.all-deliveries-modal {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 800px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.adm-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #222;
+}
+
+.adm-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.adm-close-btn:hover {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.adm-content {
+  overflow-y: auto;
+  flex: 1;
+  padding: 16px;
+}
+
+.adm-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: #999;
+  text-align: center;
+  font-size: 16px;
+}
+
+.adm-date-group {
+  margin-bottom: 8px;
+}
+
+.adm-date-header {
+  width: 100%;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  transition: background-color 0.2s;
+  margin-bottom: 8px;
+}
+
+.adm-date-header:hover {
+  background-color: #f0f1f3;
+}
+
+.adm-date-label {
+  font-weight: 600;
+}
+
+.adm-date-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 8px;
+}
+
+.adm-date-chevron {
+  color: #999;
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+
+.adm-deliveries-list {
+  padding: 0 0 8px 0;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-top: none;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  margin-top: -8px;
+  overflow: hidden;
+}
+
+.adm-delivery-card {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8e8e8;
+  background: white;
+  margin: 8px;
+  border-radius: 4px;
+}
+
+.adm-delivery-card:last-child {
+  border-bottom: none;
+}
+
+.adm-delivery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.adm-delivery-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adm-order-id {
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+}
+
+.adm-vendor-badge {
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.adm-order-time {
+  font-size: 12px;
+  color: #999;
+}
+
+.adm-tracking-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #f5f5f5;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.adm-tracking-carrier {
+  font-weight: 600;
+  color: #555;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.adm-tracking-numbers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.adm-tracking-number {
+  font-family: 'Courier New', monospace;
+  color: #333;
+  font-weight: 500;
+  word-break: break-all;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+@media (max-width: 640px) {
+  .all-deliveries-modal {
+    width: 95%;
+    max-height: 90vh;
+  }
+
+  .adm-header {
+    padding: 16px;
+  }
+
+  .adm-header h2 {
+    font-size: 18px;
+  }
+
+  .adm-order-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .adm-tracking-entry {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
