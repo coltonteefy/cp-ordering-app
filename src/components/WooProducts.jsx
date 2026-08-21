@@ -40,6 +40,7 @@ export default function WooProducts() {
   const [copied, setCopied] = useState(false);
   const [editCell, setEditCell] = useState(null); // { id, field }
   const [editVal, setEditVal] = useState('');
+  const [priceChanges, setPriceChanges] = useState(new Set());
   const editRef = useRef(null);
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function WooProducts() {
           setProducts(data.products || []);
           setOverrides(data.overrides || {});
           setLastPulledNewIds(Array.isArray(data.lastPulledNewIds) ? data.lastPulledNewIds.map((id) => String(id)) : []);
+          setPriceChanges(new Set(Array.isArray(data.priceChanges) ? data.priceChanges.map((id) => String(id)) : []));
           setLastSync(data.lastSync?.toDate?.() || null);
         }
       })
@@ -63,22 +65,141 @@ export default function WooProducts() {
     try {
       const r = await fetch('/api/woo/products');
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const { products: data } = await r.json();
+      const response = await r.json();
+      const { products: data } = response;
       const now = new Date();
 
-      // Keep saved products as-is and append only truly new Woo items.
+      console.log('\n========== FULL RESPONSE FROM API ==========');
+      console.log('Complete response object:', response);
+      console.log('Products array length:', data?.length || 0);
+      if (data?.length > 0) {
+        console.log('ALL products data:', JSON.stringify(data, null, 2));
+        console.log('Sample product from WooCommerce:', data[0]);
+        // Look for CP-3 RT in WooCommerce data
+        const cp3rt = data.find(p => p.name?.includes('CP-3 RT') || p.name?.includes('CP-3') && p.name?.includes('10mg'));
+        if (cp3rt) {
+          console.log('🎯 Found CP-3 RT in WooCommerce:', cp3rt);
+        } else {
+          console.log('❌ CP-3 RT NOT found in WooCommerce data');
+          console.log('WooCommerce product names containing "CP-3":', data.filter(p => p.name?.includes('CP-3')).map(p => p.name));
+        }
+      }
+
+      // Track changes for highlighting
+      const incomingById = new Map(Array.isArray(data) ? data.map((p) => [String(p.id), p]) : []);
+      const incomingByName = new Map(Array.isArray(data) ? data.map((p) => [cleanName(p.name), p]) : []);
+      const priceChanges = new Set();
+
+      console.log('Local products count:', products.length);
+      console.log('Incoming by ID map size:', incomingById.size);
+      console.log('Incoming by Name map size:', incomingByName.size);
+
+      // Update existing products (price + image) and track new ones
+      const updatedProducts = products.map((existing) => {
+        // Priority 1: match by stored WooCommerce ID
+        let incoming = null;
+        let matchType = 'none';
+        if (existing.wooId) {
+          incoming = incomingById.get(String(existing.wooId));
+          if (incoming) matchType = 'by wooId';
+        }
+
+        // Priority 2: match by local ID (backwards compatibility)
+        if (!incoming) {
+          incoming = incomingById.get(String(existing.id));
+          if (incoming) matchType = 'by ID';
+        }
+
+        // Priority 3: match by product name
+        if (!incoming && existing.name) {
+          incoming = incomingByName.get(cleanName(existing.name));
+          if (incoming) matchType = 'by name';
+        }
+
+        if (matchType === 'by name' && existing.name && incoming?.regularPrice) {
+          console.log(`Matched "${existing.name}" by name. Old price: ${existing.regularPrice}, New price: ${incoming.regularPrice}`);
+        }
+
+        if (!incoming) return existing;
+
+        // Check if price changed
+        const oldPrice = String(existing.regularPrice ?? '').trim();
+        const newPrice = String(incoming.regularPrice ?? '').trim();
+
+        if (existing.name?.includes('CP-3 RT 10mg')) {
+          console.log(`🔍 CP-3 RT 10mg Kit PRICE DATA FROM WOOCOMMERCE:`);
+          console.log(`   regularPrice: "${incoming.regularPrice}"`);
+          console.log(`   salePrice: "${incoming.salePrice}"`);
+          console.log(`   Local old price: "${oldPrice}"`);
+          console.log(`   Using: "${newPrice}"`);
+          console.log(`   Full incoming object:`, JSON.stringify(incoming, null, 2));
+        }
+
+        if (oldPrice !== newPrice && oldPrice && newPrice) {
+          priceChanges.add(String(existing.id));
+        }
+
+        // Update price, image URL, and store WooCommerce ID for future matching
+        // Use incoming prices as-is (even if empty/null) — we matched from WooCommerce so this is the source of truth
+        return {
+          ...existing,
+          wooId: existing.wooId || incoming.id,
+          regularPrice: incoming.regularPrice === undefined ? existing.regularPrice : incoming.regularPrice,
+          salePrice: incoming.salePrice === undefined ? existing.salePrice : incoming.salePrice,
+          imageUrl: incoming.imageUrl || existing.imageUrl || '',
+          lastPriceSync: now.toISOString(),
+        };
+      });
+
+      // Append truly new products
       const existingIds = new Set(products.map((p) => String(p.id)));
-      const incoming = Array.isArray(data) ? data : [];
-      const newProducts = incoming.filter((p) => !existingIds.has(String(p.id)));
-      const mergedProducts = newProducts.length ? [...products, ...newProducts] : products;
+      const newProducts = Array.isArray(data) ? data.filter((p) => !existingIds.has(String(p.id))) : [];
+      const mergedProducts = newProducts.length ? [...updatedProducts, ...newProducts] : updatedProducts;
       const newIds = newProducts.map((p) => String(p.id));
-      const mergedNewIds = Array.from(new Set([...lastPulledNewIds, ...newIds]));
+
+      // Mark both new and price-changed products for highlighting
+      const highlightIds = Array.from(new Set([...lastPulledNewIds, ...newIds, ...priceChanges]));
+      highlightIds.forEach((id) => {
+        if (!lastPulledNewIds.includes(id)) {
+          priceChanges.add(id);
+        }
+      });
 
       // merge: true preserves overrides across syncs
-      await setDoc(CACHE_DOC, { products: mergedProducts, lastPulledNewIds: mergedNewIds, lastSync: now }, { merge: true });
+      await setDoc(
+        CACHE_DOC,
+        {
+          products: mergedProducts,
+          lastPulledNewIds: Array.from(new Set([...lastPulledNewIds, ...newIds])),
+          priceChanges: Array.from(priceChanges),
+          lastSync: now,
+        },
+        { merge: true }
+      );
+      // Update state with merged products (prices from WooCommerce)
       setProducts(mergedProducts);
-      setLastPulledNewIds(mergedNewIds);
+      setLastPulledNewIds(Array.from(new Set([...lastPulledNewIds, ...newIds])));
       setLastSync(now);
+
+      // Force reload from Firestore to ensure UI is current
+      setTimeout(() => {
+        getDoc(CACHE_DOC)
+          .then((snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              console.log('🔄 Reloaded from Firestore - products count:', data.products?.length || 0);
+              if (data.products) {
+                setProducts(data.products);
+              }
+            }
+          })
+          .catch((e) => console.error('Error reloading:', e));
+      }, 500);
+
+      // Debug: check what we're saving
+      console.log('Sample product after update:', mergedProducts[0]);
+      const productsWithImages = mergedProducts.filter(p => p.imageUrl);
+      console.log('Products with imageUrl:', productsWithImages.length, 'out of', mergedProducts.length);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -88,7 +209,8 @@ export default function WooProducts() {
 
   const clearHighlights = useCallback(async () => {
     setLastPulledNewIds([]);
-    await setDoc(CACHE_DOC, { lastPulledNewIds: [] }, { merge: true });
+    setPriceChanges(new Set());
+    await setDoc(CACHE_DOC, { lastPulledNewIds: [], priceChanges: [] }, { merge: true });
   }, []);
 
   const getVal = useCallback((p, field) => {
@@ -322,34 +444,79 @@ export default function WooProducts() {
                 <th className="woo-th-price" onClick={() => toggleSort('regularPrice')}>
                   Price <SortIcon col="regularPrice" />
                 </th>
+                <th className="woo-th-wooid">Woo ID</th>
+                <th className="woo-th-image">Image URL</th>
                 <th className="woo-th-link">URL</th>
               </tr>
             </thead>
             <tbody>
               {grouped.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="woo-empty">No products found.</td>
+                  <td colSpan={7} className="woo-empty">No products found.</td>
                 </tr>
               ) : grouped.map(([cat, items]) => (
                 <>
                   <tr key={`cat-${cat}`} className="woo-group-row">
-                    <td colSpan={5} className="woo-group-label">{cat}</td>
+                    <td colSpan={7} className="woo-group-label">{cat}</td>
                   </tr>
-                  {items.map((p) => (
-                    <tr key={p.id} className={`woo-row${lastPulledNewIds.includes(String(p.id)) ? ' woo-row-new' : ''}`}>
-                      {renderEditableCell(p, 'name', 'woo-td-name')}
-                      {renderEditableCell(p, 'mass', 'woo-td-mass')}
-                      {renderEditableCell(p, 'category', 'woo-td-cat', categories.filter(Boolean))}
-                      {renderEditableCell(p, 'regularPrice', 'woo-td-price')}
-                      <td className="woo-td-link">
-                        {p.permalink && (
-                          <a href={p.permalink} target="_blank" rel="noreferrer" className="woo-permalink">
-                            {p.permalink}
-                          </a>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {items.map((p) => {
+                    const isNew = lastPulledNewIds.includes(String(p.id));
+                    const isPriceChanged = priceChanges.has(String(p.id));
+                    const isEditingName = editCell?.id === p.id && editCell?.field === 'name';
+                    const nameVal = getVal(p, 'name');
+                    return (
+                      <tr key={p.id} className={`woo-row${isNew ? ' woo-row-new' : ''}${isPriceChanged ? ' woo-row-price-changed' : ''}`}>
+                        <td
+                          className="woo-td-name woo-editable"
+                          onClick={() => startEdit(p, 'name')}
+                          title="Click to edit"
+                        >
+                          <div className="woo-name-with-badge">
+                            {isEditingName ? (
+                              <input
+                                ref={editRef}
+                                className="woo-cell-input"
+                                value={editVal}
+                                onChange={(e) => setEditVal(e.target.value)}
+                                onBlur={() => commitEdit(p)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') commitEdit(p);
+                                  if (e.key === 'Escape') cancelEdit();
+                                }}
+                              />
+                            ) : (
+                              <>
+                                <span>{nameVal || <span className="woo-cell-empty">—</span>}</span>
+                                {isPriceChanged && <span className="woo-price-changed-badge">↑ PRICE</span>}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                        {renderEditableCell(p, 'mass', 'woo-td-mass')}
+                        {renderEditableCell(p, 'category', 'woo-td-cat', categories.filter(Boolean))}
+                        {renderEditableCell(p, 'regularPrice', 'woo-td-price')}
+                        <td className="woo-td-wooid">
+                          {p.wooId ? <span className="woo-id-value">{p.wooId}</span> : <span className="woo-no-id">—</span>}
+                        </td>
+                        <td className="woo-td-image">
+                          {p.imageUrl ? (
+                            <a href={p.imageUrl} target="_blank" rel="noreferrer" className="woo-image-url" title="View image">
+                              {p.imageUrl.substring(0, 40)}...
+                            </a>
+                          ) : (
+                            <span className="woo-no-image">—</span>
+                          )}
+                        </td>
+                        <td className="woo-td-link">
+                          {p.permalink && (
+                            <a href={p.permalink} target="_blank" rel="noreferrer" className="woo-permalink">
+                              {p.permalink}
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </>
               ))}
             </tbody>

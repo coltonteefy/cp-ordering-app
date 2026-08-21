@@ -520,7 +520,7 @@ app.get('/api/woo/products', async (_req, res) => {
         per_page: perPage,
         page,
         status: 'publish',
-        _fields: 'id,name,regular_price,sale_price,categories,permalink',
+        _fields: 'id,name,regular_price,sale_price,categories,permalink,images',
       });
       const response = await fetch(url, { signal: AbortSignal.timeout(WOO_REQUEST_TIMEOUT_MS) });
       if (!response.ok) {
@@ -529,7 +529,14 @@ app.get('/api/woo/products', async (_req, res) => {
       }
       const batch = await response.json();
       if (!Array.isArray(batch) || batch.length === 0) break;
+      if (page === 1) {
+        console.log('\n========== FULL WOOCOMMERCE API RESPONSE (PAGE 1) ==========');
+        console.log('Total products in batch:', batch.length);
+        console.log('Full batch data:', JSON.stringify(batch, null, 2));
+        console.log('========== END WOOCOMMERCE DATA ==========\n');
+      }
       for (const p of batch) {
+        const imageUrl = p.images?.[0]?.src || '';
         allProducts.push({
           id: p.id,
           name: p.name,
@@ -537,7 +544,12 @@ app.get('/api/woo/products', async (_req, res) => {
           salePrice: p.sale_price || '',
           categories: (p.categories || []).map((c) => c.name),
           permalink: p.permalink || '',
+          imageUrl: imageUrl,
         });
+        // Debug: log products with and without images
+        if (!imageUrl && allProducts.length <= 5) {
+          console.log(`Product "${p.name}" - has images field:`, !!p.images, 'images array:', p.images);
+        }
       }
       const total = parseInt(response.headers.get('x-wp-totalpages') || '1', 10) || 1;
       if (page >= total) break;
@@ -679,16 +691,19 @@ app.get('/api/bulk-import-results/:token', (req, res) => {
   res.json({ results });
 });
 
-// Pending token relay — lets the Freedom Diagnostics tab hand off a token to the app
-let pendingToken = null;
+// Pending token relay — queue tokens so multi-chunk imports are not dropped.
+const pendingTokenQueue = [];
 app.post('/api/import-ready', (req, res) => {
-  pendingToken = req.body?.token ?? null;
-  res.json({ ok: true });
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  if (!token) {
+    return res.status(400).json({ error: 'A non-empty token is required.' });
+  }
+  pendingTokenQueue.push(token);
+  res.json({ ok: true, queued: pendingTokenQueue.length });
 });
 app.get('/api/import-ready', (req, res) => {
-  const t = pendingToken;
-  pendingToken = null;
-  res.json({ token: t });
+  const token = pendingTokenQueue.shift() ?? null;
+  res.json({ token, queued: pendingTokenQueue.length });
 });
 
 const getPayPalAccessToken = async () => {
