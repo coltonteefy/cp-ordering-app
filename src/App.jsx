@@ -441,7 +441,12 @@ function App() {
                 onError={showModal}
               />
             ) : activePage === 'lotid' ? (
-              <LotIDTracker isGuest={isGuest} vendorGuest={vendorGuest} />
+              <LotIDTracker
+                isGuest={isGuest}
+                vendorGuest={vendorGuest}
+                currentUserLabel={userProfile?.vendorName || userProfile?.email || user?.email || ''}
+                currentUserEmail={user?.email || ''}
+              />
             ) : (
               <>
                 {!isVendor && (

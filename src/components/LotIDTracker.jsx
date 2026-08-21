@@ -392,6 +392,7 @@ const normalizeTestingQueueItem = (entry) => ({
   createdAt: Number(entry?.createdAt) || Date.now(),
   updatedAt: Number(entry?.updatedAt) || Date.now(),
   sentAt: entry?.sentAt || "",
+  sentBy: entry?.sentBy || "",
   trackingStatus: entry?.trackingStatus || "waiting",
   testResult: entry?.testResult || "",
   receivedAt: entry?.receivedAt || "",
@@ -1639,7 +1640,7 @@ const toCapLetter = (capColor) => {
   return (first && /[A-Za-z]/.test(first)) ? first.toUpperCase() : '';
 };
 
-const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
+const LotIDTracker = ({ isGuest = false, vendorGuest = null, currentUserLabel = "", currentUserEmail = "" }) => {
   const [products, setProducts] = useState([]);
   const [productData, setProductData] = useState({});
   const [vendors, setVendors] = useState([]);
@@ -1654,6 +1655,10 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
     const vendorRecord = vendors.find((v) => v.name === vendorName);
     const vendorCode = vendorName ? (vendorRecord?.lotCode || toVendorCode(vendorName)) : '';
     return `${prefix}${vendorCode}${toCapLetter(capColor)}${suffix}`;
+  };
+  const getTestingSender = (mode = "user") => {
+    if (mode === "apex") return "Apex";
+    return currentUserLabel || currentUserEmail || vendorGuest || "Unknown";
   };
   const [editingSections, setEditingSections] = useState({});
   const [lotEditMode, setLotEditMode] = useState({});
@@ -1684,6 +1689,9 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
   const [testingQueue, setTestingQueue] = useState([]);
   const [testingQueueLoaded, setTestingQueueLoaded] = useState(false);
   const [testingStagingItems, setTestingStagingItems] = useState([]);
+  const [testingQueueCopyState, setTestingQueueCopyState] = useState(false);
+  const [editingTestingId, setEditingTestingId] = useState(null);
+  const [editingTestingValues, setEditingTestingValues] = useState({});
   const migratedTestingQueueRef = useRef(false);
   const [testingFormOpen, setTestingFormOpen] = useState(false);
   const TESTING_CONTACTS = [
@@ -2424,6 +2432,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       capColor: coa.capColor || "",
       capShade: coa.capShade || "",
       sentAt: "",
+      sentBy: getTestingSender(),
       trackingStatus: "waiting",
       testResult: "",
       receivedAt: "",
@@ -2449,7 +2458,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       lotNumber: coa.lot || "",
       capColor: coa.capColor || "",
       capShade: coa.capShade || "",
-      sentAt: "",
+      sentAt: new Date().toISOString(),
+      sentBy: getTestingSender("apex"),
       trackingStatus: "waiting",
       testResult: "",
       receivedAt: "",
@@ -2572,7 +2582,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
         items.map((entry) =>
           setDoc(
             doc(db, TESTING_QUEUE_COLLECTION, entry.id),
-            { ...entry, sentAt: now, trackingStatus: entry.trackingStatus || "waiting", updatedAt: Date.now() },
+            { ...entry, sentAt: now, sentBy: entry.sentBy || getTestingSender(), trackingStatus: entry.trackingStatus || "waiting", updatedAt: Date.now() },
             { merge: true }
           )
         )
@@ -2592,7 +2602,7 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
         unsent.map((entry) =>
           setDoc(
             doc(db, TESTING_QUEUE_COLLECTION, entry.id),
-            { sentAt: now, trackingStatus: entry.trackingStatus || "waiting", updatedAt: Date.now() },
+            { sentAt: now, sentBy: entry.sentBy || getTestingSender(), trackingStatus: entry.trackingStatus || "waiting", updatedAt: Date.now() },
             { merge: true }
           )
         )
@@ -2608,6 +2618,90 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
       await Promise.all(testingQueue.map((entry) => deleteDoc(doc(db, TESTING_QUEUE_COLLECTION, entry.id))));
     } catch (err) {
       console.error("Failed to clear testing queue", err);
+    }
+  };
+
+  const formatTestingDate = (value) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleDateString();
+  };
+
+  const startEditingTestingItem = (entry) => {
+    setEditingTestingId(entry.id);
+    setEditingTestingValues({
+      sampleName: entry.sampleName || "",
+      lotNumber: entry.lotNumber || "",
+      capColor: entry.capColor || "",
+      expectedMg: entry.expectedMg || "",
+      sentBy: entry.sentBy || "",
+      sentAt: entry.sentAt || "",
+      trackingStatus: entry.trackingStatus || "waiting",
+      receivedAt: entry.receivedAt || "",
+    });
+  };
+
+  const cancelEditingTestingItem = () => {
+    setEditingTestingId(null);
+    setEditingTestingValues({});
+  };
+
+  const saveEditingTestingItem = async (entry) => {
+    const nextSampleName = String(editingTestingValues.sampleName || "").trim();
+    const nextLotNumber = String(editingTestingValues.lotNumber || "").trim();
+    const nextCapColor = String(editingTestingValues.capColor || "").trim();
+    const nextExpectedMg = String(editingTestingValues.expectedMg || "").trim();
+    const nextSentBy = String(editingTestingValues.sentBy || "").trim();
+    const nextSentAt = String(editingTestingValues.sentAt || "").trim();
+    const nextTrackingStatus = String(editingTestingValues.trackingStatus || "waiting").trim();
+    const nextReceivedAt = String(editingTestingValues.receivedAt || "").trim();
+
+    const patch = {
+      sampleName: nextSampleName,
+      lotNumber: nextLotNumber,
+      capColor: nextCapColor,
+      expectedMg: nextExpectedMg,
+      sentBy: nextSentBy,
+      sentAt: nextSentAt,
+      trackingStatus: nextTrackingStatus,
+      receivedAt: nextTrackingStatus === "received" ? nextReceivedAt : "",
+      updatedAt: Date.now(),
+    };
+
+    try {
+      await setDoc(doc(db, TESTING_QUEUE_COLLECTION, entry.id), patch, { merge: true });
+      setEditingTestingId(null);
+      setEditingTestingValues({});
+    } catch (err) {
+      console.error("Failed to save testing queue item", err);
+    }
+  };
+
+  const copyTestingQueueForSheets = async () => {
+    const headers = ["Product", "Lot", "Cap Color", "mg", "Sent By", "Sent"];
+    const escape = (value) => String(value ?? "").replace(/\t/g, " ").replace(/\n/g, " ");
+    const rows = testingQueue.map((entry) => {
+      const fallback = capByLot.get(String(entry.lotNumber || '').trim());
+      const capColorValue = entry.capColor || fallback?.capColor || '';
+      const capShadeValue = entry.capShade || fallback?.capShade || '';
+      return [
+        escape(entry.sampleName || "-"),
+        escape(entry.lotNumber || "-"),
+        escape(capColorValue || "-"),
+        escape(entry.expectedMg || "-"),
+        escape(entry.sentBy || "-"),
+        escape(formatTestingDate(entry.sentAt)),
+      ].join("\t");
+    });
+
+    const text = [headers.join("\t"), ...rows].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setTestingQueueCopyState(true);
+      window.setTimeout(() => setTestingQueueCopyState(false), 1600);
+    } catch (err) {
+      console.error("Failed to copy testing queue for sheets", err);
     }
   };
 
@@ -3831,6 +3925,9 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
               <p className="lot-testing-list-subtitle">Track everything currently waiting on test results.</p>
             </div>
             <div className="lot-testing-list-metrics">
+              <button type="button" className="lot-id-generate-btn" onClick={copyTestingQueueForSheets} disabled={!testingQueue.length} aria-live="polite">
+                {testingQueueCopyState ? "Copied!" : "Copy for Sheets"}
+              </button>
               <span className="lot-testing-list-pill waiting">
                 Waiting: {testingQueue.filter((entry) => (entry.trackingStatus || "waiting") !== "received").length}
               </span>
@@ -3851,6 +3948,8 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                     <th>Lot</th>
                     <th>Cap Color</th>
                     <th>mg</th>
+                    <th>Sent By</th>
+                    <th>Sent</th>
                     <th>Status</th>
                     <th>Received</th>
                     <th></th>
@@ -3864,12 +3963,39 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                         const capColorValue = entry.capColor || fallback?.capColor || '';
                         const capShadeValue = entry.capShade || fallback?.capShade || '';
                         const status = (entry.trackingStatus || "waiting") === "received" ? "received" : "waiting";
+                        const isEditing = editingTestingId === entry.id;
                         return (
                           <>
-                      <td>{entry.sampleName || "-"}</td>
-                      <td>{entry.lotNumber || "-"}</td>
                       <td>
-                        {capColorValue ? (
+                        {isEditing ? (
+                          <input
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.sampleName ?? ""}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, sampleName: e.target.value }))}
+                          />
+                        ) : (
+                          entry.sampleName || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.lotNumber ?? ""}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, lotNumber: e.target.value }))}
+                          />
+                        ) : (
+                          entry.lotNumber || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.capColor ?? ""}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, capColor: e.target.value }))}
+                          />
+                        ) : capColorValue ? (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
                             <span
                               className="all-lots-cap-swatch"
@@ -3880,22 +4006,106 @@ const LotIDTracker = ({ isGuest = false, vendorGuest = null }) => {
                           </span>
                         ) : "-"}
                       </td>
-                      <td>{entry.expectedMg || "-"}</td>
                       <td>
-                        <span className={`lot-testing-status-pill ${status}`}>
-                          {status === "received" ? "Received" : "Waiting"}
-                        </span>
+                        {isEditing ? (
+                          <input
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.expectedMg ?? ""}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, expectedMg: e.target.value }))}
+                          />
+                        ) : (
+                          entry.expectedMg || "-"
+                        )}
                       </td>
-                      <td>{entry.receivedAt || "-"}</td>
                       <td>
-                        <button
-                          type="button"
-                          className="lot-testing-remove-inline"
-                          onClick={() => removeTestingQueueItem(entry.id)}
-                          title="Remove from testing list"
-                        >
-                          ✕
-                        </button>
+                        {isEditing ? (
+                          <input
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.sentBy ?? ""}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, sentBy: e.target.value }))}
+                          />
+                        ) : (
+                          entry.sentBy || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.sentAt ?? ""}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, sentAt: e.target.value }))}
+                            placeholder="YYYY-MM-DD"
+                          />
+                        ) : (
+                          formatTestingDate(entry.sentAt)
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <select
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.trackingStatus ?? "waiting"}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, trackingStatus: e.target.value }))}
+                          >
+                            <option value="waiting">Waiting</option>
+                            <option value="received">Received</option>
+                          </select>
+                        ) : (
+                          <span className={`lot-testing-status-pill ${status}`}>
+                            {status === "received" ? "Received" : "Waiting"}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="lot-testing-inline-input"
+                            value={editingTestingValues.receivedAt ?? ""}
+                            onChange={(e) => setEditingTestingValues((prev) => ({ ...prev, receivedAt: e.target.value }))}
+                            placeholder="YYYY-MM-DD"
+                          />
+                        ) : (
+                          entry.receivedAt || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <div className="lot-testing-inline-actions">
+                            <button
+                              type="button"
+                              className="lot-testing-edit-save"
+                              onClick={() => saveEditingTestingItem(entry)}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="lot-testing-edit-cancel"
+                              onClick={cancelEditingTestingItem}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="lot-testing-inline-actions">
+                            <button
+                              type="button"
+                              className="lot-testing-edit-btn"
+                              onClick={() => startEditingTestingItem(entry)}
+                              title="Edit this testing list row"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="lot-testing-remove-inline"
+                              onClick={() => removeTestingQueueItem(entry.id)}
+                              title="Remove from testing list"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
                       </td>
                           </>
                         );
