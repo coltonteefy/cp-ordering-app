@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "all": "npm run start:all",
     "dev": "vite",
     "deb": "vite",
     "server": "node server/index.mjs",
