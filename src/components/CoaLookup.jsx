@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -11,10 +11,92 @@ const PRODUCT_MAP = {
   'tirzepatide': 'CP-2 TZ',
 };
 
+const MASS_RE = /(\d+(?:\.\d+)?)\s*(mg|mcg|ug|g|iu)\b/i;
+const MASS_TOKEN_RE = /(\d+(?:\.\d+)?)\s*(mg|mcg|ug|g|iu)\b/gi;
+
+const canonicalizeProductName = (value) => {
+  if (!value) return value;
+  if (/^ss-?31$/i.test(value)) return 'SS-31';
+  if (/^semax$/i.test(value)) return 'Semax';
+  if (/^selank$/i.test(value)) return 'Selank';
+  if (/^semax\s*\/\s*selank$/i.test(value)) return 'Semax/Selank';
+
+  const glp = value.match(/^glp[- ]?(\d)\s*(rt|tz)$/i);
+  if (glp) return `GLP-${glp[1]} ${glp[2].toUpperCase()}`;
+
+  return value;
+};
+
 const normalizeProduct = (product) => {
   if (!product) return product;
-  return PRODUCT_MAP[product.toLowerCase().trim()] ?? product;
+  const cleaned = String(product)
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(MASS_TOKEN_RE, ' ')
+    .replace(/\b(vial|vials|kit|kits)\s*#?\s*\d*\b:?/gi, '')
+    .replace(/\btest\s*\d*\b:?/gi, '')
+    .replace(/\s*\+\s*$/g, ' ')
+    .replace(/\s*\/\s*$/g, ' ')
+    .replace(/[,:;|]+$/g, ' ')
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return null;
+  const mapped = PRODUCT_MAP[cleaned.toLowerCase()] ?? cleaned;
+  return canonicalizeProductName(mapped);
 };
+
+const extractMass = (product) => {
+  const value = String(product || '').trim();
+  if (!value) return null;
+  const match = value.match(MASS_RE);
+  if (!match) return null;
+  const amount = match[1];
+  const unitRaw = match[2].toLowerCase();
+  const unit = unitRaw === 'ug' ? 'mcg' : unitRaw;
+  return `${amount}${unit}`;
+};
+
+const normalizeProductKey = (product) => {
+  const value = String(normalizeProduct(product) || '').toLowerCase();
+  if (!value) return '';
+  return value
+    .replace(MASS_TOKEN_RE, '')
+    .replace(/\b(vial|vials|kit|kits)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const normalizeLot = (lot) => String(lot || '').trim().toUpperCase().replace(/\s+/g, '');
+const normalizeCoaCode = (value) => String(value || '').trim().toLowerCase();
+
+const extractLotFamilyKey = (lot) => {
+  const normalized = normalizeLot(lot).replace(/[^A-Z0-9]/g, '');
+  if (!normalized) return '';
+  const cpMatch = normalized.match(/^C(?:P|&P)?([A-Z]{1,12})\d/);
+  if (cpMatch) return cpMatch[1];
+  const genericMatch = normalized.match(/^([A-Z]{1,12})\d/);
+  if (genericMatch) return genericMatch[1];
+  return '';
+};
+
+const isUsableLot = (lot) => {
+  const normalized = normalizeLot(lot);
+  return Boolean(normalized && normalized !== 'N/A' && normalized !== 'NA' && normalized !== '-');
+};
+
+const getMassSortValue = (mass) => {
+  const parsed = String(mass || '').trim().match(/^(\d+(?:\.\d+)?)(mg|mcg|ug|g|iu)$/i);
+  if (!parsed) return Number.POSITIVE_INFINITY;
+  const amount = Number.parseFloat(parsed[1]);
+  const unit = parsed[2].toLowerCase();
+  if (!Number.isFinite(amount)) return Number.POSITIVE_INFINITY;
+  if (unit === 'g') return amount * 1000000;
+  if (unit === 'mg') return amount * 1000;
+  if (unit === 'mcg' || unit === 'ug') return amount;
+  return amount * 1000;
+};
+
+const extractLabelMass = (product) => extractMass(product);
 
 const STATUS = {
   PROCESSING: 'processing',
@@ -75,6 +157,7 @@ function buildInitialRows(files) {
     searchCode: null,
     lot: null,
     product: null,
+    mass: null,
     coaLink: null,
     status: STATUS.PROCESSING,
     error: null,
@@ -119,8 +202,12 @@ export default function CoaLookup() {
   const [savedEditingId, setSavedEditingId] = useState(null);
   const [savedEditValues, setSavedEditValues] = useState({});
   const [savingSavedIds, setSavingSavedIds] = useState(new Set());
+  const [massRebuildStatus, setMassRebuildStatus] = useState({ running: false, done: 0, total: 0, error: '' });
+  const [lotCatalogByKey, setLotCatalogByKey] = useState(new Map());
   const fileInputRef = useRef(null);
   const importInFlightRef = useRef(false);
+  const massRefreshInFlightRef = useRef(false);
+  const massRefreshAttemptedRef = useRef(new Set());
   const snippetTimeoutRef = useRef(null);
   const copyToastTimeoutRef = useRef(null);
 
@@ -140,6 +227,209 @@ export default function CoaLookup() {
     });
     return unsub;
   }, []);
+
+  // Exact lot catalog from the product list: lot -> canonical product + labeled strength.
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'c&pProductList'), (snapshot) => {
+      const next = new Map();
+
+      snapshot.forEach((snap) => {
+        const data = snap.data() || {};
+        const product = normalizeProduct(data.product) || data.product || null;
+        const mass = String(data.strength || '').trim() || null;
+
+        const lots = [
+          data?.currentCoa?.lot,
+          ...(Array.isArray(data.coaList) ? data.coaList.map((item) => item?.lot) : []),
+        ]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean);
+
+        lots.forEach((lot) => {
+          const lotKey = normalizeLot(lot);
+          if (!lotKey || next.has(lotKey)) return;
+          next.set(lotKey, { product, mass });
+        });
+      });
+
+      setLotCatalogByKey(next);
+    }, (error) => {
+      console.error('Error loading product lot catalog:', error);
+    });
+
+    return () => unsub();
+  }, []);
+
+  const savedSearchCodes = useMemo(() => new Set(savedCoas.map((c) => c.searchCode)), [savedCoas]);
+
+  const lotAssociation = useMemo(() => {
+    const exact = new Map();
+    const familyProductCounts = new Map();
+    const familyMassCounts = new Map();
+    const combined = [...savedCoas, ...rows];
+
+    const bump = (target, key, value) => {
+      if (!key || !value) return;
+      const counts = target.get(key) || new Map();
+      counts.set(value, (counts.get(value) || 0) + 1);
+      target.set(key, counts);
+    };
+
+    combined.forEach((entry) => {
+      if (!isUsableLot(entry?.lot)) return;
+      const lotKey = normalizeLot(entry.lot);
+      const familyKey = extractLotFamilyKey(entry.lot);
+      const product = normalizeProduct(entry?.product);
+      const mass = extractLabelMass(entry?.product) || entry?.mass || null;
+
+      if (product || mass) {
+        const current = exact.get(lotKey) || { product: null, mass: null };
+        if (!current.product && product) current.product = product;
+        if (!current.mass && mass) current.mass = mass;
+        exact.set(lotKey, current);
+      }
+
+      bump(familyProductCounts, familyKey, product);
+      bump(familyMassCounts, familyKey, mass);
+    });
+
+    const pickTop = (counts) => {
+      if (!counts || counts.size === 0) return null;
+      let best = null;
+      let bestCount = -1;
+      counts.forEach((count, value) => {
+        if (count > bestCount) {
+          bestCount = count;
+          best = value;
+        }
+      });
+      return best;
+    };
+
+    const familyProduct = new Map();
+    familyProductCounts.forEach((counts, key) => {
+      const value = pickTop(counts);
+      if (value) familyProduct.set(key, value);
+    });
+
+    const familyMass = new Map();
+    familyMassCounts.forEach((counts, key) => {
+      const value = pickTop(counts);
+      if (value) familyMass.set(key, value);
+    });
+
+    return { exact, familyProduct, familyMass };
+  }, [rows, savedCoas]);
+
+  // Build a LOT -> mass lookup from saved + current rows, so missing mass can be inferred by LOT.
+  const lotMassMap = useMemo(() => {
+    const map = new Map();
+    const combined = [...savedCoas, ...rows];
+    combined.forEach((entry) => {
+      if (!isUsableLot(entry?.lot)) return;
+      const mass = extractLabelMass(entry?.product) || entry?.mass;
+      if (!mass) return;
+      const lotKey = normalizeLot(entry.lot);
+      if (!map.has(lotKey)) {
+        map.set(lotKey, mass);
+      }
+    });
+    return map;
+  }, [savedCoas, rows]);
+
+  // Build product-family mass stats (for example "cp-3 rt" -> "10mg") when LOT-based lookup is missing.
+  const productMassStats = useMemo(() => {
+    const stats = new Map();
+    const combined = [...savedCoas, ...rows];
+    combined.forEach((entry) => {
+      const mass = entry?.mass || extractMass(entry?.product);
+      if (!mass) return;
+      const productKey = normalizeProductKey(entry?.product);
+      if (!productKey) return;
+      const next = stats.get(productKey) || new Map();
+      next.set(mass, (next.get(mass) || 0) + 1);
+      stats.set(productKey, next);
+    });
+    return stats;
+  }, [savedCoas, rows]);
+
+  const inferMassFromProductFamily = useCallback((product) => {
+    const productKey = normalizeProductKey(product);
+    if (!productKey) return null;
+    const counts = productMassStats.get(productKey);
+    if (!counts || counts.size === 0) return null;
+    let bestMass = null;
+    let bestCount = -1;
+    counts.forEach((count, mass) => {
+      if (count > bestCount) {
+        bestCount = count;
+        bestMass = mass;
+      }
+    });
+    return bestMass;
+  }, [productMassStats]);
+
+  const resolveProduct = useCallback((product, lot) => {
+    const lotKey = normalizeLot(lot);
+    const catalogMatch = lotCatalogByKey.get(lotKey);
+    if (catalogMatch?.product) return catalogMatch.product;
+
+    const directProduct = normalizeProduct(product);
+    if (directProduct) return directProduct;
+    if (!isUsableLot(lot)) return null;
+
+    const exactMatch = lotAssociation.exact.get(lotKey);
+    if (exactMatch?.product) return exactMatch.product;
+
+    const familyKey = extractLotFamilyKey(lot);
+    if (!familyKey) return null;
+    return lotAssociation.familyProduct.get(familyKey) || null;
+  }, [lotAssociation, lotCatalogByKey]);
+
+  const resolveMass = useCallback((product, lot, mass) => {
+    const lotKey = normalizeLot(lot);
+    const catalogMatch = lotCatalogByKey.get(lotKey);
+    if (catalogMatch?.mass) return catalogMatch.mass;
+
+    const explicitMass = String(mass || '').trim();
+    if (explicitMass) return explicitMass;
+    const directMass = extractLabelMass(product);
+    if (directMass) return directMass;
+    if (isUsableLot(lot)) {
+      const exactMatch = lotAssociation.exact.get(lotKey);
+      const lotMass = exactMatch?.mass || lotMassMap.get(lotKey);
+      if (lotMass) return lotMass;
+
+      const familyKey = extractLotFamilyKey(lot);
+      if (familyKey) {
+        const familyMass = lotAssociation.familyMass.get(familyKey);
+        if (familyMass) return familyMass;
+      }
+    }
+    return inferMassFromProductFamily(resolveProduct(product, lot));
+  }, [inferMassFromProductFamily, lotAssociation, lotCatalogByKey, lotMassMap, resolveProduct]);
+
+  const compareByProductThenMass = useCallback((a, b) => {
+    const aProduct = resolveProduct(a?.product, a?.lot) || '';
+    const bProduct = resolveProduct(b?.product, b?.lot) || '';
+    const productDiff = aProduct.localeCompare(bProduct);
+    if (productDiff !== 0) return productDiff;
+
+    const aMass = resolveMass(a?.product, a?.lot, a?.mass);
+    const bMass = resolveMass(b?.product, b?.lot, b?.mass);
+    const aMassSort = getMassSortValue(aMass);
+    const bMassSort = getMassSortValue(bMass);
+    if (aMassSort !== bMassSort) return aMassSort - bMassSort;
+
+    return String(a?.lot || '').localeCompare(String(b?.lot || ''));
+  }, [resolveMass, resolveProduct]);
+
+  const unsavedRows = useMemo(() => {
+    return rows
+      .filter((row) => !savedSearchCodes.has(row.searchCode))
+      .slice()
+      .sort(compareByProductThenMass);
+  }, [compareByProductThenMass, rows, savedSearchCodes]);
 
   const processFiles = useCallback(async (files) => {
     if (!files || files.length === 0) return;
@@ -179,7 +469,8 @@ export default function CoaLookup() {
             ...row,
             searchCode: result.searchCode,
             lot: result.lot,
-            product: result.product,
+            product: normalizeProduct(result.product),
+            mass: extractLabelMass(result.product) || result.mass,
             coaLink: result.coaLink,
             status: STATUS.DONE,
           };
@@ -217,7 +508,8 @@ export default function CoaLookup() {
               ...r,
               searchCode: editValues.searchCode || r.searchCode,
               lot: editValues.lot || r.lot,
-              product: editValues.product || r.product,
+              product: normalizeProduct(editValues.product || r.product),
+              mass: extractMass(editValues.product || r.product) || r.mass || null,
             }
           : r
       )
@@ -234,7 +526,8 @@ export default function CoaLookup() {
         filename: row.filename,
         searchCode: row.searchCode,
         lot: row.lot ?? null,
-        product: normalizeProduct(row.product) ?? null,
+        product: resolveProduct(row.product, row.lot) || null,
+        mass: resolveMass(row.product, row.lot, row.mass) || null,
         coaLink: row.coaLink ?? null,
         uploadedAt: serverTimestamp(),
       });
@@ -264,7 +557,8 @@ export default function CoaLookup() {
         filename: r.filename,
         searchCode: r.searchCode,
         lot: r.lot,
-        product: r.product,
+        product: normalizeProduct(r.product),
+        mass: extractLabelMass(r.product) || r.mass,
         coaLink: r.coaLink,
         status: r.error ? STATUS.ERROR : STATUS.DONE,
         error: r.error || null,
@@ -308,7 +602,8 @@ export default function CoaLookup() {
         filename: r.filename,
         searchCode: r.searchCode,
         lot: r.lot,
-        product: r.product,
+        product: normalizeProduct(r.product),
+        mass: extractLabelMass(r.product) || r.mass,
         coaLink: r.coaLink,
         status: r.error ? STATUS.ERROR : STATUS.DONE,
         error: r.error || null,
@@ -363,7 +658,7 @@ export default function CoaLookup() {
     setSavedEditingId(coa.id);
     setSavedEditValues({
       searchCode: coa.searchCode ?? '',
-      product: coa.product ?? '',
+      product: normalizeProduct(coa.product) ?? '',
       lot: coa.lot ?? '',
       coaLink: coa.coaLink ?? '',
     });
@@ -384,7 +679,8 @@ export default function CoaLookup() {
 
       await setDoc(doc(db, COA_COLLECTION, coa.id), {
         searchCode: nextSearchCode || null,
-        product: normalizeProduct(nextProduct) || null,
+        product: resolveProduct(nextProduct, nextLot) || null,
+        mass: resolveMass(nextProduct, nextLot, extractMass(nextProduct) || coa.mass) || null,
         lot: nextLot || null,
         coaLink: nextCoaLink || null,
         updatedAt: serverTimestamp(),
@@ -435,16 +731,92 @@ export default function CoaLookup() {
     }
   };
 
-  const savedSearchCodes = new Set(savedCoas.map((c) => c.searchCode));
-
   // Silently fix any records with un-normalized product names
   useEffect(() => {
-    const stale = savedCoas.filter(c => c.product && normalizeProduct(c.product) !== c.product);
+    const stale = savedCoas.filter((c) => {
+      const cleanedProduct = resolveProduct(c.product, c.lot);
+      const derivedMass = resolveMass(c.product, c.lot, c.mass);
+      return cleanedProduct !== c.product || (derivedMass && derivedMass !== c.mass);
+    });
     stale.forEach(c => {
-      setDoc(doc(db, COA_COLLECTION, c.id), { product: normalizeProduct(c.product) }, { merge: true })
+      setDoc(doc(db, COA_COLLECTION, c.id), {
+        product: resolveProduct(c.product, c.lot),
+        mass: resolveMass(c.product, c.lot, c.mass) || null,
+      }, { merge: true })
         .catch(() => {});
     });
-  }, [savedCoas]);
+  }, [resolveMass, resolveProduct, savedCoas]);
+
+  // Backfill mass for older saved rows by re-parsing COA PDFs in small batches.
+  useEffect(() => {
+    if (massRefreshInFlightRef.current) return;
+
+    const missing = savedCoas
+      .filter((coa) => {
+        const codeKey = normalizeCoaCode(coa.searchCode);
+        if (!codeKey) return false;
+        if (massRefreshAttemptedRef.current.has(codeKey)) return false;
+        return !resolveMass(coa.product, coa.lot, coa.mass);
+      })
+      .slice(0, 12);
+
+    if (missing.length === 0) return;
+
+    const missingByCode = new Map();
+    const batchCodes = [];
+    missing.forEach((coa) => {
+      const code = String(coa.searchCode || '').trim();
+      const key = normalizeCoaCode(code);
+      if (!key || !code) return;
+      massRefreshAttemptedRef.current.add(key);
+      missingByCode.set(key, coa);
+      batchCodes.push(code);
+    });
+
+    if (batchCodes.length === 0) return;
+
+    massRefreshInFlightRef.current = true;
+
+    (async () => {
+      try {
+        const response = await fetch('/api/refresh-coa-metadata', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codes: batchCodes }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Mass refresh failed (${response.status})`);
+        }
+
+        const data = await response.json().catch(() => ({}));
+        const results = Array.isArray(data.results) ? data.results : [];
+
+        await Promise.all(results.map(async (result) => {
+          const key = normalizeCoaCode(result.searchCode);
+          const existing = missingByCode.get(key);
+          if (!existing) return;
+
+          const nextMass = extractLabelMass(result.product) || result.mass;
+          const nextLot = existing.lot || result.lot;
+          const nextProduct = resolveProduct(existing.product || result.product, nextLot);
+          if (!nextMass && !nextProduct) return;
+
+          await setDoc(doc(db, COA_COLLECTION, existing.id), {
+            product: nextProduct || null,
+            mass: resolveMass(result.product, nextLot, nextMass || existing.mass) || null,
+          }, { merge: true });
+        }));
+      } catch {
+        // Allow retry on next render if refresh request failed.
+        missingByCode.forEach((_value, key) => {
+          massRefreshAttemptedRef.current.delete(key);
+        });
+      } finally {
+        massRefreshInFlightRef.current = false;
+      }
+    })();
+  }, [resolveMass, resolveProduct, savedCoas]);
 
   // Keep local server in sync with saved codes so bulk-import can skip them automatically
   useEffect(() => {
@@ -499,11 +871,64 @@ export default function CoaLookup() {
   }, [savedCoas]);
 
   const copyCsv = async (rows) => {
-    const headers = ['Search Code', 'Product', 'LOT', 'COA Link'];
+    const headers = ['Search Code', 'Product', 'Mass', 'LOT', 'COA Link'];
     const escape = (v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`;
-    const lines = [headers.join('\t'), ...rows.map(r => [r.searchCode, r.product, r.lot, r.coaLink].map(escape).join('\t'))];
+    const lines = [headers.join('\t'), ...rows.map(r => [r.searchCode, resolveProduct(r.product, r.lot), resolveMass(r.product, r.lot, r.mass), r.lot, r.coaLink].map(escape).join('\t'))];
     await navigator.clipboard.writeText(lines.join('\n'));
   };
+
+  const rebuildMassForSaved = useCallback(async () => {
+    if (massRebuildStatus.running) return;
+
+    const targets = savedCoas
+      .map((coa) => ({ id: coa.id, code: String(coa.searchCode || '').trim(), lot: coa.lot, product: coa.product, mass: coa.mass }))
+      .filter((coa) => coa.code);
+
+    if (targets.length === 0) return;
+
+    setMassRebuildStatus({ running: true, done: 0, total: targets.length, error: '' });
+
+    const BATCH = 20;
+    try {
+      for (let i = 0; i < targets.length; i += BATCH) {
+        const batch = targets.slice(i, i + BATCH);
+        const codes = batch.map((x) => x.code);
+        const res = await fetch('/api/refresh-coa-metadata', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codes }),
+        });
+        if (!res.ok) {
+          throw new Error(`Refresh failed (${res.status})`);
+        }
+        const data = await res.json().catch(() => ({}));
+        const results = Array.isArray(data.results) ? data.results : [];
+        const byCode = new Map(batch.map((x) => [normalizeCoaCode(x.code), x]));
+
+        await Promise.all(results.map(async (result) => {
+          const key = normalizeCoaCode(result.searchCode);
+          const existing = byCode.get(key);
+          if (!existing) return;
+          const nextLot = existing.lot || result.lot;
+          const nextProduct = resolveProduct(existing.product || result.product, nextLot);
+          const nextMass = resolveMass(result.product, nextLot, result.mass || existing.mass || null);
+          await setDoc(doc(db, COA_COLLECTION, existing.id), {
+            product: nextProduct || null,
+            mass: nextMass || null,
+          }, { merge: true });
+        }));
+
+        setMassRebuildStatus((prev) => ({ ...prev, done: Math.min(targets.length, i + batch.length) }));
+      }
+      setMassRebuildStatus((prev) => ({ ...prev, running: false }));
+    } catch (err) {
+      setMassRebuildStatus((prev) => ({
+        ...prev,
+        running: false,
+        error: err?.message || 'Mass rebuild failed.',
+      }));
+    }
+  }, [massRebuildStatus.running, resolveMass, resolveProduct, savedCoas]);
 
   const coffDate = (searchCode) => {
     const m = searchCode?.match(/Coff(\d{2})(\d{2})(\d{2})/i);
@@ -519,14 +944,14 @@ export default function CoaLookup() {
         !q ||
         c.searchCode?.toLowerCase().includes(q) ||
         c.lot?.toLowerCase().includes(q) ||
-        c.product?.toLowerCase().includes(q) ||
+        resolveProduct(c.product, c.lot)?.toLowerCase().includes(q) ||
         c.filename?.toLowerCase().includes(q)
       );
     })
     .sort((a, b) => {
       if (sortBy === 'date-desc') return coffDate(b.searchCode) - coffDate(a.searchCode);
       if (sortBy === 'date-asc') return coffDate(a.searchCode) - coffDate(b.searchCode);
-      return (a.product ?? '').localeCompare(b.product ?? '');
+      return compareByProductThenMass(a, b);
     });
 
   const copyCodeSnippet = (snippetId) => {
@@ -656,11 +1081,11 @@ export default function CoaLookup() {
         <p className="coa-drop-hint">Multiple files supported</p>
       </div>
 
-      {rows.some((r) => !savedSearchCodes.has(r.searchCode)) && (
+      {unsavedRows.length > 0 && (
         <div className="coa-results-section">
           <div className="coa-results-toolbar">
             <span className="coa-results-count">
-              {rows.filter((r) => !savedSearchCodes.has(r.searchCode)).length} file{rows.filter((r) => !savedSearchCodes.has(r.searchCode)).length !== 1 ? 's' : ''}
+              {unsavedRows.length} file{unsavedRows.length !== 1 ? 's' : ''}
             </span>
             <div className="coa-toolbar-actions">
               {rows.some((r) => r.status === STATUS.DONE && r.searchCode && !savedSearchCodes.has(r.searchCode)) && (
@@ -676,13 +1101,14 @@ export default function CoaLookup() {
                   <th>File</th>
                   <th>Search Code</th>
                   <th>Product</th>
+                  <th>Mass</th>
                   <th>LOT</th>
                   <th>COA Link</th>
                   <th>Save</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.filter((row) => !savedSearchCodes.has(row.searchCode)).map((row) => {
+                {unsavedRows.map((row) => {
                   const alreadySaved = row.searchCode && savedSearchCodes.has(row.searchCode);
                   const isSaving = savingIds.has(row.id);
                   const isEditing = editingId === row.id;
@@ -716,7 +1142,18 @@ export default function CoaLookup() {
                             className="coa-edit-input"
                           />
                         ) : (
-                          row.product ?? <span className="coa-empty">—</span>
+                          resolveProduct(row.product, row.lot) ?? <span className="coa-empty">—</span>
+                        )}
+                      </td>
+                      <td className="coa-cell">
+                        {row.status === STATUS.PROCESSING ? (
+                          <span className="coa-processing">Processing…</span>
+                        ) : (
+                          resolveMass(
+                            isEditing ? editValues.product : row.product,
+                            isEditing ? editValues.lot : row.lot,
+                            isEditing ? null : row.mass
+                          ) ?? <span className="coa-empty">—</span>
                         )}
                       </td>
                       <td className="coa-cell">
@@ -823,6 +1260,15 @@ export default function CoaLookup() {
             >
               Copy CSV
             </button>
+            <button
+              className="coa-source-btn"
+              disabled={massRebuildStatus.running}
+              onClick={rebuildMassForSaved}
+              title="Re-parse saved COAs to repopulate missing mass"
+            >
+              {massRebuildStatus.running ? `Rebuilding ${massRebuildStatus.done}/${massRebuildStatus.total}` : 'Rebuild Mass'}
+            </button>
+            {massRebuildStatus.error && <span className="coa-sync-error">{massRebuildStatus.error}</span>}
             <div className="coa-source-filter">
               {['all', 'freedom', 'kovera'].map((s) => (
                 <button
@@ -868,6 +1314,7 @@ export default function CoaLookup() {
                 <tr>
                   <th>Search Code</th>
                   <th>Product</th>
+                  <th>Mass</th>
                   <th>LOT</th>
                   <th>COA Link</th>
                   <th></th>
@@ -899,7 +1346,14 @@ export default function CoaLookup() {
                             placeholder="Product"
                             className="coa-edit-input"
                           />
-                        ) : (coa.product ?? <span className="coa-empty">—</span>)}
+                        ) : (resolveProduct(coa.product, coa.lot) ?? <span className="coa-empty">—</span>)}
+                      </td>
+                      <td className="coa-cell">
+                        {resolveMass(
+                          isSavedEditing ? savedEditValues.product : coa.product,
+                          isSavedEditing ? savedEditValues.lot : coa.lot,
+                          isSavedEditing ? null : coa.mass
+                        ) ?? <span className="coa-empty">—</span>}
                       </td>
                       <td className="coa-cell">
                         {isSavedEditing ? (

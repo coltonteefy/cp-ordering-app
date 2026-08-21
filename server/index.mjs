@@ -71,7 +71,23 @@ const LOT_RE = /C(?:&P|P)[A-Z0-9]{6,}/;
 const PRODUCT_RE = /Product:\s*(.{1,60}?)(?=\s{2,}|\r?\n|\s*(?:Purity|Identity|Appearance|Net\s+(?:Peptide\s+)?Content|Lot)\b|$)/i;
 // Old format: product appears right after the two dates (received + reported), before N/A or CP lot code
 const OLD_FORMAT_PRODUCT_RE = /\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}\/\d{1,2}\/\d{4}\s+(.{2,50}?)(?=\s+(?:N\/A\b|C(?:&?P)[A-Z0-9]{4,})|\s*\r?\n|$)/i;
-const PURITY_RE = /\d{1,3}\.\d+%/;
+const MASS_RE = /(\d+(?:\.\d+)?)\s*(mg|mcg|ug|g|iu)\b/i;
+
+const formatMass = (amountRaw, unitRaw) => {
+  const amount = Number.parseFloat(String(amountRaw || '').trim());
+  if (!Number.isFinite(amount)) return null;
+  const unit = String(unitRaw || '').trim().toLowerCase();
+  const normalizedUnit = unit === 'ug' ? 'mcg' : unit;
+  return `${Number(amount.toFixed(4)).toString()}${normalizedUnit}`;
+};
+
+const extractLabeledMass = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const match = text.match(MASS_RE);
+  if (!match) return null;
+  return formatMass(match[1], match[2]);
+};
 
 const parseMoney = (value) => {
   const parsed = Number.parseFloat(value ?? '0');
@@ -404,10 +420,13 @@ function parseFields(text, filename) {
 
   const coaLink = `${COA_BASE_URL}/${encodeURIComponent(filename)}`;
 
+  const mass = extractLabeledMass(product);
+
   return {
     searchCode: searchCodeMatch ? searchCodeMatch[0] : null,
     lot: lot || null,
     product: product || null,
+    mass: mass || null,
     coaLink,
   };
 }
@@ -641,24 +660,13 @@ app.post('/api/bulk-import-kovera', (req, res) => {
   res.json({ token, total: results.length, skipped: rows.length - filtered.length });
 });
 
-app.post('/api/bulk-import-coas', async (req, res) => {
-  const { codes: rawCodes } = req.body || {};
-  if (!Array.isArray(rawCodes) || rawCodes.length === 0) {
-    return res.status(400).json({ error: 'Provide a non-empty array of COA codes.' });
-  }
-  const codes = rawCodes.filter((c) => {
-    const code = normalizeCoaCode(c);
-    return code && !savedCoaSet.has(code);
-  });
-  if (codes.length === 0) {
-    return res.json({ token: null, total: 0, skipped: rawCodes.length });
-  }
-
+const fetchCoaMetadataForCodes = async (codes) => {
   const CONCURRENCY = 5;
   const results = [];
   for (let i = 0; i < codes.length; i += CONCURRENCY) {
     const batch = codes.slice(i, i + CONCURRENCY);
-    const batchResults = await Promise.all(batch.map(async (code) => {
+    const batchResults = await Promise.all(batch.map(async (rawCode) => {
+      const code = String(rawCode || '').trim();
       const filename = `${code}.pdf`;
       const pdfUrl = `${COA_BASE_URL}/${encodeURIComponent(filename)}`;
       try {
@@ -676,12 +684,47 @@ app.post('/api/bulk-import-coas', async (req, res) => {
     }));
     results.push(...batchResults);
   }
+  return results;
+};
+
+app.post('/api/bulk-import-coas', async (req, res) => {
+  const { codes: rawCodes } = req.body || {};
+  if (!Array.isArray(rawCodes) || rawCodes.length === 0) {
+    return res.status(400).json({ error: 'Provide a non-empty array of COA codes.' });
+  }
+  const codes = rawCodes.filter((c) => {
+    const code = normalizeCoaCode(c);
+    return code && !savedCoaSet.has(code);
+  });
+  if (codes.length === 0) {
+    return res.json({ token: null, total: 0, skipped: rawCodes.length });
+  }
+
+  const results = await fetchCoaMetadataForCodes(codes);
 
   const token = Math.random().toString(36).slice(2);
   pendingImports.set(token, results);
   setTimeout(() => pendingImports.delete(token), 5 * 60 * 1000); // expire after 5 min
 
   res.json({ token, total: results.length });
+});
+
+app.post('/api/refresh-coa-metadata', async (req, res) => {
+  const { codes: rawCodes } = req.body || {};
+  if (!Array.isArray(rawCodes) || rawCodes.length === 0) {
+    return res.status(400).json({ error: 'Provide a non-empty array of COA codes.' });
+  }
+
+  const codes = rawCodes
+    .map((code) => String(code || '').trim())
+    .filter(Boolean);
+
+  if (codes.length === 0) {
+    return res.status(400).json({ error: 'No valid COA codes provided.' });
+  }
+
+  const results = await fetchCoaMetadataForCodes(codes);
+  res.json({ total: results.length, results });
 });
 
 app.get('/api/bulk-import-results/:token', (req, res) => {
