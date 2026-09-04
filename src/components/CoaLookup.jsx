@@ -197,7 +197,6 @@ export default function CoaLookup() {
   });
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({});
-  const [showCodeSnippets, setShowCodeSnippets] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(null);
   const [savedEditingId, setSavedEditingId] = useState(null);
   const [savedEditValues, setSavedEditValues] = useState({});
@@ -1005,10 +1004,10 @@ export default function CoaLookup() {
             <button
               type="button"
               className="coa-snippets-header-btn"
-              onClick={() => setShowCodeSnippets(!showCodeSnippets)}
-              title="Show/hide code snippets for bulk COA import"
+              onClick={() => copyCodeSnippet('bulkImport')}
+              title="Copy bulk COA import script"
             >
-              {showCodeSnippets ? '▼ Code' : '▶ Code'}
+              {copiedSnippet === 'bulkImport' ? '✓ Copied!' : '📋 Copy'}
             </button>
           </div>
           {importing && <span className="coa-importing-badge">Importing…</span>}
@@ -1016,28 +1015,6 @@ export default function CoaLookup() {
         <p className="coa-lookup-subtitle">
           Upload PDFs to extract Search Code, LOT, and Product details.
         </p>
-
-        {/* Code Snippets Section */}
-        {showCodeSnippets && (
-          <div className="coa-snippets-section">
-            <div className="coa-snippets-container">
-              <div className="coa-snippet-item">
-                <div className="coa-snippet-header">
-                  <h4 className="coa-snippet-title">Bulk Import COAs</h4>
-                  <button
-                    type="button"
-                    className={`coa-snippet-copy-btn ${copiedSnippet === 'bulkImport' ? 'copied' : ''}`}
-                    onClick={() => copyCodeSnippet('bulkImport')}
-                  >
-                    {copiedSnippet === 'bulkImport' ? '✓ Copied!' : '📋 Copy'}
-                  </button>
-                </div>
-                <p className="coa-snippet-desc">Run this in the browser console to bulk import COAs from the page</p>
-                <pre className="coa-snippet-code">{BULK_IMPORT_SCRIPT}</pre>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="coa-sync-status-row">
           <span className={`coa-sync-badge coa-sync-badge--${savedCodeSync.status}`}>
